@@ -14,7 +14,7 @@ major_version = 17
 
 [db.seed]
 enabled = true
-sql_paths = ["./migrations/seed.sql"]
+sql_paths = ["./seed.sql"]
 
 [studio]
 enabled = true
