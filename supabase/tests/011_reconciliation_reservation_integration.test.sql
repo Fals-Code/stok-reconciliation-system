@@ -75,8 +75,8 @@ select is(
     from reservation_integration_results
     where kind = 'DEFAULT_CLEAN'
   ),
-  '3',
-  'default reconciliation executes three checks'
+  '4',
+  'default reconciliation executes four checks'
 );
 
 select is(
@@ -89,8 +89,8 @@ select is(
       where kind = 'DEFAULT_CLEAN'
     )
   ),
-  3::bigint,
-  'default run persists three check results'
+  4::bigint,
+  'default run persists four check results'
 );
 
 select is(
