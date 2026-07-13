@@ -2,7 +2,8 @@
 
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
-import { callRpc, getOrganizationId } from "@/lib/supabase-rest";
+import { requireAdminSession } from "@/lib/auth";
+import { callRpc } from "@/lib/supabase-rest";
 
 function required(formData: FormData, key: string) {
   const value = formData.get(key);
@@ -47,6 +48,7 @@ function resultRedirect(kind: "success" | "error", message: string) {
 }
 
 export async function postReceiptAction(formData: FormData) {
+  const session = await requireAdminSession();
   let message: string;
   let kind: "success" | "error" = "success";
 
@@ -66,7 +68,7 @@ export async function postReceiptAction(formData: FormData) {
       receiptNo: string;
       totalQuantity: number;
     }>("post_receipt", {
-      p_organization_id: getOrganizationId(),
+      p_organization_id: session.profile.organization_id,
       p_idempotency_key: `receipt:${sourceRef}`,
       p_source_ref: sourceRef,
       p_occurred_at: occurredAt,
@@ -79,7 +81,11 @@ export async function postReceiptAction(formData: FormData) {
         },
       ],
       p_note: note,
-      p_metadata: { source: "dashboard", version: 1 },
+      p_metadata: {
+        source: "dashboard",
+        version: 1,
+        actorUserId: session.user.id,
+      },
     });
 
     message = `${result.receiptNo} berhasil menambah ${result.totalQuantity} unit.`;
@@ -93,6 +99,7 @@ export async function postReceiptAction(formData: FormData) {
 }
 
 export async function postManualOutboundAction(formData: FormData) {
+  const session = await requireAdminSession();
   let message: string;
   let kind: "success" | "error" = "success";
 
@@ -109,7 +116,7 @@ export async function postManualOutboundAction(formData: FormData) {
       totalQuantity: number;
       allocationCount: number;
     }>("post_manual_outbound", {
-      p_organization_id: getOrganizationId(),
+      p_organization_id: session.profile.organization_id,
       p_idempotency_key: `outbound:${sourceRef}`,
       p_source_ref: sourceRef,
       p_occurred_at: occurredAt,
@@ -122,7 +129,11 @@ export async function postManualOutboundAction(formData: FormData) {
         },
       ],
       p_note: note,
-      p_metadata: { source: "dashboard", version: 1 },
+      p_metadata: {
+        source: "dashboard",
+        version: 1,
+        actorUserId: session.user.id,
+      },
     });
 
     message = `${result.outboundNo} berhasil mengeluarkan ${result.totalQuantity} unit melalui ${result.allocationCount} batch FEFO.`;

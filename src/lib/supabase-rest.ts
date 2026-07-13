@@ -1,7 +1,8 @@
 import "server-only";
 
+import { getAccessToken, getAdminSession } from "@/lib/auth";
+
 const DEFAULT_LOCAL_URL = "http://127.0.0.1:54321";
-const DEFAULT_ORGANIZATION_ID = "00000000-0000-4000-8000-000000000001";
 
 export type ProductInventory = {
   product_id: string;
@@ -70,18 +71,16 @@ export type DashboardData = {
 };
 
 function getConfig() {
-  const url = process.env.NEXT_PUBLIC_SUPABASE_URL ?? DEFAULT_LOCAL_URL;
-  const secretKey = process.env.SUPABASE_SECRET_KEY;
-  const organizationId =
-    process.env.DEMO_ORGANIZATION_ID ?? DEFAULT_ORGANIZATION_ID;
+  const url = (process.env.NEXT_PUBLIC_SUPABASE_URL ?? DEFAULT_LOCAL_URL).replace(/\/$/, "");
+  const publishableKey = process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY;
 
-  if (!secretKey || secretKey.includes("REPLACE_ME")) {
+  if (!publishableKey || publishableKey.includes("REPLACE_ME")) {
     throw new Error(
-      "SUPABASE_SECRET_KEY belum dikonfigurasi. Salin key lokal dari `npx supabase status -o env` ke `.env.local`.",
+      "NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY belum dikonfigurasi di .env.local.",
     );
   }
 
-  return { url: url.replace(/\/$/, ""), secretKey, organizationId };
+  return { url, publishableKey };
 }
 
 async function parseError(response: Response) {
@@ -112,11 +111,17 @@ async function apiFetch<T>(
   init: RequestInit = {},
   schema: "api" | "public" = "api",
 ): Promise<T> {
-  const { url, secretKey } = getConfig();
+  const { url, publishableKey } = getConfig();
+  const accessToken = await getAccessToken();
+
+  if (!accessToken) {
+    throw new Error("AUTH_SESSION_REQUIRED");
+  }
+
   const headers = new Headers(init.headers);
 
-  headers.set("apikey", secretKey);
-  headers.set("Authorization", `Bearer ${secretKey}`);
+  headers.set("apikey", publishableKey);
+  headers.set("Authorization", `Bearer ${accessToken}`);
   headers.set("Accept-Profile", schema);
 
   if (init.body) {
@@ -141,13 +146,22 @@ async function apiFetch<T>(
   return (await response.json()) as T;
 }
 
-export function getOrganizationId() {
-  return getConfig().organizationId;
-}
+export async function getDashboardData(
+  organizationId?: string,
+): Promise<DashboardData> {
+  let resolvedOrganizationId = organizationId;
 
-export async function getDashboardData(): Promise<DashboardData> {
-  const organizationId = getOrganizationId();
-  const encodedOrganizationId = encodeURIComponent(organizationId);
+  if (!resolvedOrganizationId) {
+    const session = await getAdminSession();
+
+    if (!session) {
+      throw new Error("AUTH_SESSION_REQUIRED");
+    }
+
+    resolvedOrganizationId = session.profile.organization_id;
+  }
+
+  const encodedOrganizationId = encodeURIComponent(resolvedOrganizationId);
 
   const [products, batches, ledger] = await Promise.all([
     apiFetch<ProductInventory[]>(
