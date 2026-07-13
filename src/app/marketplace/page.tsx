@@ -158,7 +158,14 @@ export default async function MarketplacePage({
             <a className="nav-link" href="#events">Events</a>
             <a className="nav-link" href="#allocations">FEFO</a>
           </nav>
-          <Link className="nav-link border border-white/10" href="/">Dashboard</Link>
+          <div className="flex items-center gap-2">
+            <Link className="nav-link border border-white/10" href="/returns">
+              Returns
+            </Link>
+            <Link className="nav-link border border-white/10" href="/">
+              Dashboard
+            </Link>
+          </div>
         </div>
       </header>
 

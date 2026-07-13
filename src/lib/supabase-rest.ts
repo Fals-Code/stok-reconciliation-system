@@ -140,6 +140,107 @@ export type MarketplaceShipAllocation = {
   created_at: string;
 };
 
+export type ReturnHeader = {
+  return_id: string;
+  organization_id: string;
+  channel_code: string;
+  marketplace_order_id: string;
+  marketplace_order_ref: string;
+  external_return_ref: string;
+  source_status_code: string | null;
+  status_code: string;
+  outcome_code: string | null;
+  expected_at: string;
+  closed_at: string | null;
+  actor_user_id: string | null;
+  process_name: string | null;
+  metadata: Record<string, unknown>;
+  created_at: string;
+  updated_at: string;
+  expected_qty: number;
+  received_qty: number;
+  sellable_qty: number;
+  damaged_qty: number;
+  lost_qty: number;
+  pending_arrival_qty: number;
+  pending_inspection_qty: number;
+};
+
+export type ReturnItem = {
+  return_item_id: string;
+  organization_id: string;
+  return_id: string;
+  line_no: number;
+  marketplace_order_item_id: string;
+  marketplace_item_ref: string;
+  product_id: string;
+  product_sku_snapshot: string;
+  source_line_ref: string;
+  expected_qty: number;
+  received_qty: number;
+  sellable_qty: number;
+  damaged_qty: number;
+  lost_qty: number;
+  pending_arrival_qty: number;
+  pending_inspection_qty: number;
+  created_at: string;
+  updated_at: string;
+};
+
+export type ReturnEvent = {
+  event_id: string;
+  organization_id: string;
+  return_id: string;
+  external_event_ref: string;
+  event_type_code: string;
+  occurred_at: string;
+  recorded_at: string;
+  actor_user_id: string | null;
+  process_name: string | null;
+  transaction_id: string | null;
+  note: string | null;
+  metadata: Record<string, unknown>;
+  created_at: string;
+};
+
+export type ReturnReceiptLine = {
+  receipt_line_id: string;
+  organization_id: string;
+  return_id: string;
+  receipt_id: string;
+  receipt_ref: string;
+  return_item_id: string;
+  marketplace_ship_allocation_id: string | null;
+  line_no: number;
+  product_id: string;
+  batch_id: string;
+  quantity_received: number;
+  batch_identity_verified: boolean;
+  product_sku_snapshot: string;
+  batch_code_snapshot: string;
+  expiry_date_snapshot: string;
+  source_line_ref: string;
+  ledger_entry_id: string;
+  occurred_at: string;
+  created_at: string;
+};
+
+export type ReturnInspectionAllocation = {
+  inspection_allocation_id: string;
+  organization_id: string;
+  return_id: string;
+  inspection_id: string;
+  inspection_ref: string;
+  receipt_line_id: string;
+  allocation_no: number;
+  destination_bucket_code: "SELLABLE" | "DAMAGED";
+  quantity_allocated: number;
+  pair_no: number;
+  source_ledger_entry_id: string;
+  destination_ledger_entry_id: string;
+  occurred_at: string;
+  created_at: string;
+};
 export type DashboardData = {
   products: ProductInventory[];
   batches: BatchInventory[];
@@ -151,6 +252,13 @@ export type MarketplaceData = {
   reservations: MarketplaceReservation[];
   events: MarketplaceEvent[];
   allocations: MarketplaceShipAllocation[];
+};
+export type ReturnData = {
+  returns: ReturnHeader[];
+  items: ReturnItem[];
+  events: ReturnEvent[];
+  receiptLines: ReturnReceiptLine[];
+  inspectionAllocations: ReturnInspectionAllocation[];
 };
 
 function getConfig() {
@@ -288,6 +396,39 @@ export async function getMarketplaceData(
   return { orders, reservations, events, allocations };
 }
 
+export async function getReturnData(
+  organizationId?: string,
+): Promise<ReturnData> {
+  const resolvedOrganizationId = await resolveOrganizationId(organizationId);
+  const encodedOrganizationId = encodeURIComponent(resolvedOrganizationId);
+
+  const [returns, items, events, receiptLines, inspectionAllocations] =
+    await Promise.all([
+      apiFetch<ReturnHeader[]>(
+        `returns?organization_id=eq.${encodedOrganizationId}&select=*&order=expected_at.desc&limit=100`,
+      ),
+      apiFetch<ReturnItem[]>(
+        `return_items?organization_id=eq.${encodedOrganizationId}&select=*&order=created_at.desc,line_no.asc&limit=200`,
+      ),
+      apiFetch<ReturnEvent[]>(
+        `return_events?organization_id=eq.${encodedOrganizationId}&select=*&order=occurred_at.desc&limit=200`,
+      ),
+      apiFetch<ReturnReceiptLine[]>(
+        `return_receipt_lines?organization_id=eq.${encodedOrganizationId}&select=*&order=occurred_at.desc,line_no.asc&limit=200`,
+      ),
+      apiFetch<ReturnInspectionAllocation[]>(
+        `return_inspection_allocations?organization_id=eq.${encodedOrganizationId}&select=*&order=occurred_at.desc,allocation_no.asc&limit=200`,
+      ),
+    ]);
+
+  return {
+    returns,
+    items,
+    events,
+    receiptLines,
+    inspectionAllocations,
+  };
+}
 export async function callRpc<T>(name: string, body: Record<string, unknown>) {
   return apiFetch<T>(`rpc/${name}`, {
     method: "POST",
