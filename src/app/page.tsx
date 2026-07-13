@@ -46,13 +46,20 @@ function defaultDateTimeLocal() {
   return `${values.year}-${values.month}-${values.day}T${values.hour}:${values.minute}`;
 }
 
-function inventoryStatus(product: ProductInventory) {
+type PillTone = "success" | "warning" | "danger" | "neutral";
+
+type StatusBadge = {
+  label: string;
+  tone: PillTone;
+};
+
+function inventoryStatus(product: ProductInventory): StatusBadge {
   if (product.available_qty <= 0) return { label: "Habis", tone: "danger" };
   if (product.available_qty <= 10) return { label: "Menipis", tone: "warning" };
   return { label: "Aman", tone: "success" };
 }
 
-function expiryStatus(batch: BatchInventory) {
+function expiryStatus(batch: BatchInventory): StatusBadge {
   const today = new Date();
   const expiry = new Date(`${batch.expiry_date}T00:00:00+07:00`);
   const days = Math.ceil((expiry.getTime() - today.getTime()) / 86_400_000);
@@ -72,7 +79,7 @@ function Pill({
   tone,
 }: {
   label: string;
-  tone: "success" | "warning" | "danger" | "neutral";
+  tone: PillTone;
 }) {
   const tones = {
     success: "border-emerald-400/20 bg-emerald-400/10 text-emerald-300",
