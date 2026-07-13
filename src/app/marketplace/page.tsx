@@ -1,3 +1,5 @@
+import Link from "next/link";
+
 import {
   advanceMarketplaceOrderAction,
   reserveMarketplaceOrderAction,
@@ -86,7 +88,7 @@ function ConfigurationError({ message }: { message: string }) {
         </p>
         <h1 className="mt-3 text-3xl font-semibold">Data marketplace gagal dimuat.</h1>
         <p className="mt-4 leading-7 text-slate-300">{message}</p>
-        <a className="nav-link mt-6 inline-flex" href="/">Kembali ke dashboard</a>
+        <Link className="nav-link mt-6 inline-flex" href="/">Kembali ke dashboard</Link>
       </section>
     </main>
   );
@@ -140,7 +142,7 @@ export default async function MarketplacePage({
             <a className="nav-link" href="#events">Events</a>
             <a className="nav-link" href="#allocations">FEFO</a>
           </nav>
-          <a className="nav-link border border-white/10" href="/">Dashboard</a>
+          <Link className="nav-link border border-white/10" href="/">Dashboard</Link>
         </div>
       </header>
 
