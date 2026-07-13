@@ -1,4 +1,4 @@
-﻿import Link from "next/link";
+import Link from "next/link";
 
 import {
   confirmReturnReceiptAction,
@@ -30,7 +30,7 @@ function formatNumber(value: number) {
 }
 
 function formatDate(value: string | null, includeTime = false) {
-  if (!value) return "Ã¢â‚¬â€";
+  if (!value) return "—";
 
   return new Intl.DateTimeFormat("id-ID", {
     timeZone: "Asia/Jakarta",
@@ -213,7 +213,7 @@ export default async function ReturnsPage({
 
       return {
         id: reservation.order_item_id,
-        label: `${reservation.channel_code} Ã‚Â· ${reservation.external_order_ref} Ã‚Â· ${reservation.product_sku_snapshot} Ã‚Â· dapat diretur ${Math.max(remaining, 0)}`,
+        label: `${reservation.channel_code} · ${reservation.external_order_ref} · ${reservation.product_sku_snapshot} · dapat diretur ${Math.max(remaining, 0)}`,
         channelCode: reservation.channel_code,
         orderRef: reservation.external_order_ref,
         productId: reservation.product_id,
@@ -269,7 +269,7 @@ export default async function ReturnsPage({
 
         receiptSources.push({
           id: `${item.return_item_id}:${allocation.allocation_id}`,
-          label: `${item.product_sku_snapshot} Ã‚Â· ${allocation.batch_code_snapshot} Ã‚Â· verified Ã‚Â· allocation tersisa ${remaining}`,
+          label: `${item.product_sku_snapshot} · ${allocation.batch_code_snapshot} · verified · allocation tersisa ${remaining}`,
           returnItemId: item.return_item_id,
           marketplaceShipAllocationId: allocation.allocation_id,
         });
@@ -277,7 +277,7 @@ export default async function ReturnsPage({
 
       receiptSources.push({
         id: `${item.return_item_id}:UNKNOWN`,
-        label: `${item.product_sku_snapshot} Ã‚Â· batch tidak diketahui Ã‚Â· maksimal ${item.pending_arrival_qty}`,
+        label: `${item.product_sku_snapshot} · batch tidak diketahui · maksimal ${item.pending_arrival_qty}`,
         returnItemId: item.return_item_id,
         marketplaceShipAllocationId: null,
       });
@@ -543,8 +543,8 @@ export default async function ReturnsPage({
                     </option>
                     {inspectableReceiptLines.map((line) => (
                       <option key={line.receipt_line_id} value={line.receipt_line_id}>
-                        {line.product_sku_snapshot} Ã‚Â· {line.batch_code_snapshot} Ã‚Â·{" "}
-                        {line.batch_identity_verified ? "verified" : "unidentified"} Ã‚Â·
+                        {line.product_sku_snapshot} · {line.batch_code_snapshot} ·{" "}
+                        {line.batch_identity_verified ? "verified" : "unidentified"} ·
                         remaining {receiptRemaining(line, inspectedByReceiptLine)}
                       </option>
                     ))}
@@ -627,7 +627,7 @@ export default async function ReturnsPage({
                     </option>
                     {lostCandidates.map((item) => (
                       <option key={item.return_item_id} value={item.return_item_id}>
-                        {item.product_sku_snapshot} Ã‚Â· pending{" "}
+                        {item.product_sku_snapshot} · pending{" "}
                         {item.pending_arrival_qty}
                       </option>
                     ))}
@@ -729,7 +729,7 @@ export default async function ReturnsPage({
                             {returnHeader.external_return_ref}
                           </p>
                           <p className="mt-1 text-xs text-slate-500">
-                            {returnHeader.channel_code} Ã‚Â·{" "}
+                            {returnHeader.channel_code} ·{" "}
                             {returnHeader.marketplace_order_ref}
                           </p>
                         </div>
@@ -766,8 +766,8 @@ export default async function ReturnsPage({
                         {selectedReturn.external_return_ref}
                       </h3>
                       <p className="mt-2 text-sm text-slate-400">
-                        {selectedReturn.channel_code} Ã‚Â·{" "}
-                        {selectedReturn.marketplace_order_ref} Ã‚Â· expected{" "}
+                        {selectedReturn.channel_code} ·{" "}
+                        {selectedReturn.marketplace_order_ref} · expected{" "}
                         {formatDate(selectedReturn.expected_at, true)} WIB
                       </p>
                     </div>
@@ -905,10 +905,10 @@ export default async function ReturnsPage({
                         />
                       </div>
                       <p className="mt-2 text-xs text-slate-400">
-                        {line.product_sku_snapshot} Ã‚Â· {line.batch_code_snapshot}
+                        {line.product_sku_snapshot} · {line.batch_code_snapshot}
                       </p>
                       <p className="mt-2 text-xs text-slate-500">
-                        received {line.quantity_received} Ã‚Â· quarantine remaining{" "}
+                        received {line.quantity_received} · quarantine remaining{" "}
                         {receiptRemaining(line, inspectedByReceiptLine)}
                       </p>
                     </div>
@@ -942,7 +942,7 @@ export default async function ReturnsPage({
                         />
                       </div>
                       <p className="mt-2 text-xs text-slate-400">
-                        quantity {allocation.quantity_allocated} Ã‚Â· pair{" "}
+                        quantity {allocation.quantity_allocated} · pair{" "}
                         {allocation.pair_no}
                       </p>
                       <p className="mt-2 text-xs text-slate-500">
