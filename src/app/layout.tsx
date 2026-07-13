@@ -2,9 +2,9 @@ import type { Metadata } from "next";
 import "./globals.css";
 
 export const metadata: Metadata = {
-  title: "Sistem Rekonsiliasi Stok",
+  title: "GlowLab Inventory | Sistem Rekonsiliasi Stok",
   description:
-    "Sistem pencatatan dan rekonsiliasi stok berbasis stock ledger, batch, dan FEFO.",
+    "Dashboard operasional untuk penerimaan, outbound FEFO, posisi inventory, dan immutable stock ledger.",
 };
 
 export default function RootLayout({

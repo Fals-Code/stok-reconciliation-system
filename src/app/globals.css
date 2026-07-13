@@ -17,13 +17,17 @@
 }
 
 html {
+  scroll-behavior: smooth;
   background: var(--background);
 }
 
 body {
   margin: 0;
   min-height: 100vh;
-  background: var(--background);
+  background:
+    radial-gradient(circle at 15% 0%, rgb(16 185 129 / 0.08), transparent 28rem),
+    radial-gradient(circle at 100% 15%, rgb(59 130 246 / 0.06), transparent 24rem),
+    var(--background);
   color: var(--foreground);
   font-family: Arial, Helvetica, sans-serif;
 }
@@ -34,4 +38,173 @@ input,
 select,
 textarea {
   font: inherit;
+}
+
+button,
+a,
+input,
+select,
+textarea {
+  outline-color: rgb(52 211 153 / 0.65);
+}
+
+.nav-link {
+  border-radius: 999px;
+  padding: 0.5rem 0.8rem;
+  color: rgb(148 163 184);
+  transition: background-color 160ms ease, color 160ms ease;
+}
+
+.nav-link:hover {
+  background: rgb(255 255 255 / 0.06);
+  color: white;
+}
+
+.metric-card,
+.panel-card,
+.batch-card {
+  border: 1px solid rgb(255 255 255 / 0.1);
+  background: rgb(255 255 255 / 0.03);
+  box-shadow: 0 24px 80px rgb(0 0 0 / 0.15);
+}
+
+.metric-card {
+  border-radius: 1.1rem;
+  padding: 1.25rem;
+}
+
+.panel-card {
+  border-radius: 1.25rem;
+  padding: 1.35rem;
+}
+
+.batch-card {
+  border-radius: 1.1rem;
+  padding: 1.15rem;
+}
+
+.section-kicker {
+  font-family: "Courier New", Courier, monospace;
+  font-size: 0.72rem;
+  line-height: 1rem;
+  letter-spacing: 0.17em;
+  text-transform: uppercase;
+  color: rgb(110 231 183);
+}
+
+.section-title {
+  margin-top: 0.35rem;
+  font-size: 1.45rem;
+  line-height: 2rem;
+  font-weight: 600;
+  letter-spacing: -0.02em;
+  color: white;
+}
+
+.form-grid {
+  display: grid;
+  gap: 1rem;
+}
+
+.field-label {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  font-size: 0.78rem;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  color: rgb(148 163 184);
+}
+
+.field-label input,
+.field-label select,
+.field-label textarea {
+  width: 100%;
+  border: 1px solid rgb(255 255 255 / 0.11);
+  border-radius: 0.8rem;
+  background: rgb(2 6 23 / 0.8);
+  padding: 0.75rem 0.85rem;
+  color: rgb(241 245 249);
+  transition: border-color 160ms ease, background-color 160ms ease;
+}
+
+.field-label input:hover,
+.field-label select:hover,
+.field-label textarea:hover {
+  border-color: rgb(255 255 255 / 0.2);
+}
+
+.field-label input:focus,
+.field-label select:focus,
+.field-label textarea:focus {
+  border-color: rgb(52 211 153 / 0.6);
+  background: rgb(2 6 23);
+}
+
+.field-label input::placeholder,
+.field-label textarea::placeholder {
+  color: rgb(71 85 105);
+}
+
+.primary-button {
+  display: inline-flex;
+  min-height: 2.8rem;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid rgb(52 211 153 / 0.3);
+  border-radius: 0.85rem;
+  background: rgb(16 185 129);
+  padding: 0.75rem 1rem;
+  font-size: 0.85rem;
+  font-weight: 700;
+  color: rgb(2 6 23);
+  cursor: pointer;
+  transition: transform 160ms ease, background-color 160ms ease;
+}
+
+.primary-button:hover {
+  background: rgb(52 211 153);
+  transform: translateY(-1px);
+}
+
+.primary-button:active {
+  transform: translateY(0);
+}
+
+table {
+  width: 100%;
+  min-width: 780px;
+  border-collapse: collapse;
+  font-size: 0.82rem;
+}
+
+th {
+  background: rgb(255 255 255 / 0.025);
+  padding: 0.8rem 1rem;
+  text-align: left;
+  font-size: 0.7rem;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: rgb(100 116 139);
+}
+
+td {
+  border-top: 1px solid rgb(255 255 255 / 0.07);
+  padding: 0.9rem 1rem;
+  color: rgb(203 213 225);
+}
+
+tbody tr {
+  transition: background-color 140ms ease;
+}
+
+tbody tr:hover {
+  background: rgb(255 255 255 / 0.025);
+}
+
+@media (min-width: 640px) {
+  .form-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
 }
