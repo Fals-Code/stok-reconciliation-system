@@ -1,5 +1,6 @@
 import Link from "next/link";
 
+import { CurrentDateTimeInput } from "@/app/marketplace/current-date-time-input";
 import {
   advanceMarketplaceOrderAction,
   reserveMarketplaceOrderAction,
@@ -138,7 +139,7 @@ export default async function MarketplacePage({
   const minimumEventAt = latestRecordedAt > 0
     ? toDateTimeLocal(new Date(latestRecordedAt + 60_000))
     : undefined;
-  const currentDateTime = minimumEventAt;
+
   const eventById = new Map(events.map((event) => [event.event_id, event]));
 
   return (
@@ -231,18 +232,7 @@ export default async function MarketplacePage({
                 </label>
                 <label className="field-label">
                   Waktu event
-                  <input
-                    name="occurredAt"
-                    type="datetime-local"
-                    min={minimumEventAt}
-                    defaultValue={currentDateTime}
-                    required
-                  />
-                  {minimumEventAt ? (
-                    <span className="text-[0.68rem] font-normal text-slate-500">
-                      Minimum {minimumEventAt.replace("T", " ")} WIB
-                    </span>
-                  ) : null}
+                  <CurrentDateTimeInput minimumEventAt={minimumEventAt} />
                 </label>
                 <label className="field-label">
                   Order reference
@@ -299,18 +289,7 @@ export default async function MarketplacePage({
                 </label>
                 <label className="field-label">
                   Waktu event
-                  <input
-                    name="occurredAt"
-                    type="datetime-local"
-                    min={minimumEventAt}
-                    defaultValue={currentDateTime}
-                    required
-                  />
-                  {minimumEventAt ? (
-                    <span className="text-[0.68rem] font-normal text-slate-500">
-                      Minimum {minimumEventAt.replace("T", " ")} WIB
-                    </span>
-                  ) : null}
+                  <CurrentDateTimeInput minimumEventAt={minimumEventAt} />
                 </label>
                 <label className="field-label sm:col-span-2">
                   Reservasi aktif
