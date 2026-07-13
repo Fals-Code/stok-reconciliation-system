@@ -1182,22 +1182,31 @@ begin
       )
     );
 
-    select receipt_line.*, return_item.id, batch.status_code
-    into v_receipt_line, v_return_item_id, v_batch_status
+    select receipt_line.*
+    into v_receipt_line
     from operations.return_receipt_lines receipt_line
     join operations.return_items return_item
       on return_item.organization_id = receipt_line.organization_id
      and return_item.id = receipt_line.return_item_id
-    join catalog.product_batches batch
-      on batch.organization_id = receipt_line.organization_id
-     and batch.product_id = receipt_line.product_id
-     and batch.id = receipt_line.batch_id
     where receipt_line.organization_id = p_organization_id
       and receipt_line.id = v_line.receipt_line_id
       and return_item.return_id = v_return_id;
 
     if not found then
       raise exception using errcode = 'P0001', message = 'RETURN_RECEIPT_LINE_NOT_FOUND';
+    end if;
+
+    v_return_item_id := v_receipt_line.return_item_id;
+
+    select batch.status_code
+    into v_batch_status
+    from catalog.product_batches batch
+    where batch.organization_id = p_organization_id
+      and batch.product_id = v_receipt_line.product_id
+      and batch.id = v_receipt_line.batch_id;
+
+    if not found then
+      raise exception using errcode = 'P0001', message = 'RETURN_RECEIPT_BATCH_NOT_FOUND';
     end if;
 
     select coalesce(sum(allocation.quantity_allocated), 0)
