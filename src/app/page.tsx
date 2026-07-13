@@ -1,3 +1,5 @@
+import Link from "next/link";
+
 import {
   postManualOutboundAction,
   postReceiptAction,
@@ -159,9 +161,14 @@ export default async function Home({
             <a className="nav-link" href="#inventory">Inventory</a>
             <a className="nav-link" href="#ledger">Ledger</a>
           </nav>
-          <div className="flex items-center gap-2 rounded-full border border-emerald-400/20 bg-emerald-400/10 px-3 py-1.5 text-xs text-emerald-300">
-            <span className="h-2 w-2 rounded-full bg-emerald-400" />
-            Supabase connected
+          <div className="flex items-center gap-2">
+            <Link className="nav-link border border-white/10" href="/marketplace">
+              Marketplace
+            </Link>
+            <div className="hidden items-center gap-2 rounded-full border border-emerald-400/20 bg-emerald-400/10 px-3 py-1.5 text-xs text-emerald-300 sm:flex">
+              <span className="h-2 w-2 rounded-full bg-emerald-400" />
+              Supabase connected
+            </div>
           </div>
         </div>
       </header>
