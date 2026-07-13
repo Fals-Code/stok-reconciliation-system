@@ -64,10 +64,93 @@ export type StockLedgerEntry = {
   correlation_id: string;
 };
 
+export type MarketplaceOrder = {
+  order_id: string;
+  organization_id: string;
+  channel_code: string;
+  external_order_ref: string;
+  status_code: string;
+  reserved_at: string;
+  closed_at: string | null;
+  actor_user_id: string | null;
+  process_name: string | null;
+  metadata: Record<string, unknown>;
+  created_at: string;
+  updated_at: string;
+  reserved_qty: number;
+  shipped_qty: number;
+  released_qty: number;
+  open_qty: number;
+};
+
+export type MarketplaceReservation = {
+  organization_id: string;
+  order_id: string;
+  channel_code: string;
+  external_order_ref: string;
+  order_item_id: string;
+  line_no: number;
+  external_item_ref: string;
+  product_id: string;
+  product_sku_snapshot: string;
+  quantity_ordered: number;
+  reservation_id: string;
+  reserved_qty: number;
+  consumed_qty: number;
+  released_qty: number;
+  open_qty: number;
+  status_code: string;
+  reserved_at: string;
+  closed_at: string | null;
+};
+
+export type MarketplaceEvent = {
+  event_id: string;
+  organization_id: string;
+  order_id: string;
+  channel_code: string;
+  external_event_ref: string;
+  event_type_code: string;
+  status_code: string;
+  occurred_at: string;
+  recorded_at: string;
+  actor_user_id: string | null;
+  process_name: string | null;
+  transaction_id: string | null;
+  note: string | null;
+  metadata: Record<string, unknown>;
+  created_at: string;
+};
+
+export type MarketplaceShipAllocation = {
+  allocation_id: string;
+  organization_id: string;
+  event_id: string;
+  event_line_id: string;
+  allocation_no: number;
+  ledger_entry_id: string;
+  product_id: string;
+  batch_id: string;
+  quantity_allocated: number;
+  product_sku_snapshot: string;
+  batch_code_snapshot: string;
+  expiry_date_snapshot: string;
+  received_first_at_snapshot: string | null;
+  source_line_ref: string;
+  created_at: string;
+};
+
 export type DashboardData = {
   products: ProductInventory[];
   batches: BatchInventory[];
   ledger: StockLedgerEntry[];
+};
+
+export type MarketplaceData = {
+  orders: MarketplaceOrder[];
+  reservations: MarketplaceReservation[];
+  events: MarketplaceEvent[];
+  allocations: MarketplaceShipAllocation[];
 };
 
 function getConfig() {
@@ -146,21 +229,24 @@ async function apiFetch<T>(
   return (await response.json()) as T;
 }
 
+async function resolveOrganizationId(organizationId?: string) {
+  if (organizationId) {
+    return organizationId;
+  }
+
+  const session = await getAdminSession();
+
+  if (!session) {
+    throw new Error("AUTH_SESSION_REQUIRED");
+  }
+
+  return session.profile.organization_id;
+}
+
 export async function getDashboardData(
   organizationId?: string,
 ): Promise<DashboardData> {
-  let resolvedOrganizationId = organizationId;
-
-  if (!resolvedOrganizationId) {
-    const session = await getAdminSession();
-
-    if (!session) {
-      throw new Error("AUTH_SESSION_REQUIRED");
-    }
-
-    resolvedOrganizationId = session.profile.organization_id;
-  }
-
+  const resolvedOrganizationId = await resolveOrganizationId(organizationId);
   const encodedOrganizationId = encodeURIComponent(resolvedOrganizationId);
 
   const [products, batches, ledger] = await Promise.all([
@@ -176,6 +262,30 @@ export async function getDashboardData(
   ]);
 
   return { products, batches, ledger };
+}
+
+export async function getMarketplaceData(
+  organizationId?: string,
+): Promise<MarketplaceData> {
+  const resolvedOrganizationId = await resolveOrganizationId(organizationId);
+  const encodedOrganizationId = encodeURIComponent(resolvedOrganizationId);
+
+  const [orders, reservations, events, allocations] = await Promise.all([
+    apiFetch<MarketplaceOrder[]>(
+      `marketplace_orders?organization_id=eq.${encodedOrganizationId}&select=*&order=reserved_at.desc&limit=50`,
+    ),
+    apiFetch<MarketplaceReservation[]>(
+      `marketplace_reservations?organization_id=eq.${encodedOrganizationId}&select=*&order=reserved_at.desc,line_no.asc&limit=100`,
+    ),
+    apiFetch<MarketplaceEvent[]>(
+      `marketplace_events?organization_id=eq.${encodedOrganizationId}&select=*&order=occurred_at.desc&limit=100`,
+    ),
+    apiFetch<MarketplaceShipAllocation[]>(
+      `marketplace_ship_allocations?organization_id=eq.${encodedOrganizationId}&select=*&order=created_at.desc&limit=100`,
+    ),
+  ]);
+
+  return { orders, reservations, events, allocations };
 }
 
 export async function callRpc<T>(name: string, body: Record<string, unknown>) {
