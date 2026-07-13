@@ -2,7 +2,7 @@ begin;
 
 create extension if not exists pgtap with schema extensions;
 
-select plan(60);
+select plan(61);
 
 -- 1-12: contract and security surface
 select has_table('operations'::name, 'manual_outbounds'::name);
