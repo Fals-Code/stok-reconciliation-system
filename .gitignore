@@ -35,6 +35,10 @@ yarn-debug.log*
 yarn-error.log*
 .pnpm-debug.log*
 
+# Supabase local runtime state
+/supabase/.branches/
+/supabase/.temp/
+
 # Editors and operating systems
 .DS_Store
 Thumbs.db

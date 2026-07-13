@@ -10,27 +10,41 @@ select has_schema('inventory');
 select has_schema('notification');
 select has_schema('api');
 
-select has_table('app', 'organizations');
-select has_table('app', 'user_profiles');
-select has_table('catalog', 'products');
-select has_table('catalog', 'product_batches');
-select has_table('inventory', 'stock_transactions');
-select has_table('inventory', 'stock_ledger_entries');
-select has_table('inventory', 'stock_batch_balances');
-select has_table('inventory', 'stock_product_positions');
+-- pgTAP overloads text arguments as object names or test descriptions.
+-- Cast schema-qualified identifiers to name so the intended overload is selected.
+select has_table('app'::name, 'organizations'::name);
+select has_table('app'::name, 'user_profiles'::name);
+select has_table('catalog'::name, 'products'::name);
+select has_table('catalog'::name, 'product_batches'::name);
+select has_table('inventory'::name, 'stock_transactions'::name);
+select has_table('inventory'::name, 'stock_ledger_entries'::name);
+select has_table('inventory'::name, 'stock_batch_balances'::name);
+select has_table('inventory'::name, 'stock_product_positions'::name);
 
-select has_view('api', 'product_inventory');
-select has_view('api', 'batch_inventory');
-select has_view('api', 'stock_ledger');
+select has_view('api'::name, 'product_inventory'::name);
+select has_view('api'::name, 'batch_inventory'::name);
+select has_view('api'::name, 'stock_ledger'::name);
 
-select col_is_pk('app', 'organizations', 'id');
-select col_is_pk('catalog', 'products', 'id');
-select col_is_pk('inventory', 'stock_transactions', 'id');
-select col_is_pk('inventory', 'stock_ledger_entries', 'id');
+select col_is_pk('app'::name, 'organizations'::name, 'id'::name);
+select col_is_pk('catalog'::name, 'products'::name, 'id'::name);
+select col_is_pk('inventory'::name, 'stock_transactions'::name, 'id'::name);
+select col_is_pk('inventory'::name, 'stock_ledger_entries'::name, 'id'::name);
 
-select has_index('catalog', 'product_batches', 'idx_product_batches_fefo');
-select has_index('inventory', 'stock_ledger_entries', 'idx_stock_ledger_product_seq');
-select has_index('inventory', 'stock_ledger_entries', 'idx_stock_ledger_batch_seq');
+select has_index(
+  'catalog'::name,
+  'product_batches'::name,
+  'idx_product_batches_fefo'::name
+);
+select has_index(
+  'inventory'::name,
+  'stock_ledger_entries'::name,
+  'idx_stock_ledger_product_seq'::name
+);
+select has_index(
+  'inventory'::name,
+  'stock_ledger_entries'::name,
+  'idx_stock_ledger_batch_seq'::name
+);
 
 select policies_are(
   'catalog',
