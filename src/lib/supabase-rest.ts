@@ -1,6 +1,6 @@
 import "server-only";
 
-import { getAccessToken } from "@/lib/auth";
+import { getAccessToken, getAdminSession } from "@/lib/auth";
 
 const DEFAULT_LOCAL_URL = "http://127.0.0.1:54321";
 
@@ -147,9 +147,21 @@ async function apiFetch<T>(
 }
 
 export async function getDashboardData(
-  organizationId: string,
+  organizationId?: string,
 ): Promise<DashboardData> {
-  const encodedOrganizationId = encodeURIComponent(organizationId);
+  let resolvedOrganizationId = organizationId;
+
+  if (!resolvedOrganizationId) {
+    const session = await getAdminSession();
+
+    if (!session) {
+      throw new Error("AUTH_SESSION_REQUIRED");
+    }
+
+    resolvedOrganizationId = session.profile.organization_id;
+  }
+
+  const encodedOrganizationId = encodeURIComponent(resolvedOrganizationId);
 
   const [products, batches, ledger] = await Promise.all([
     apiFetch<ProductInventory[]>(
