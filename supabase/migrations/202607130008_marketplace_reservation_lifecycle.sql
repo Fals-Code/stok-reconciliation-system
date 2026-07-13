@@ -455,7 +455,9 @@ declare
   v_product_reserved bigint;
   v_order_item_id uuid;
   v_reservation_id uuid;
-  v_reservation inventory.stock_reservations%rowtype;
+  v_reservation_reserved_qty bigint;
+  v_reservation_consumed_qty bigint;
+  v_reservation_released_qty bigint;
   v_event_line_id uuid;
   v_remaining bigint;
   v_batch record;
@@ -982,12 +984,16 @@ begin
         item.id,
         item.reservation_id,
         item.product_sku_snapshot,
-        reservation.*
+        reservation.reserved_qty,
+        reservation.consumed_qty,
+        reservation.released_qty
       into
         v_order_item_id,
         v_reservation_id,
         v_product_sku,
-        v_reservation
+        v_reservation_reserved_qty,
+        v_reservation_consumed_qty,
+        v_reservation_released_qty
       from operations.marketplace_order_items item
       join inventory.stock_reservations reservation
         on reservation.id = item.reservation_id
@@ -1002,9 +1008,9 @@ begin
       end if;
 
       v_remaining :=
-        v_reservation.reserved_qty -
-        v_reservation.consumed_qty -
-        v_reservation.released_qty;
+        v_reservation_reserved_qty -
+        v_reservation_consumed_qty -
+        v_reservation_released_qty;
 
       if v_line.quantity > v_remaining then
         raise exception using errcode = 'P0001', message = 'MARKETPLACE_RESERVATION_EXCEEDED';
