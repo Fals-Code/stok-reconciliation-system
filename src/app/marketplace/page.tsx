@@ -33,7 +33,7 @@ function formatDate(value: string | null, includeTime = false) {
   }).format(new Date(value));
 }
 
-function defaultDateTimeLocal() {
+function toDateTimeLocal(value: Date) {
   const parts = new Intl.DateTimeFormat("en-CA", {
     timeZone: "Asia/Jakarta",
     year: "numeric",
@@ -42,7 +42,7 @@ function defaultDateTimeLocal() {
     hour: "2-digit",
     minute: "2-digit",
     hour12: false,
-  }).formatToParts(new Date());
+  }).formatToParts(value);
 
   const values = Object.fromEntries(parts.map((part) => [part.type, part.value]));
   return `${values.year}-${values.month}-${values.day}T${values.hour}:${values.minute}`;
@@ -116,14 +116,29 @@ export default async function MarketplacePage({
     );
   }
 
-  const { products } = dashboard;
+  const { products, ledger } = dashboard;
   const { orders, reservations, events, allocations } = marketplace;
   const openReservations = reservations.filter((reservation) => Number(reservation.open_qty) > 0);
   const openOrders = orders.filter((order) => Number(order.open_qty) > 0).length;
   const openQuantity = orders.reduce((sum, order) => sum + Number(order.open_qty), 0);
   const shippedQuantity = orders.reduce((sum, order) => sum + Number(order.shipped_qty), 0);
   const releasedQuantity = orders.reduce((sum, order) => sum + Number(order.released_qty), 0);
-  const currentDateTime = defaultDateTimeLocal();
+  const latestPhysicalAt = ledger.reduce(
+    (latest, entry) => Math.max(latest, new Date(entry.occurred_at).getTime()),
+    0,
+  );
+  const latestMarketplaceAt = events.reduce(
+    (latest, event) => Math.max(latest, new Date(event.occurred_at).getTime()),
+    0,
+  );
+  const latestRecordedAt = Math.max(
+    latestPhysicalAt,
+    latestMarketplaceAt,
+  );
+  const minimumEventAt = latestRecordedAt > 0
+    ? toDateTimeLocal(new Date(latestRecordedAt + 60_000))
+    : undefined;
+  const currentDateTime = minimumEventAt;
   const eventById = new Map(events.map((event) => [event.event_id, event]));
 
   return (
@@ -216,7 +231,18 @@ export default async function MarketplacePage({
                 </label>
                 <label className="field-label">
                   Waktu event
-                  <input name="occurredAt" type="datetime-local" defaultValue={currentDateTime} required />
+                  <input
+                    name="occurredAt"
+                    type="datetime-local"
+                    min={minimumEventAt}
+                    defaultValue={currentDateTime}
+                    required
+                  />
+                  {minimumEventAt ? (
+                    <span className="text-[0.68rem] font-normal text-slate-500">
+                      Minimum {minimumEventAt.replace("T", " ")} WIB
+                    </span>
+                  ) : null}
                 </label>
                 <label className="field-label">
                   Order reference
@@ -273,7 +299,18 @@ export default async function MarketplacePage({
                 </label>
                 <label className="field-label">
                   Waktu event
-                  <input name="occurredAt" type="datetime-local" defaultValue={currentDateTime} required />
+                  <input
+                    name="occurredAt"
+                    type="datetime-local"
+                    min={minimumEventAt}
+                    defaultValue={currentDateTime}
+                    required
+                  />
+                  {minimumEventAt ? (
+                    <span className="text-[0.68rem] font-normal text-slate-500">
+                      Minimum {minimumEventAt.replace("T", " ")} WIB
+                    </span>
+                  ) : null}
                 </label>
                 <label className="field-label sm:col-span-2">
                   Reservasi aktif
