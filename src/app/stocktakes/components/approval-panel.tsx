@@ -319,12 +319,12 @@ function ApprovalAudit({
                   <td>
                     <p className="font-medium text-slate-200">
                       {identity
-                        ? `${identity.product_sku_snapshot} Â· ${identity.product_name_snapshot}`
+                        ? `${identity.product_sku_snapshot} / ${identity.product_name_snapshot}`
                         : line.stocktake_line_id}
                     </p>
                     {identity ? (
                       <p className="mt-1 text-xs text-slate-500">
-                        Batch {identity.batch_code_snapshot} Â· Expiry{" "}
+                        Batch {identity.batch_code_snapshot} / Expiry{" "}
                         {identity.expiry_date_snapshot}
                       </p>
                     ) : null}

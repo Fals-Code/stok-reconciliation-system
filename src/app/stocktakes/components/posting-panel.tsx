@@ -274,7 +274,7 @@ function PostingPreview({
                     }
                   </p>
                   <p className="mt-1 text-xs text-slate-500">
-                    {formatNumber(reason.lineCount)} line Â·{" "}
+                    {formatNumber(reason.lineCount)} line /{" "}
                     {formatNumber(reason.totalAbsoluteQty)} unit
                   </p>
                 </div>
@@ -315,12 +315,12 @@ function PostingPreview({
                   <td>
                     <p className="font-medium text-slate-200">
                       {identity
-                        ? `${identity.product_sku_snapshot} Â· ${identity.product_name_snapshot}`
+                        ? `${identity.product_sku_snapshot} / ${identity.product_name_snapshot}`
                         : line.stocktake_line_id}
                     </p>
                     {identity ? (
                       <p className="mt-1 text-xs text-slate-500">
-                        Batch {identity.batch_code_snapshot} Â· Expiry{" "}
+                        Batch {identity.batch_code_snapshot} / Expiry{" "}
                         {identity.expiry_date_snapshot}
                       </p>
                     ) : null}
@@ -606,7 +606,7 @@ function PostedAudit({
               {formatNumber(
                 posting.posting_ledger_seq_before,
               )}{" "}
-              â†’{" "}
+              {"->"}{" "}
               {formatNumber(
                 posting.posting_ledger_seq_after,
               )}
@@ -660,12 +660,12 @@ function PostedAudit({
                   <td>
                     <p className="font-medium text-slate-200">
                       {identity
-                        ? `${identity.product_sku_snapshot} Â· ${identity.product_name_snapshot}`
+                        ? `${identity.product_sku_snapshot} / ${identity.product_name_snapshot}`
                         : line.stocktake_line_id}
                     </p>
                     {identity ? (
                       <p className="mt-1 text-xs text-slate-500">
-                        Batch {identity.batch_code_snapshot} Â· Expiry{" "}
+                        Batch {identity.batch_code_snapshot} / Expiry{" "}
                         {identity.expiry_date_snapshot}
                       </p>
                     ) : null}
@@ -738,7 +738,7 @@ function PostedAudit({
                   <tr key={attempt.count_attempt_id}>
                     <td>
                       {identity
-                        ? `${identity.line_no} Â· ${identity.product_sku_snapshot} Â· ${identity.batch_code_snapshot}`
+                        ? `${identity.line_no} / ${identity.product_sku_snapshot} / ${identity.batch_code_snapshot}`
                         : attempt.stocktake_line_id}
                     </td>
                     <td>{formatNumber(attempt.attempt_no)}</td>

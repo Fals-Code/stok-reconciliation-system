@@ -259,10 +259,10 @@ export default function CountingPanel({
                   </div>
 
                   <h3 className="mt-3 text-lg font-semibold text-white">
-                    {line.product_sku_snapshot} Â· {line.product_name_snapshot}
+                    {line.product_sku_snapshot} / {line.product_name_snapshot}
                   </h3>
                   <p className="mt-2 text-sm text-slate-400">
-                    Batch {line.batch_code_snapshot} Â· Expiry{" "}
+                    Batch {line.batch_code_snapshot} / Expiry{" "}
                     {formatDate(line.expiry_date_snapshot)}
                   </p>
                 </div>

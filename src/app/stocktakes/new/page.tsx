@@ -273,13 +273,13 @@ export default async function NewStocktakePage({
                       />
                       <span>
                         <span className="font-semibold text-white">
-                          {product.sku} Â· {product.name}
+                          {product.sku} / {product.name}
                         </span>
                         <span className="mt-1 block text-xs text-slate-500">
-                          Sellable {formatNumber(product.sellable_qty)} Â·
-                          Quarantine {formatNumber(product.quarantine_qty)} Â·
+                          Sellable {formatNumber(product.sellable_qty)} /
+                          Quarantine {formatNumber(product.quarantine_qty)} /
                           Damaged {formatNumber(product.damaged_qty)}
-                          {!product.is_active ? " Â· Tidak aktif" : ""}
+                          {!product.is_active ? " / Tidak aktif" : ""}
                         </span>
                       </span>
                     </label>
@@ -315,13 +315,13 @@ export default async function NewStocktakePage({
                       />
                       <span>
                         <span className="font-semibold text-white">
-                          {batch.sku} Â· {batch.product_name} Â· {batch.batch_code}
+                          {batch.sku} / {batch.product_name} / {batch.batch_code}
                         </span>
                         <span className="mt-1 block text-xs text-slate-500">
-                          Exp {formatDate(batch.expiry_date)} Â· {batch.status_code}
-                          {" Â· "}Sellable {formatNumber(batch.sellable_qty)}
-                          {" Â· "}Quarantine {formatNumber(batch.quarantine_qty)}
-                          {" Â· "}Damaged {formatNumber(batch.damaged_qty)}
+                          Exp {formatDate(batch.expiry_date)} / {batch.status_code}
+                          {" / "}Sellable {formatNumber(batch.sellable_qty)}
+                          {" / "}Quarantine {formatNumber(batch.quarantine_qty)}
+                          {" / "}Damaged {formatNumber(batch.damaged_qty)}
                         </span>
                       </span>
                     </label>

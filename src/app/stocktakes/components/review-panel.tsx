@@ -425,7 +425,7 @@ export default function ReviewPanel({
                 <div>
                   <div className="flex flex-wrap items-center gap-2">
                     <span className="font-mono text-xs text-slate-500">
-                      Line {formatNumber(line.line_no)} Â· Version{" "}
+                      Line {formatNumber(line.line_no)} / Version{" "}
                       {formatNumber(line.version_no)}
                     </span>
                     <StatusPill
@@ -446,10 +446,10 @@ export default function ReviewPanel({
                   </div>
 
                   <h3 className="mt-3 text-lg font-semibold text-white">
-                    {line.product_sku_snapshot} Â· {line.product_name_snapshot}
+                    {line.product_sku_snapshot} / {line.product_name_snapshot}
                   </h3>
                   <p className="mt-2 text-sm text-slate-400">
-                    Batch {line.batch_code_snapshot} Â· Expiry{" "}
+                    Batch {line.batch_code_snapshot} / Expiry{" "}
                     {line.expiry_date_snapshot}
                   </p>
                 </div>

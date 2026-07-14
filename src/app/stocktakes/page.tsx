@@ -193,7 +193,7 @@ export default async function StocktakesPage({
             </a>
           </nav>
 
-          <div className="flex items-center gap-2">
+          <div className="flex min-w-0 flex-1 items-center justify-end gap-2 overflow-x-auto pb-1 [&>*]:shrink-0">
             <Link className="nav-link border border-white/10" href="/marketplace">
               Marketplace
             </Link>
@@ -222,9 +222,9 @@ export default async function StocktakesPage({
                 Bandingkan fisik dengan ledger tanpa mengedit saldo langsung.
               </h1>
               <p className="mt-3 max-w-3xl text-sm leading-6 text-slate-400 sm:text-base">
-                Halaman ini membaca sesi stocktake yang sudah tersimpan. Create,
-                counting, review, approval, dan posting akan ditambahkan sebagai
-                slice terpisah agar lifecycle tetap dapat diuji.
+                Kelola lifecycle stocktake dari pembuatan sesi, counting, review,
+                approval immutable, hingga posting adjustment dan audit
+                rekonsiliasi. Semua perubahan stok tetap melalui ledger.
               </p>
             </div>
 
