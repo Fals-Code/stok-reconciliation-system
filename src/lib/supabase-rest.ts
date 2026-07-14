@@ -241,6 +241,98 @@ export type ReturnInspectionAllocation = {
   occurred_at: string;
   created_at: string;
 };
+export type ReconciliationRun = {
+  run_id: string;
+  organization_id: string;
+  run_no: string;
+  run_type_code: string;
+  trigger_code: string;
+  status_code: string;
+  scope: Record<string, unknown>;
+  check_codes: string[];
+  rule_set_version: string;
+  ledger_seq_from: number;
+  ledger_seq_to: number;
+  started_at: string;
+  completed_at: string | null;
+  actor_user_id: string | null;
+  process_name: string | null;
+  summary: Record<string, unknown>;
+  error_code: string | null;
+  metadata: Record<string, unknown>;
+  created_at: string;
+  updated_at: string;
+};
+
+export type ReconciliationCheck = {
+  run_check_id: string;
+  organization_id: string;
+  run_id: string;
+  check_code: string;
+  rule_version: string;
+  status_code: string;
+  checked_count: number;
+  issue_count: number;
+  started_at: string | null;
+  completed_at: string | null;
+  summary: Record<string, unknown>;
+  error_code: string | null;
+  created_at: string;
+  updated_at: string;
+};
+
+export type ReconciliationIssue = {
+  issue_id: string;
+  organization_id: string;
+  fingerprint: string;
+  check_code: string;
+  rule_version: string;
+  status_code: "OPEN" | "RESOLVED";
+  severity_code: "INFO" | "LOW" | "MEDIUM" | "HIGH" | "CRITICAL";
+  entity_type_code: string;
+  entity_key: Record<string, unknown>;
+  product_id: string | null;
+  batch_id: string | null;
+  source_type_code: string | null;
+  source_ref: string | null;
+  expected_value: unknown;
+  actual_value: unknown;
+  difference_value: unknown;
+  first_seen_run_id: string;
+  last_seen_run_id: string;
+  first_seen_at: string;
+  last_seen_at: string;
+  recurrence_count: number;
+  resolved_at: string | null;
+  resolution_code: string | null;
+  resolution_note: string | null;
+  created_at: string;
+  updated_at: string;
+};
+
+export type ReconciliationIssueEvidence = {
+  evidence_id: string;
+  organization_id: string;
+  issue_id: string;
+  run_id: string;
+  run_check_id: string;
+  evidence_no: number;
+  evidence_type_code: string;
+  entity_type_code: string;
+  entity_key: Record<string, unknown>;
+  expected_value: unknown;
+  actual_value: unknown;
+  difference_value: unknown;
+  detail: Record<string, unknown>;
+  created_at: string;
+};
+
+export type ReconciliationData = {
+  runs: ReconciliationRun[];
+  checks: ReconciliationCheck[];
+  issues: ReconciliationIssue[];
+  evidence: ReconciliationIssueEvidence[];
+};
 export type DashboardData = {
   products: ProductInventory[];
   batches: BatchInventory[];
@@ -428,6 +520,29 @@ export async function getReturnData(
     receiptLines,
     inspectionAllocations,
   };
+}
+export async function getReconciliationData(
+  organizationId?: string,
+): Promise<ReconciliationData> {
+  const resolvedOrganizationId = await resolveOrganizationId(organizationId);
+  const encodedOrganizationId = encodeURIComponent(resolvedOrganizationId);
+
+  const [runs, checks, issues, evidence] = await Promise.all([
+    apiFetch<ReconciliationRun[]>(
+      `reconciliation_runs?organization_id=eq.${encodedOrganizationId}&select=*&order=started_at.desc&limit=50`,
+    ),
+    apiFetch<ReconciliationCheck[]>(
+      `reconciliation_checks?organization_id=eq.${encodedOrganizationId}&select=*&order=created_at.desc&limit=200`,
+    ),
+    apiFetch<ReconciliationIssue[]>(
+      `reconciliation_issues?organization_id=eq.${encodedOrganizationId}&select=*&order=last_seen_at.desc&limit=200`,
+    ),
+    apiFetch<ReconciliationIssueEvidence[]>(
+      `reconciliation_issue_evidence?organization_id=eq.${encodedOrganizationId}&select=*&order=created_at.desc,evidence_no.asc&limit=500`,
+    ),
+  ]);
+
+  return { runs, checks, issues, evidence };
 }
 export async function callRpc<T>(name: string, body: Record<string, unknown>) {
   return apiFetch<T>(`rpc/${name}`, {
