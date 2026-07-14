@@ -347,6 +347,15 @@ values
     true
   ),
   (
+    '20000000-0000-4000-8000-000000000018'::uuid,
+    'STOCKTAKE_ADJUSTMENT',
+    'Koreksi Hasil Stok Opname',
+    'ADJUSTMENT',
+    true,
+    true,
+    true
+  ),
+  (
     '20000000-0000-4000-8000-000000000016'::uuid,
     'REVERSAL',
     'Pembalikan Transaksi',
@@ -2196,12 +2205,13 @@ begin
     'DAMAGED_DISPOSAL',
     'STOCKTAKE_GAIN',
     'STOCKTAKE_LOSS',
+    'STOCKTAKE_ADJUSTMENT',
     'REVERSAL'
   );
 
-  if v_reason_count <> 16 then
+  if v_reason_count <> 17 then
     raise exception
-      'SEED_VERIFY_REASON_COUNT: expected 16, got %',
+      'SEED_VERIFY_REASON_COUNT: expected 17, got %',
       v_reason_count;
   end if;
 
