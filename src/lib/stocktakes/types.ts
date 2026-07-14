@@ -440,3 +440,68 @@ export type StocktakeApprovalResponse = {
   approvedByUserId: string | null;
   approvedByProcessName: string | null;
 };
+export type StocktakePosting = {
+  posting_id: string;
+  organization_id: string;
+  stocktake_id: string;
+  approval_id: string;
+  approval_version_no: number;
+  transaction_id: string;
+  reconciliation_run_id: string;
+  posting_ledger_seq_before: number;
+  posting_ledger_seq_after: number;
+  line_count: number;
+  nonzero_line_count: number;
+  net_adjustment_qty: number;
+  total_absolute_adjustment_qty: number;
+  posted_at: string;
+  posted_by: string | null;
+  process_name: string | null;
+  note: string | null;
+  metadata: Record<string, unknown>;
+  created_at: string;
+};
+
+export type StocktakePostingLine = {
+  posting_line_id: string;
+  organization_id: string;
+  stocktake_id: string;
+  posting_id: string;
+  approval_line_id: string;
+  stocktake_line_id: string;
+  line_no: number;
+  product_id: string;
+  batch_id: string;
+  bucket_code: StocktakeBucket;
+  reason_code: StocktakeVarianceReason | null;
+  adjustment_qty: number;
+  current_ledger_qty_before: number;
+  current_ledger_qty_after: number;
+  ledger_entry_id: string | null;
+  created_at: string;
+};
+
+export type StocktakePostingResponse = {
+  status: "POSTED";
+  stocktakeId: string;
+  stocktakeNo: string;
+  approvalId: string;
+  approvalVersion: number;
+  postingId: string;
+  transactionId: string;
+  transactionNo: string;
+  reconciliationRunId: string;
+  reconciliationIntegrityStatus: string;
+  postingLedgerSeqBefore: number;
+  postingLedgerSeqAfter: number;
+  lineCount: number;
+  nonzeroLineCount: number;
+  netAdjustmentQty: number;
+  totalAbsoluteAdjustmentQty: number;
+  stocktakeVersion: number;
+  idempotencyKey: string;
+  requestHash: string;
+  postedAt: string;
+  postedByUserId: string | null;
+  postedByProcessName: string | null;
+};

@@ -11,6 +11,8 @@ import type {
   StocktakeDetailData,
   StocktakeDetails,
   StocktakeListItem,
+  StocktakePosting,
+  StocktakePostingLine,
   StocktakeProductOption,
   StocktakeReviewLine,
   StocktakeVisibility,
@@ -233,6 +235,39 @@ export async function getStocktakeApprovalLines(
 
   return authenticatedFetch<StocktakeApprovalLine[]>(
     `stocktake_approval_lines?organization_id=eq.${organizationId}&stocktake_id=eq.${encodedStocktakeId}&approval_id=eq.${encodedApprovalId}&select=*&order=line_no.asc`,
+    context,
+  );
+}
+export async function getLatestStocktakePosting(
+  stocktakeId: string,
+): Promise<StocktakePosting | null> {
+  const context = await getRequestContext();
+  const organizationId = encodeURIComponent(
+    context.session.profile.organization_id,
+  );
+  const encodedStocktakeId = encodeURIComponent(stocktakeId);
+
+  const rows = await authenticatedFetch<StocktakePosting[]>(
+    `stocktake_postings?organization_id=eq.${organizationId}&stocktake_id=eq.${encodedStocktakeId}&select=*&order=posted_at.desc&limit=1`,
+    context,
+  );
+
+  return rows[0] ?? null;
+}
+
+export async function getStocktakePostingLines(
+  stocktakeId: string,
+  postingId: string,
+): Promise<StocktakePostingLine[]> {
+  const context = await getRequestContext();
+  const organizationId = encodeURIComponent(
+    context.session.profile.organization_id,
+  );
+  const encodedStocktakeId = encodeURIComponent(stocktakeId);
+  const encodedPostingId = encodeURIComponent(postingId);
+
+  return authenticatedFetch<StocktakePostingLine[]>(
+    `stocktake_posting_lines?organization_id=eq.${organizationId}&stocktake_id=eq.${encodedStocktakeId}&posting_id=eq.${encodedPostingId}&select=*&order=line_no.asc`,
     context,
   );
 }

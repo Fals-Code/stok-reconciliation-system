@@ -201,8 +201,8 @@ function ApprovalAudit({
           Approval version {formatNumber(approval.approval_version_no)}
         </h2>
         <p className="mt-3 text-sm leading-6 text-slate-400">
-          Snapshot ini read-only. Adjustment posting pada slice berikutnya
-          harus memakai approval version ini, bukan data form review yang dapat
+          Snapshot ini read-only. Preview dan posting adjustment harus
+          memakai approval version ini, bukan data form review yang dapat
           berubah.
         </p>
 

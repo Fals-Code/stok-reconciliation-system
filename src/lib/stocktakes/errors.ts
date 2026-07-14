@@ -101,6 +101,30 @@ const STOCKTAKE_ERROR_MESSAGES: Record<string, string> = {
     "Catatan approval maksimal 2.000 karakter.",
   STALE_STOCKTAKE_BASIS:
     "Basis count atau review sudah berubah. Muat ulang dan periksa seluruh line.",
+  STOCKTAKE_APPROVAL_VERSION_REQUIRED:
+    "Approval version wajib tersedia sebelum posting.",
+  STOCKTAKE_APPROVAL_NOT_FOUND:
+    "Snapshot approval tidak ditemukan.",
+  STOCKTAKE_POST_CONFIRMATION_REQUIRED:
+    "Konfirmasi posting adjustment wajib dicentang.",
+  STOCKTAKE_POST_IDEMPOTENCY_KEY_INVALID:
+    "Idempotency key posting tidak sesuai approval version.",
+  STOCKTAKE_POST_NOTE_TOO_LONG:
+    "Catatan posting maksimal 2.000 karakter.",
+  STOCKTAKE_POST_INVALID_STATE:
+    "Stocktake tidak berada pada status APPROVED yang dapat diposting.",
+  STOCKTAKE_ALREADY_POSTED:
+    "Stocktake ini sudah memiliki transaksi adjustment.",
+  STOCKTAKE_PROJECTION_DRIFT:
+    "Projection stok berbeda dari ledger. Posting diblokir sampai drift diperbaiki.",
+  STOCKTAKE_RESERVED_CONFLICT:
+    "Adjustment akan membuat stok sellable lebih kecil dari reservasi aktif.",
+  STOCKTAKE_ADJUSTMENT_REASON_NOT_CONFIGURED:
+    "Movement reason STOCKTAKE_ADJUSTMENT belum dikonfigurasi.",
+  STOCKTAKE_SYSTEM_CHANNEL_NOT_CONFIGURED:
+    "Channel SYSTEM belum dikonfigurasi.",
+  POST_STOCKTAKE_RECONCILIATION_NOT_FOUND:
+    "Reconciliation pasca-stocktake tidak dapat dibuat.",
 
   STOCKTAKE_NOTE_TOO_LONG: "Catatan stocktake maksimal 2.000 karakter.",
   STOCKTAKE_METADATA_MUST_BE_OBJECT:

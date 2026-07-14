@@ -6,6 +6,7 @@ import { redirect } from "next/navigation";
 import { requireAdminSession } from "@/lib/auth";
 import { callRpc } from "@/lib/supabase-rest";
 import { stocktakeErrorMessage } from "@/lib/stocktakes/errors";
+import { stocktakePostingIdempotencyKey } from "@/lib/stocktakes/posting";
 import {
   STOCKTAKE_BUCKETS,
   STOCKTAKE_SCOPE_MODES,
@@ -16,6 +17,7 @@ import {
   type StocktakeCompleteCountingResponse,
   type StocktakeCountResponse,
   type StocktakeCreateResponse,
+  type StocktakePostingResponse,
   type StocktakePrepareResponse,
   type StocktakeRecountResponse,
   type StocktakeReviewRecountResponse,
@@ -217,7 +219,8 @@ function lifecycleMetadata(
     | "complete-counting"
     | "review-line"
     | "review-recount"
-    | "approve",
+    | "approve"
+    | "post",
 ) {
   return {
     source: "admin-stocktake-ui",
@@ -682,6 +685,78 @@ export async function approveStocktakeAction(formData: FormData) {
       stocktakeId,
       "success",
       `Stocktake disetujui sebagai approval version ${result.approvalVersion}.`,
+    );
+  } catch (error) {
+    destination = detailDestination(
+      stocktakeId,
+      "error",
+      stocktakeErrorMessage(error),
+    );
+  }
+
+  redirect(destination);
+}
+export async function postStocktakeAdjustmentAction(
+  formData: FormData,
+) {
+  const session = await requireAdminSession();
+  const stocktakeId = requiredUuid(formData, "stocktakeId");
+  const approvalVersionRaw = required(
+    formData,
+    "approvalVersion",
+  );
+
+  if (!/^\d+$/.test(approvalVersionRaw)) {
+    throw new Error("STOCKTAKE_APPROVAL_VERSION_REQUIRED");
+  }
+
+  const approvalVersion = Number(approvalVersionRaw);
+
+  if (
+    !Number.isSafeInteger(approvalVersion) ||
+    approvalVersion <= 0
+  ) {
+    throw new Error("STOCKTAKE_APPROVAL_VERSION_REQUIRED");
+  }
+
+  const confirmation =
+    formData.get("confirmation") === "on";
+
+  let destination: string;
+
+  try {
+    const note =
+      String(formData.get("note") ?? "").trim() || null;
+    const idempotencyKey = stocktakePostingIdempotencyKey(
+      stocktakeId,
+      approvalVersion,
+    );
+
+    const result = await callRpc<StocktakePostingResponse>(
+      "post_stocktake_adjustment",
+      {
+        p_organization_id: session.profile.organization_id,
+        p_idempotency_key: idempotencyKey,
+        p_stocktake_id: stocktakeId,
+        p_approval_version: approvalVersion,
+        p_confirmation: confirmation,
+        p_note: note,
+        p_metadata: {
+          ...lifecycleMetadata(session.user.id, "post"),
+          approvalVersion,
+        },
+      },
+    );
+
+    revalidatePath("/");
+    revalidatePath("/reconciliation");
+    revalidatePath("/stocktakes");
+    revalidatePath(`/stocktakes/${stocktakeId}`);
+
+    destination = detailDestination(
+      stocktakeId,
+      "success",
+      `Adjustment ${result.transactionNo} berhasil diposting. Reconciliation ${result.reconciliationIntegrityStatus}.`,
     );
   } catch (error) {
     destination = detailDestination(

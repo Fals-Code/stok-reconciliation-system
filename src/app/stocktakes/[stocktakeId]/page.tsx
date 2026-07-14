@@ -3,6 +3,7 @@ import { notFound } from "next/navigation";
 
 import ApprovalPanel from "@/app/stocktakes/components/approval-panel";
 import CountingPanel from "@/app/stocktakes/components/counting-panel";
+import PostingPanel from "@/app/stocktakes/components/posting-panel";
 import ReviewPanel from "@/app/stocktakes/components/review-panel";
 import {
   prepareStocktakeAction,
@@ -18,10 +19,12 @@ import {
 } from "@/lib/stocktakes/constants";
 import {
   getLatestStocktakeApproval,
+  getLatestStocktakePosting,
   getStocktakeApprovalLines,
   getStocktakeCountAttempts,
   getStocktakeCountingLines,
   getStocktakeDetails,
+  getStocktakePostingLines,
   getStocktakeReviewLines,
 } from "@/lib/stocktakes/queries";
 import type {
@@ -201,7 +204,8 @@ export default async function StocktakeDetailPage({
     ? await getStocktakeReviewLines(stocktakeId)
     : [];
   const countAttempts =
-    details.status_code === "REVIEW"
+    details.status_code === "REVIEW" ||
+    details.status_code === "POSTED"
       ? await getStocktakeCountAttempts(stocktakeId)
       : [];
   const approval = approvalVisible
@@ -211,6 +215,18 @@ export default async function StocktakeDetailPage({
     ? await getStocktakeApprovalLines(
         stocktakeId,
         approval.approval_id,
+      )
+    : [];
+  const postingVisible = ["POSTING", "POSTED"].includes(
+    details.status_code,
+  );
+  const posting = postingVisible
+    ? await getLatestStocktakePosting(stocktakeId)
+    : null;
+  const postingLines = posting
+    ? await getStocktakePostingLines(
+        stocktakeId,
+        posting.posting_id,
       )
     : [];
   const status = STOCKTAKE_STATUS_META[details.status_code];
@@ -433,6 +449,18 @@ export default async function StocktakeDetailPage({
             reviewLines={reviewLines}
             approval={approval}
             approvalLines={approvalLines}
+          />
+        ) : null}
+
+        {approvalVisible ? (
+          <PostingPanel
+            details={details}
+            reviewLines={reviewLines}
+            approval={approval}
+            approvalLines={approvalLines}
+            posting={posting}
+            postingLines={postingLines}
+            attempts={countAttempts}
           />
         ) : null}
       </div>
