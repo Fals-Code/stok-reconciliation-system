@@ -22,7 +22,11 @@ export const dynamic = "force-dynamic";
 
 const numberFormatter = new Intl.NumberFormat("id-ID");
 
-function formatNumber(value: number) {
+function formatNumber(value: number | null) {
+  if (value === null) {
+    return "Tersembunyi";
+  }
+
   return numberFormatter.format(Number(value));
 }
 

@@ -12,8 +12,11 @@ import {
   STOCKTAKE_TYPES,
   STOCKTAKE_VISIBILITIES,
   type StocktakeBucket,
+  type StocktakeCompleteCountingResponse,
+  type StocktakeCountResponse,
   type StocktakeCreateResponse,
   type StocktakePrepareResponse,
+  type StocktakeRecountResponse,
   type StocktakeScopeDefinition,
   type StocktakeScopeMode,
   type StocktakeStartResponse,
@@ -34,11 +37,15 @@ function required(formData: FormData, key: string) {
   return value.trim();
 }
 
-function requiredUuid(formData: FormData, key: string) {
+function requiredUuid(
+  formData: FormData,
+  key: string,
+  errorCode = "STOCKTAKE_ID_REQUIRED",
+) {
   const value = required(formData, key);
 
   if (!UUID_PATTERN.test(value)) {
-    throw new Error("STOCKTAKE_ID_REQUIRED");
+    throw new Error(errorCode);
   }
 
   return value;
@@ -71,6 +78,54 @@ function uniqueValues(formData: FormData, key: string) {
 
 function checkbox(formData: FormData, key: string) {
   return formData.get(key) === "on";
+}
+
+function requiredNonnegativeInteger(formData: FormData, key: string) {
+  const raw = required(formData, key);
+
+  if (!/^\d+$/.test(raw)) {
+    throw new Error("STOCKTAKE_INVALID_PHYSICAL_QTY");
+  }
+
+  const value = Number(raw);
+
+  if (!Number.isSafeInteger(value) || value < 0) {
+    throw new Error("STOCKTAKE_INVALID_PHYSICAL_QTY");
+  }
+
+  return value;
+}
+
+function requiredAttemptNo(formData: FormData) {
+  const raw = required(formData, "attemptNo");
+
+  if (!/^\d+$/.test(raw)) {
+    throw new Error("STOCKTAKE_ATTEMPT_NO_INVALID");
+  }
+
+  const value = Number(raw);
+
+  if (!Number.isSafeInteger(value) || value < 0) {
+    throw new Error("STOCKTAKE_ATTEMPT_NO_INVALID");
+  }
+
+  return value;
+}
+
+function requiredPositiveVersion(formData: FormData) {
+  const raw = required(formData, "stocktakeVersion");
+
+  if (!/^\d+$/.test(raw)) {
+    throw new Error("STOCKTAKE_VERSION_INVALID");
+  }
+
+  const value = Number(raw);
+
+  if (!Number.isSafeInteger(value) || value <= 0) {
+    throw new Error("STOCKTAKE_VERSION_INVALID");
+  }
+
+  return value;
 }
 
 function jakartaTimestampOrNull(raw: FormDataEntryValue | null) {
@@ -149,7 +204,10 @@ function detailDestination(
   return `/stocktakes/${encodeURIComponent(stocktakeId)}?${params.toString()}`;
 }
 
-function lifecycleMetadata(actorUserId: string, action: "prepare" | "start") {
+function lifecycleMetadata(
+  actorUserId: string,
+  action: "prepare" | "start" | "count" | "recount" | "complete-counting",
+) {
   return {
     source: "admin-stocktake-ui",
     version: 1,
@@ -280,6 +338,156 @@ export async function startStocktakeAction(formData: FormData) {
       stocktakeId,
       "success",
       `${result.stocktakeNo} mulai dihitung. ${result.lineCount} line dibuat dari ledger sequence ${result.snapshotLedgerSeq}.`,
+    );
+  } catch (error) {
+    destination = detailDestination(
+      stocktakeId,
+      "error",
+      stocktakeErrorMessage(error),
+    );
+  }
+
+  redirect(destination);
+}
+
+export async function submitStocktakeCountAction(formData: FormData) {
+  const session = await requireAdminSession();
+  const stocktakeId = requiredUuid(formData, "stocktakeId");
+  const stocktakeLineId = requiredUuid(
+    formData,
+    "stocktakeLineId",
+    "STOCKTAKE_LINE_ID_REQUIRED",
+  );
+  const attemptNo = requiredAttemptNo(formData);
+
+  let destination: string;
+
+  try {
+    const physicalQty = requiredNonnegativeInteger(formData, "physicalQty");
+    const zeroConfirmed = checkbox(formData, "zeroConfirmed");
+    const note = String(formData.get("note") ?? "").trim() || null;
+    const nextAttemptNo = attemptNo + 1;
+
+    const result = await callRpc<StocktakeCountResponse>(
+      "submit_stocktake_count",
+      {
+        p_organization_id: session.profile.organization_id,
+        p_idempotency_key:
+          `stocktake:${stocktakeId}:line:${stocktakeLineId}:count:${nextAttemptNo}`,
+        p_stocktake_id: stocktakeId,
+        p_stocktake_line_id: stocktakeLineId,
+        p_physical_qty: physicalQty,
+        p_zero_confirmed: zeroConfirmed,
+        p_count_method_code: "MANUAL_ENTRY",
+        p_note: note,
+        p_metadata: {
+          ...lifecycleMetadata(session.user.id, "count"),
+          attemptNo: nextAttemptNo,
+        },
+      },
+    );
+
+    revalidatePath("/stocktakes");
+    revalidatePath(`/stocktakes/${stocktakeId}`);
+
+    destination = detailDestination(
+      stocktakeId,
+      "success",
+      `Line berhasil disimpan sebagai attempt ${result.attemptNo}.`,
+    );
+  } catch (error) {
+    destination = detailDestination(
+      stocktakeId,
+      "error",
+      stocktakeErrorMessage(error),
+    );
+  }
+
+  redirect(destination);
+}
+
+export async function requestStocktakeRecountAction(formData: FormData) {
+  const session = await requireAdminSession();
+  const stocktakeId = requiredUuid(formData, "stocktakeId");
+  const stocktakeLineId = requiredUuid(
+    formData,
+    "stocktakeLineId",
+    "STOCKTAKE_LINE_ID_REQUIRED",
+  );
+  const attemptNo = requiredAttemptNo(formData);
+
+  let destination: string;
+
+  try {
+    const reason = required(formData, "reason");
+
+    const result = await callRpc<StocktakeRecountResponse>(
+      "request_stocktake_recount",
+      {
+        p_organization_id: session.profile.organization_id,
+        p_idempotency_key:
+          `stocktake:${stocktakeId}:line:${stocktakeLineId}:recount:${attemptNo}`,
+        p_stocktake_id: stocktakeId,
+        p_stocktake_line_id: stocktakeLineId,
+        p_reason: reason,
+        p_metadata: {
+          ...lifecycleMetadata(session.user.id, "recount"),
+          attemptNo,
+        },
+      },
+    );
+
+    revalidatePath("/stocktakes");
+    revalidatePath(`/stocktakes/${stocktakeId}`);
+
+    destination = detailDestination(
+      stocktakeId,
+      "success",
+      `Line ditandai untuk hitung ulang setelah attempt ${result.currentAttemptNo}.`,
+    );
+  } catch (error) {
+    destination = detailDestination(
+      stocktakeId,
+      "error",
+      stocktakeErrorMessage(error),
+    );
+  }
+
+  redirect(destination);
+}
+
+export async function completeStocktakeCountingAction(formData: FormData) {
+  const session = await requireAdminSession();
+  const stocktakeId = requiredUuid(formData, "stocktakeId");
+  const stocktakeVersion = requiredPositiveVersion(formData);
+
+  let destination: string;
+
+  try {
+    const result = await callRpc<StocktakeCompleteCountingResponse>(
+      "complete_stocktake_counting",
+      {
+        p_organization_id: session.profile.organization_id,
+        p_idempotency_key:
+          `stocktake:${stocktakeId}:complete-counting:${stocktakeVersion}`,
+        p_stocktake_id: stocktakeId,
+        p_metadata: {
+          ...lifecycleMetadata(
+            session.user.id,
+            "complete-counting",
+          ),
+          stocktakeVersion,
+        },
+      },
+    );
+
+    revalidatePath("/stocktakes");
+    revalidatePath(`/stocktakes/${stocktakeId}`);
+
+    destination = detailDestination(
+      stocktakeId,
+      "success",
+      `${result.stocktakeNo} masuk ke Review dengan ${result.varianceLineCount} line variance.`,
     );
   } catch (error) {
     destination = detailDestination(

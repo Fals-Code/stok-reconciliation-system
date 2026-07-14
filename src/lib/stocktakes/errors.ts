@@ -46,6 +46,29 @@ const STOCKTAKE_ERROR_MESSAGES: Record<string, string> = {
     "Snapshot atau count line tidak dapat dibuat secara lengkap. Sesi tidak dimulai.",
   STOCKTAKE_START_CONFIRMATION_REQUIRED:
     "Konfirmasi pembuatan snapshot dan count line wajib diberikan.",
+  STOCKTAKE_LINE_ID_REQUIRED: "ID line stocktake tidak valid.",
+  STOCKTAKE_LINE_NOT_FOUND:
+    "Line stocktake tidak ditemukan pada sesi atau organisasi ini.",
+  STOCKTAKE_INVALID_PHYSICAL_QTY:
+    "Quantity fisik wajib berupa bilangan bulat nol atau lebih.",
+  STOCKTAKE_ZERO_CONFIRMATION_REQUIRED:
+    "Quantity fisik nol harus dikonfirmasi secara eksplisit.",
+  STOCKTAKE_COUNT_METHOD_NOT_SUPPORTED:
+    "UI fase pertama hanya mengirim count dengan metode MANUAL_ENTRY.",
+  STOCKTAKE_COUNT_CONFLICT:
+    "Line sudah dihitung atau statusnya berubah. Muat ulang sebelum mencoba lagi.",
+  STOCKTAKE_RECOUNT_REASON_REQUIRED:
+    "Alasan hitung ulang wajib diisi.",
+  STOCKTAKE_RECOUNT_REASON_TOO_LONG:
+    "Alasan hitung ulang maksimal 2.000 karakter.",
+  STOCKTAKE_COUNT_REQUIRED:
+    "Semua line wajib memiliki count valid sebelum counting diselesaikan.",
+  STOCKTAKE_COUNTING_INCOMPLETE:
+    "Counting belum lengkap. Selesaikan seluruh line sebelum melanjutkan.",
+  STOCKTAKE_ATTEMPT_NO_INVALID:
+    "Nomor attempt line tidak valid. Muat ulang halaman.",
+  STOCKTAKE_VERSION_INVALID:
+    "Versi stocktake tidak valid. Muat ulang halaman.",
   STOCKTAKE_NOTE_TOO_LONG: "Catatan stocktake maksimal 2.000 karakter.",
   STOCKTAKE_METADATA_MUST_BE_OBJECT:
     "Metadata stocktake tidak valid.",

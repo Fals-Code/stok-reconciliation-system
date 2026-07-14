@@ -4,10 +4,12 @@ import { getAdminSession } from "@/lib/auth";
 import type {
   StocktakeBatchOption,
   StocktakeCreateOptions,
+  StocktakeCountingLine,
   StocktakeDetailData,
   StocktakeDetails,
   StocktakeListItem,
   StocktakeProductOption,
+  StocktakeVisibility,
 } from "@/lib/stocktakes/types";
 
 const DEFAULT_LOCAL_URL = "http://127.0.0.1:54321";
@@ -143,4 +145,24 @@ export async function getStocktakeDetails(
     details,
     summary: summaryRows[0] ?? null,
   };
+}
+
+export async function getStocktakeCountingLines(
+  stocktakeId: string,
+  visibility: StocktakeVisibility,
+): Promise<StocktakeCountingLine[]> {
+  const context = await getRequestContext();
+  const organizationId = encodeURIComponent(
+    context.session.profile.organization_id,
+  );
+  const encodedStocktakeId = encodeURIComponent(stocktakeId);
+  const view =
+    visibility === "BLIND"
+      ? "stocktake_blind_lines"
+      : "stocktake_non_blind_lines";
+
+  return authenticatedFetch<StocktakeCountingLine[]>(
+    `${view}?organization_id=eq.${organizationId}&stocktake_id=eq.${encodedStocktakeId}&select=*&order=line_no.asc`,
+    context,
+  );
 }

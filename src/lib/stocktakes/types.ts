@@ -61,7 +61,7 @@ export type StocktakeListItem = {
   version_no: number;
   line_count: number;
   counted_line_count: number;
-  variance_line_count: number;
+  variance_line_count: number | null;
 };
 
 export type StocktakeDetails = {
@@ -166,4 +166,98 @@ export type StocktakeStartResponse = {
 export type StocktakeDetailData = {
   details: StocktakeDetails;
   summary: StocktakeListItem | null;
+};
+
+export type StocktakeCountStatus =
+  | "PENDING"
+  | "COUNTED"
+  | "RECOUNT_REQUESTED";
+
+export type StocktakeReviewStatus = "PENDING" | "READY" | "REVIEWED";
+
+export type StocktakeCountingLineBase = {
+  stocktake_line_id: string;
+  organization_id: string;
+  stocktake_id: string;
+  line_no: number;
+  product_id: string;
+  batch_id: string;
+  bucket_code: StocktakeBucket;
+  product_sku_snapshot: string;
+  product_name_snapshot: string;
+  batch_code_snapshot: string;
+  expiry_date_snapshot: string;
+  final_physical_qty: number | null;
+  count_attempt_no: number;
+  count_status_code: StocktakeCountStatus;
+  review_status_code: StocktakeReviewStatus;
+  exception_code: string | null;
+  created_at: string;
+  updated_at: string;
+  version_no: number;
+};
+
+export type StocktakeBlindLine = StocktakeCountingLineBase;
+
+export type StocktakeNonBlindLine = StocktakeCountingLineBase & {
+  system_qty_at_snapshot: number;
+  final_attempt_id: string | null;
+  expected_qty_at_count: number | null;
+  variance_qty: number | null;
+  count_cutoff_ledger_seq: number | null;
+  expected_formula_version: string | null;
+};
+
+export type StocktakeCountingLine =
+  | StocktakeBlindLine
+  | StocktakeNonBlindLine;
+
+export type StocktakeCountResponse = {
+  status: "COUNTED";
+  stocktakeId: string;
+  stocktakeLineId: string;
+  countAttemptId: string;
+  attemptNo: number;
+  physicalQty: number;
+  countCutoffLedgerSeq: number;
+  countMethodCode: "MANUAL_ENTRY";
+  zeroConfirmed: boolean;
+  countStatusCode: "COUNTED";
+  reviewStatusCode: "READY";
+  visibilityCode: StocktakeVisibility;
+  idempotencyKey: string;
+  requestHash: string;
+  countedAt: string;
+  expectedQty?: number;
+  varianceQty?: number;
+  expectedFormulaVersion?: string;
+};
+
+export type StocktakeRecountResponse = {
+  status: "RECOUNT_REQUESTED";
+  stocktakeId: string;
+  stocktakeLineId: string;
+  currentAttemptNo: number;
+  currentCountAttemptId: string;
+  reason: string;
+  countStatusCode: "RECOUNT_REQUESTED";
+  reviewStatusCode: "PENDING";
+  idempotencyKey: string;
+  requestHash: string;
+  requestedAt: string;
+  requestedByUserId: string | null;
+  requestedByProcessName: string | null;
+};
+
+export type StocktakeCompleteCountingResponse = {
+  status: "REVIEW";
+  stocktakeId: string;
+  stocktakeNo: string;
+  lineCount: number;
+  countedLineCount: number;
+  varianceLineCount: number;
+  totalVarianceQty: number;
+  idempotencyKey: string;
+  requestHash: string;
+  countingCompletedAt: string;
 };

@@ -5,6 +5,7 @@ import {
   STOCKTAKE_TYPES,
   STOCKTAKE_VISIBILITIES,
   type StocktakeBucket,
+  type StocktakeCountStatus,
   type StocktakeListItem,
   type StocktakeScopeMode,
   type StocktakeStatus,
@@ -50,6 +51,16 @@ export const STOCKTAKE_BUCKET_LABELS: Record<StocktakeBucket, string> = {
   SELLABLE: "Sellable",
   QUARANTINE: "Quarantine",
   DAMAGED: "Damaged",
+};
+
+
+export const STOCKTAKE_COUNT_STATUS_META: Record<
+  StocktakeCountStatus,
+  { label: string; tone: StocktakePillTone }
+> = {
+  PENDING: { label: "Belum dihitung", tone: "neutral" },
+  COUNTED: { label: "Tersimpan", tone: "success" },
+  RECOUNT_REQUESTED: { label: "Perlu hitung ulang", tone: "warning" },
 };
 
 const FINAL_STATUSES = new Set<StocktakeStatus>(["POSTED", "CANCELLED"]);

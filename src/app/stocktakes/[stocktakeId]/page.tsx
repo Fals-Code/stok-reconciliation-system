@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
 
+import CountingPanel from "@/app/stocktakes/components/counting-panel";
 import {
   prepareStocktakeAction,
   startStocktakeAction,
@@ -13,7 +14,10 @@ import {
   STOCKTAKE_VISIBILITY_LABELS,
   type StocktakePillTone,
 } from "@/lib/stocktakes/constants";
-import { getStocktakeDetails } from "@/lib/stocktakes/queries";
+import {
+  getStocktakeCountingLines,
+  getStocktakeDetails,
+} from "@/lib/stocktakes/queries";
 import type {
   StocktakeDetails,
   StocktakeScopeDefinition,
@@ -150,16 +154,16 @@ function ReadyAction({ details }: { details: StocktakeDetails }) {
   );
 }
 
-function CountingNotice() {
+function ReviewNotice() {
   return (
-    <section className="mt-6 rounded-2xl border border-sky-400/20 bg-sky-400/[0.055] p-5">
-      <p className="font-semibold text-sky-100">
-        Snapshot sudah dibuat dan sesi berada pada COUNTING.
+    <section className="mt-6 rounded-2xl border border-violet-400/20 bg-violet-400/[0.055] p-5">
+      <p className="font-semibold text-violet-100">
+        Counting selesai dan sesi berada pada REVIEW.
       </p>
       <p className="mt-2 text-sm leading-6 text-slate-400">
-        Count entry dan recount akan ditambahkan pada slice berikutnya. Halaman
-        ini tetap read-only agar line tidak diubah melalui jalur yang belum
-        tervalidasi.
+        Variance review, review recount, dan approval akan ditambahkan pada
+        slice berikutnya. Expected quantity dan variance kini dapat dibaca
+        melalui kontrak review server.
       </p>
     </section>
   );
@@ -181,6 +185,13 @@ export default async function StocktakeDetailPage({
   }
 
   const { details, summary } = data;
+  const countingLines =
+    details.status_code === "COUNTING"
+      ? await getStocktakeCountingLines(
+          stocktakeId,
+          details.visibility_code,
+        )
+      : [];
   const status = STOCKTAKE_STATUS_META[details.status_code];
   const scope = details.scope_definition;
 
@@ -242,7 +253,10 @@ export default async function StocktakeDetailPage({
                 `${formatNumber(summary?.counted_line_count ?? 0)} / ${formatNumber(
                   summary?.line_count ?? 0,
                 )}`,
-                `${formatNumber(summary?.variance_line_count ?? 0)} variance line`,
+                details.visibility_code === "BLIND" &&
+                details.status_code === "COUNTING"
+                  ? "Variance tersembunyi saat blind count"
+                  : `${formatNumber(summary?.variance_line_count ?? 0)} variance line`,
               ],
               [
                 "Rencana",
@@ -369,7 +383,15 @@ export default async function StocktakeDetailPage({
           <ReadyAction details={details} />
         ) : null}
 
-        {details.status_code === "COUNTING" ? <CountingNotice /> : null}
+        {details.status_code === "COUNTING" ? (
+          <CountingPanel
+            details={details}
+            summary={summary}
+            lines={countingLines}
+          />
+        ) : null}
+
+        {details.status_code === "REVIEW" ? <ReviewNotice /> : null}
       </div>
     </main>
   );
