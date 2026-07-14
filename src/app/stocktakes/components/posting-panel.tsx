@@ -7,7 +7,11 @@ import {
 } from "@/lib/stocktakes/constants";
 import {
   buildStocktakeAdjustmentPreview,
+  evaluateStocktakeApprovalSnapshot,
+  evaluateStocktakePostingSnapshot,
   stocktakePostingIdempotencyKey,
+  type StocktakeSnapshotIntegrity,
+  type StocktakeSnapshotIntegrityIssue,
 } from "@/lib/stocktakes/posting";
 import type {
   StocktakeApproval,
@@ -59,6 +63,93 @@ function adjustmentLabel(value: number) {
   return "Tidak ada perubahan";
 }
 
+const SNAPSHOT_ISSUE_LABELS: Record<
+  StocktakeSnapshotIntegrityIssue,
+  string
+> = {
+  EMPTY_SNAPSHOT: "Header snapshot tidak memiliki line yang valid.",
+  LINE_COUNT_MISMATCH:
+    "Jumlah line yang dibaca tidak sama dengan header snapshot.",
+  NONZERO_LINE_COUNT_MISMATCH:
+    "Jumlah line nonzero tidak sama dengan header snapshot.",
+  NET_ADJUSTMENT_MISMATCH:
+    "Total net adjustment tidak sama dengan header snapshot.",
+  ABSOLUTE_ADJUSTMENT_MISMATCH:
+    "Total absolute adjustment tidak sama dengan header snapshot.",
+  SNAPSHOT_IDENTITY_MISMATCH:
+    "Ada line yang tidak terikat ke snapshot atau stocktake aktif.",
+  DUPLICATE_LINE_IDENTITY:
+    "Ada identitas line duplikat pada hasil read snapshot.",
+};
+
+function SnapshotContractError({
+  title,
+  description,
+  integrity,
+}: {
+  title: string;
+  description: string;
+  integrity: StocktakeSnapshotIntegrity;
+}) {
+  return (
+    <section className="panel-card mt-8 border-rose-400/20">
+      <p className="section-kicker text-rose-300">
+        Snapshot contract error
+      </p>
+      <h2 className="section-title">{title}</h2>
+      <p className="mt-3 max-w-4xl text-sm leading-6 text-slate-400">
+        {description}
+      </p>
+
+      <div className="mt-5 grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+        <div className="metric-card">
+          <p className="metric-label">Line header / read</p>
+          <p className="metric-value">
+            {formatNumber(integrity.expectedLineCount)} /{" "}
+            {formatNumber(integrity.actualLineCount)}
+          </p>
+        </div>
+        <div className="metric-card">
+          <p className="metric-label">Nonzero header / read</p>
+          <p className="metric-value">
+            {formatNumber(integrity.expectedNonzeroLineCount)} /{" "}
+            {formatNumber(integrity.actualNonzeroLineCount)}
+          </p>
+        </div>
+        <div className="metric-card">
+          <p className="metric-label">Net header / read</p>
+          <p className="metric-value">
+            {formatNumber(integrity.expectedNetAdjustmentQty)} /{" "}
+            {formatNumber(integrity.actualNetAdjustmentQty)}
+          </p>
+        </div>
+        <div className="metric-card">
+          <p className="metric-label">Absolute read</p>
+          <p className="metric-value">
+            {formatNumber(integrity.actualTotalAbsoluteAdjustmentQty)}
+          </p>
+        </div>
+      </div>
+
+      <ul className="mt-5 space-y-2 text-sm text-rose-100">
+        {integrity.issues.map((issue) => (
+          <li
+            key={issue}
+            className="rounded-xl border border-rose-400/20 bg-rose-400/[0.055] px-4 py-3"
+          >
+            {SNAPSHOT_ISSUE_LABELS[issue]}
+          </li>
+        ))}
+      </ul>
+
+      <p className="mt-5 text-sm leading-6 text-slate-400">
+        Muat ulang halaman. Jika masalah tetap muncul, periksa view audit.
+        Jangan menjalankan posting pengganti atau mengubah saldo secara manual.
+      </p>
+    </section>
+  );
+}
+
 function PostingPreview({
   details,
   reviewLines,
@@ -70,6 +161,21 @@ function PostingPreview({
   approval: StocktakeApproval;
   approvalLines: StocktakeApprovalLine[];
 }) {
+  const snapshotIntegrity = evaluateStocktakeApprovalSnapshot(
+    approval,
+    approvalLines,
+  );
+
+  if (!snapshotIntegrity.isValid) {
+    return (
+      <SnapshotContractError
+        title="Preview adjustment diblokir."
+        description="Approval header dan line snapshot tidak konsisten. Form posting permanen tidak dirender sampai read contract kembali lengkap."
+        integrity={snapshotIntegrity}
+      />
+    );
+  }
+
   const preview = buildStocktakeAdjustmentPreview(approvalLines);
   const identityByLine = new Map(
     reviewLines.map((line) => [line.stocktake_line_id, line]),
@@ -382,6 +488,21 @@ function PostedAudit({
           transaksi pengganti secara manual.
         </p>
       </section>
+    );
+  }
+
+  const snapshotIntegrity = evaluateStocktakePostingSnapshot(
+    posting,
+    postingLines,
+  );
+
+  if (!snapshotIntegrity.isValid) {
+    return (
+      <SnapshotContractError
+        title="Audit posting tidak lengkap."
+        description="Posting header dan line audit tidak konsisten. Hasil tidak boleh ditampilkan sebagai audit sukses sampai seluruh line dapat dibaca kembali."
+        integrity={snapshotIntegrity}
+      />
     );
   }
 
