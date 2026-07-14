@@ -5,6 +5,7 @@ import Link from "next/link";
 import { runReconciliationAction } from "@/app/actions";
 import {
   getReconciliationData,
+  getReconciliationRunData,
   type ReconciliationIssue,
 } from "@/lib/supabase-rest";
 
@@ -410,9 +411,17 @@ export default async function ReconciliationPage({
 }) {
   const params = await searchParams;
   let data;
+  let requestedRunData:
+    | Awaited<ReturnType<typeof getReconciliationRunData>>
+    | null = null;
 
   try {
-    data = await getReconciliationData();
+    [data, requestedRunData] = await Promise.all([
+      getReconciliationData(),
+      params.runId
+        ? getReconciliationRunData(params.runId)
+        : Promise.resolve(null),
+    ]);
   } catch (error) {
     return (
       <ConfigurationError
@@ -471,13 +480,25 @@ export default async function ReconciliationPage({
     return true;
   });
 
-  const selectedRun =
-    runs.find((run) => run.run_id === params.runId) ?? runs[0] ?? null;
-  const selectedChecks = selectedRun
-    ? checks
-        .filter((check) => check.run_id === selectedRun.run_id)
-        .sort((left, right) => left.check_code.localeCompare(right.check_code))
-    : [];
+  const requestedRunMissing =
+    Boolean(params.runId) && !requestedRunData?.run;
+  const selectedRun = params.runId
+    ? requestedRunData?.run ?? null
+    : runs[0] ?? null;
+  const selectedChecks = params.runId
+    ? requestedRunData?.checks ?? []
+    : selectedRun
+      ? checks
+          .filter((check) => check.run_id === selectedRun.run_id)
+          .sort((left, right) =>
+            left.check_code.localeCompare(right.check_code),
+          )
+      : [];
+  const visibleRuns =
+    selectedRun &&
+    !runs.some((run) => run.run_id === selectedRun.run_id)
+      ? [selectedRun, ...runs]
+      : runs;
 
   const selectedIssue =
     issues.find((issue) => issue.issue_id === params.issueId) ??
@@ -572,7 +593,10 @@ export default async function ReconciliationPage({
             </a>
           </nav>
 
-          <div className="flex items-center gap-2">
+          <div className="flex min-w-0 flex-1 items-center justify-end gap-2 overflow-x-auto pb-1 [&>*]:shrink-0">
+            <Link className="nav-link border border-white/10" href="/stocktakes">
+              Stocktakes
+            </Link>
             <Link className="nav-link border border-white/10" href="/marketplace">
               Marketplace
             </Link>
@@ -1216,9 +1240,25 @@ export default async function ReconciliationPage({
             </h2>
           </div>
 
+          {requestedRunMissing ? (
+            <div className="mb-5 rounded-2xl border border-rose-400/25 bg-rose-400/[0.055] p-5">
+              <p className="font-semibold text-rose-100">
+                Reconciliation run tidak ditemukan.
+              </p>
+              <p className="mt-2 text-sm leading-6 text-slate-400">
+                Run ID{" "}
+                <span className="break-all font-mono text-slate-300">
+                  {params.runId}
+                </span>{" "}
+                tidak tersedia untuk organisasi Admin ini. Sistem tidak memilih
+                run terbaru sebagai pengganti.
+              </p>
+            </div>
+          ) : null}
+
           <div className="grid gap-5 xl:grid-cols-[1.15fr_0.85fr]">
             <div className="overflow-hidden rounded-2xl border border-white/10 bg-white/[0.02]">
-              {runs.length === 0 ? (
+              {visibleRuns.length === 0 ? (
                 <div className="p-8 text-center text-sm text-slate-400">
                   Belum ada riwayat pemeriksaan.
                 </div>
@@ -1236,7 +1276,7 @@ export default async function ReconciliationPage({
                       </tr>
                     </thead>
                     <tbody className="divide-y divide-white/10">
-                      {runs.map((run) => {
+                      {visibleRuns.map((run) => {
                         const issueCount =
                           summaryNumber(run.summary, "issueCount") ?? 0;
                         const checkCount =
@@ -1299,7 +1339,9 @@ export default async function ReconciliationPage({
                 <div>
                   <p className="section-kicker">Hasil yang dipilih</p>
                   <h3 className="mt-2 text-xl font-semibold text-white">
-                    {selectedRun?.run_no ?? "Belum ada pemeriksaan"}
+                    {requestedRunMissing
+                      ? "Run tidak ditemukan"
+                      : selectedRun?.run_no ?? "Belum ada pemeriksaan"}
                   </h3>
                 </div>
                 {selectedRun ? (
@@ -1387,7 +1429,9 @@ export default async function ReconciliationPage({
                 </>
               ) : (
                 <p className="mt-5 text-sm text-slate-400">
-                  Jalankan pemeriksaan pertama untuk melihat hasil per kelompok.
+                  {requestedRunMissing
+                    ? "Tidak ada hasil check yang ditampilkan untuk run yang tidak ditemukan."
+                    : "Jalankan pemeriksaan pertama untuk melihat hasil per kelompok."}
                 </p>
               )}
             </div>
