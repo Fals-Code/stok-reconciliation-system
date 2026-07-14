@@ -589,7 +589,7 @@ function PostedAudit({
             <dd className="mt-2">
               <Link
                 className="font-mono text-emerald-200 underline decoration-emerald-400/40 underline-offset-4"
-                href={`/reconciliation?runId=${encodeURIComponent(posting.reconciliation_run_id)}`}
+                href={`/reconciliation?runId=${encodeURIComponent(posting.reconciliation_run_id)}#runs`}
               >
                 {posting.reconciliation_run_id}
               </Link>

@@ -544,6 +544,42 @@ export async function getReconciliationData(
 
   return { runs, checks, issues, evidence };
 }
+
+const UUID_PATTERN =
+  /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+
+export async function getReconciliationRunData(
+  runId: string,
+  organizationId?: string,
+): Promise<{
+  run: ReconciliationRun | null;
+  checks: ReconciliationCheck[];
+}> {
+  const normalizedRunId = runId.trim();
+
+  if (!UUID_PATTERN.test(normalizedRunId)) {
+    return { run: null, checks: [] };
+  }
+
+  const resolvedOrganizationId = await resolveOrganizationId(organizationId);
+  const encodedOrganizationId = encodeURIComponent(resolvedOrganizationId);
+  const encodedRunId = encodeURIComponent(normalizedRunId);
+
+  const runs = await apiFetch<ReconciliationRun[]>(
+    `reconciliation_runs?organization_id=eq.${encodedOrganizationId}&run_id=eq.${encodedRunId}&select=*&limit=1`,
+  );
+  const run = runs[0] ?? null;
+
+  if (!run) {
+    return { run: null, checks: [] };
+  }
+
+  const checks = await apiFetch<ReconciliationCheck[]>(
+    `reconciliation_checks?organization_id=eq.${encodedOrganizationId}&run_id=eq.${encodedRunId}&select=*&order=check_code.asc`,
+  );
+
+  return { run, checks };
+}
 export async function callRpc<T>(name: string, body: Record<string, unknown>) {
   return apiFetch<T>(`rpc/${name}`, {
     method: "POST",
