@@ -1,8 +1,12 @@
 import {
+  STOCKTAKE_BUCKETS,
+  STOCKTAKE_SCOPE_MODES,
   STOCKTAKE_STATUSES,
   STOCKTAKE_TYPES,
   STOCKTAKE_VISIBILITIES,
+  type StocktakeBucket,
   type StocktakeListItem,
+  type StocktakeScopeMode,
   type StocktakeStatus,
   type StocktakeType,
   type StocktakeVisibility,
@@ -36,6 +40,18 @@ export const STOCKTAKE_VISIBILITY_LABELS: Record<StocktakeVisibility, string> = 
   NON_BLIND: "Non-blind",
 };
 
+export const STOCKTAKE_SCOPE_LABELS: Record<StocktakeScopeMode, string> = {
+  ALL_ACTIVE_INVENTORY: "Seluruh inventory aktif",
+  PRODUCTS: "Produk terpilih",
+  BATCHES: "Batch terpilih",
+};
+
+export const STOCKTAKE_BUCKET_LABELS: Record<StocktakeBucket, string> = {
+  SELLABLE: "Sellable",
+  QUARANTINE: "Quarantine",
+  DAMAGED: "Damaged",
+};
+
 const FINAL_STATUSES = new Set<StocktakeStatus>(["POSTED", "CANCELLED"]);
 
 export function isActiveStocktake(status: StocktakeStatus) {
@@ -54,6 +70,8 @@ export function stocktakeProgress(stocktake: StocktakeListItem) {
 }
 
 export {
+  STOCKTAKE_BUCKETS,
+  STOCKTAKE_SCOPE_MODES,
   STOCKTAKE_STATUSES,
   STOCKTAKE_TYPES,
   STOCKTAKE_VISIBILITIES,

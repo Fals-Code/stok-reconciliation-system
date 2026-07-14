@@ -1,7 +1,14 @@
 import "server-only";
 
 import { getAdminSession } from "@/lib/auth";
-import type { StocktakeListItem } from "@/lib/stocktakes/types";
+import type {
+  StocktakeBatchOption,
+  StocktakeCreateOptions,
+  StocktakeDetailData,
+  StocktakeDetails,
+  StocktakeListItem,
+  StocktakeProductOption,
+} from "@/lib/stocktakes/types";
 
 const DEFAULT_LOCAL_URL = "http://127.0.0.1:54321";
 
@@ -44,24 +51,25 @@ async function responseError(response: Response) {
   }
 }
 
-export async function getStocktakeList(): Promise<StocktakeListItem[]> {
+async function getRequestContext() {
   const session = await getAdminSession();
 
   if (!session) {
     throw new Error("AUTH_SESSION_REQUIRED");
   }
 
-  const { url, publishableKey } = getConfig();
-  const params = new URLSearchParams({
-    organization_id: `eq.${session.profile.organization_id}`,
-    select: "*",
-    order: "updated_at.desc,created_at.desc",
-  });
+  const config = getConfig();
+  return { session, ...config };
+}
 
-  const response = await fetch(`${url}/rest/v1/stocktake_list?${params}`, {
+async function authenticatedFetch<T>(
+  path: string,
+  context: Awaited<ReturnType<typeof getRequestContext>>,
+): Promise<T> {
+  const response = await fetch(`${context.url}/rest/v1/${path}`, {
     headers: {
-      apikey: publishableKey,
-      Authorization: `Bearer ${session.accessToken}`,
+      apikey: context.publishableKey,
+      Authorization: `Bearer ${context.session.accessToken}`,
       "Accept-Profile": "api",
     },
     cache: "no-store",
@@ -71,5 +79,68 @@ export async function getStocktakeList(): Promise<StocktakeListItem[]> {
     throw new Error(await responseError(response));
   }
 
-  return (await response.json()) as StocktakeListItem[];
+  return (await response.json()) as T;
+}
+
+export async function getStocktakeList(): Promise<StocktakeListItem[]> {
+  const context = await getRequestContext();
+  const organizationId = encodeURIComponent(
+    context.session.profile.organization_id,
+  );
+
+  return authenticatedFetch<StocktakeListItem[]>(
+    `stocktake_list?organization_id=eq.${organizationId}&select=*&order=updated_at.desc,created_at.desc`,
+    context,
+  );
+}
+
+export async function getStocktakeCreateOptions(): Promise<StocktakeCreateOptions> {
+  const context = await getRequestContext();
+  const organizationId = encodeURIComponent(
+    context.session.profile.organization_id,
+  );
+
+  const [products, batches] = await Promise.all([
+    authenticatedFetch<StocktakeProductOption[]>(
+      `product_inventory?organization_id=eq.${organizationId}&select=product_id,organization_id,sku,name,is_active,sellable_qty,quarantine_qty,damaged_qty&order=name.asc`,
+      context,
+    ),
+    authenticatedFetch<StocktakeBatchOption[]>(
+      `batch_inventory?organization_id=eq.${organizationId}&select=batch_id,organization_id,product_id,sku,product_name,batch_code,expiry_date,status_code,sellable_qty,quarantine_qty,damaged_qty&order=product_name.asc,expiry_date.asc,batch_code.asc`,
+      context,
+    ),
+  ]);
+
+  return { products, batches };
+}
+
+export async function getStocktakeDetails(
+  stocktakeId: string,
+): Promise<StocktakeDetailData | null> {
+  const context = await getRequestContext();
+  const organizationId = encodeURIComponent(
+    context.session.profile.organization_id,
+  );
+  const encodedStocktakeId = encodeURIComponent(stocktakeId);
+
+  const [detailsRows, summaryRows] = await Promise.all([
+    authenticatedFetch<StocktakeDetails[]>(
+      `stocktake_details?organization_id=eq.${organizationId}&stocktake_id=eq.${encodedStocktakeId}&select=*&limit=1`,
+      context,
+    ),
+    authenticatedFetch<StocktakeListItem[]>(
+      `stocktake_list?organization_id=eq.${organizationId}&stocktake_id=eq.${encodedStocktakeId}&select=*&limit=1`,
+      context,
+    ),
+  ]);
+
+  const details = detailsRows[0];
+  if (!details) {
+    return null;
+  }
+
+  return {
+    details,
+    summary: summaryRows[0] ?? null,
+  };
 }

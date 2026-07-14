@@ -256,9 +256,9 @@ export default async function StocktakesPage({
               </h2>
             </div>
 
-            <span className="rounded-full border border-white/10 px-3 py-1 text-xs text-slate-500">
-              Create flow pada slice berikutnya
-            </span>
+            <Link className="primary-button" href="/stocktakes/new">
+              Buat sesi stocktake
+            </Link>
           </div>
 
           <form
@@ -343,12 +343,17 @@ export default async function StocktakesPage({
                     return (
                       <tr key={stocktake.stocktake_id}>
                         <td>
-                          <p className="font-semibold text-white">
-                            {stocktake.stocktake_no}
-                          </p>
-                          <p className="mt-1 max-w-72 text-xs text-slate-500">
-                            {stocktake.title}
-                          </p>
+                          <Link
+                            className="block rounded-lg outline-offset-4"
+                            href={`/stocktakes/${stocktake.stocktake_id}`}
+                          >
+                            <p className="font-semibold text-white">
+                              {stocktake.stocktake_no}
+                            </p>
+                            <p className="mt-1 max-w-72 text-xs text-slate-500">
+                              {stocktake.title}
+                            </p>
+                          </Link>
                         </td>
                         <td>
                           <Pill label={status.label} tone={status.tone} />
