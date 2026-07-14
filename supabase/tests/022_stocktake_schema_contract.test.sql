@@ -2,7 +2,7 @@ begin;
 
 create extension if not exists pgtap with schema extensions;
 
-select plan(60);
+select plan(62);
 
 -- 1-10: tables and safe API views
 select has_table('operations'::name, 'stocktakes'::name);
@@ -805,7 +805,7 @@ select is(
   'schema fixtures do not change product projection'
 );
 
--- 55-60: API views expose the expected read model
+-- 55-62: API views preserve blind counting and review visibility
 select is(
   (
     select count(*)
@@ -838,13 +838,44 @@ select is(
 );
 select is(
   (
+    select count(*)
+    from api.stocktake_review_lines
+    where stocktake_line_id =
+      '71000000-0000-4000-8000-000000000001'::uuid
+  ),
+  0::bigint,
+  'blind counting hides review rows until review'
+);
+select is(
+  (
+    select count(*)
+    from api.stocktake_count_attempts
+    where stocktake_line_id =
+      '71000000-0000-4000-8000-000000000001'::uuid
+  ),
+  0::bigint,
+  'blind counting hides count attempts until review'
+);
+
+update operations.stocktakes
+set
+  status_code = 'REVIEW',
+  counting_completed_at =
+    '2026-07-16 08:30:00+07'::timestamptz,
+  updated_at =
+    '2026-07-16 08:30:00+07'::timestamptz,
+  version_no = version_no + 1
+where id = '70000000-0000-4000-8000-000000000001'::uuid;
+
+select is(
+  (
     select variance_qty
     from api.stocktake_review_lines
     where stocktake_line_id =
       '71000000-0000-4000-8000-000000000001'::uuid
   ),
   -1::bigint,
-  'review lines expose the server variance'
+  'review lines expose the server variance after counting completes'
 );
 select is(
   (
@@ -854,7 +885,7 @@ select is(
       '71000000-0000-4000-8000-000000000001'::uuid
   ),
   1::bigint,
-  'count attempt view exposes one attempt'
+  'count attempt view exposes attempts during review'
 );
 select is(
   (
@@ -866,6 +897,5 @@ select is(
   1::bigint,
   'blind line view exposes the blind session line'
 );
-
 select * from finish();
 rollback;

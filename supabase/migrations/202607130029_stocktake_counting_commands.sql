@@ -1152,7 +1152,10 @@ left join lateral (
 ) summary on true;
 
 create or replace view api.stocktake_review_lines
-with (security_invoker = true)
+with (
+  security_invoker = true,
+  security_barrier = true
+)
 as
 select
   line.id as stocktake_line_id,
@@ -1182,10 +1185,17 @@ select
   line.created_at,
   line.updated_at,
   line.version_no
-from operations.stocktake_lines line;
-
+from operations.stocktake_lines line
+join operations.stocktakes stocktake
+  on stocktake.organization_id = line.organization_id
+ and stocktake.id = line.stocktake_id
+where stocktake.visibility_code = 'NON_BLIND'
+   or stocktake.status_code <> 'COUNTING';
 create or replace view api.stocktake_count_attempts
-with (security_invoker = true)
+with (
+  security_invoker = true,
+  security_barrier = true
+)
 as
 select
   attempt.id as count_attempt_id,
@@ -1208,8 +1218,12 @@ select
   attempt.request_hash,
   attempt.status_code,
   attempt.created_at
-from operations.stocktake_count_attempts attempt;
-
+from operations.stocktake_count_attempts attempt
+join operations.stocktakes stocktake
+  on stocktake.organization_id = attempt.organization_id
+ and stocktake.id = attempt.stocktake_id
+where stocktake.visibility_code = 'NON_BLIND'
+   or stocktake.status_code <> 'COUNTING';
 grant usage on schema api to authenticated, service_role;
 
 grant select
