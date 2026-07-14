@@ -5,7 +5,10 @@ import { redirect } from "next/navigation";
 
 import { requireAdminSession } from "@/lib/auth";
 import { callRpc } from "@/lib/supabase-rest";
-import { stocktakeErrorMessage } from "@/lib/stocktakes/errors";
+import {
+  StocktakeValidationError,
+  stocktakeErrorMessage,
+} from "@/lib/stocktakes/errors";
 import { stocktakePostingIdempotencyKey } from "@/lib/stocktakes/posting";
 import {
   STOCKTAKE_BUCKETS,
@@ -36,7 +39,7 @@ function required(formData: FormData, key: string) {
   const value = formData.get(key);
 
   if (typeof value !== "string" || value.trim() === "") {
-    throw new Error(`${key} wajib diisi.`);
+    throw new StocktakeValidationError(`${key} wajib diisi.`);
   }
 
   return value.trim();

@@ -1,9 +1,19 @@
+export class StocktakeValidationError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = "StocktakeValidationError";
+  }
+}
+
+const GENERIC_STOCKTAKE_ERROR_MESSAGE =
+  "Permintaan stocktake gagal diproses. Muat ulang halaman dan coba lagi.";
+
 function rawErrorMessage(error: unknown) {
   if (error instanceof Error) {
     return error.message;
   }
 
-  return "Terjadi kesalahan yang tidak diketahui.";
+  return "";
 }
 
 const STOCKTAKE_ERROR_MESSAGES: Record<string, string> = {
@@ -134,10 +144,14 @@ const STOCKTAKE_ERROR_MESSAGES: Record<string, string> = {
 };
 
 export function stocktakeErrorMessage(error: unknown) {
+  if (error instanceof StocktakeValidationError) {
+    return error.message;
+  }
+
   const raw = rawErrorMessage(error);
   const matched = Object.entries(STOCKTAKE_ERROR_MESSAGES).find(([code]) =>
     raw.includes(code),
   );
 
-  return matched ? matched[1] : raw;
+  return matched ? matched[1] : GENERIC_STOCKTAKE_ERROR_MESSAGE;
 }
