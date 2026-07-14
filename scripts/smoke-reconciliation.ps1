@@ -289,11 +289,11 @@ test("Admin reconciliation smoke flow", async ({ page }) => {
     await page.goto("/reconciliation");
 
     await expect(
-      page.getByRole("heading", { name: /Periksa konsistensi/ })
+      page.getByRole("heading", { name: /Pastikan catatan stok/ })
     ).toBeVisible();
 
     await expect(
-      page.getByRole("button", { name: "Run reconciliation" })
+      page.getByRole("button", { name: "Periksa konsistensi stok" })
     ).toBeVisible();
 
     const checkboxes = page.locator('input[name="checkCodes"]');
@@ -322,7 +322,7 @@ test("Admin reconciliation smoke flow", async ({ page }) => {
   let latestRunText = "";
 
   await test.step("All eight checks can run successfully", async () => {
-    await page.getByRole("button", { name: "Run reconciliation" }).click();
+    await page.getByRole("button", { name: "Periksa konsistensi stok" }).click();
 
     await page.waitForURL(
       (url) =>
@@ -332,8 +332,8 @@ test("Admin reconciliation smoke flow", async ({ page }) => {
     );
 
     const latestRunCard = page
-      .locator("article.metric-card")
-      .filter({ hasText: "Latest run" });
+      .locator("article")
+      .filter({ hasText: "Pemeriksaan terakhir" });
 
     await expect(latestRunCard).toBeVisible();
     await expect(latestRunCard).not.toContainText("Belum ada");
@@ -367,8 +367,8 @@ test("Admin reconciliation smoke flow", async ({ page }) => {
     await page.reload();
 
     const latestRunCard = page
-      .locator("article.metric-card")
-      .filter({ hasText: "Latest run" });
+      .locator("article")
+      .filter({ hasText: "Pemeriksaan terakhir" });
 
     await expect(latestRunCard).toContainText(
       latestRunText
@@ -382,8 +382,8 @@ test("Admin reconciliation smoke flow", async ({ page }) => {
   });
 
   await test.step("Issue filters submit through the URL", async () => {
-    await page.getByLabel("Status").selectOption("OPEN");
-    await page.getByLabel("Severity").selectOption("HIGH");
+    await page.getByLabel("Status temuan").selectOption("OPEN");
+    await page.getByLabel("Tingkat masalah").selectOption("HIGH");
     await page.getByRole("button", { name: "Terapkan filter" }).click();
 
     await page.waitForURL(
@@ -399,7 +399,7 @@ test("Admin reconciliation smoke flow", async ({ page }) => {
     const destinations = [
       { link: "Dashboard", pathname: "/" },
       { link: "Marketplace", pathname: "/marketplace" },
-      { link: "Returns", pathname: "/returns" },
+      { link: "Retur", pathname: "/returns" },
     ];
 
     for (const destination of destinations) {
