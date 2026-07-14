@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
 
+import ApprovalPanel from "@/app/stocktakes/components/approval-panel";
 import CountingPanel from "@/app/stocktakes/components/counting-panel";
 import ReviewPanel from "@/app/stocktakes/components/review-panel";
 import {
@@ -16,6 +17,8 @@ import {
   type StocktakePillTone,
 } from "@/lib/stocktakes/constants";
 import {
+  getLatestStocktakeApproval,
+  getStocktakeApprovalLines,
   getStocktakeCountAttempts,
   getStocktakeCountingLines,
   getStocktakeDetails,
@@ -189,13 +192,27 @@ export default async function StocktakeDetailPage({
           details.visibility_code,
         )
       : [];
-  const [reviewLines, countAttempts] =
+  const approvalVisible = ["APPROVED", "POSTING", "POSTED"].includes(
+    details.status_code,
+  );
+  const reviewLinesVisible =
+    details.status_code === "REVIEW" || approvalVisible;
+  const reviewLines = reviewLinesVisible
+    ? await getStocktakeReviewLines(stocktakeId)
+    : [];
+  const countAttempts =
     details.status_code === "REVIEW"
-      ? await Promise.all([
-          getStocktakeReviewLines(stocktakeId),
-          getStocktakeCountAttempts(stocktakeId),
-        ])
-      : [[], []];
+      ? await getStocktakeCountAttempts(stocktakeId)
+      : [];
+  const approval = approvalVisible
+    ? await getLatestStocktakeApproval(stocktakeId)
+    : null;
+  const approvalLines = approval
+    ? await getStocktakeApprovalLines(
+        stocktakeId,
+        approval.approval_id,
+      )
+    : [];
   const status = STOCKTAKE_STATUS_META[details.status_code];
   const scope = details.scope_definition;
 
@@ -407,6 +424,15 @@ export default async function StocktakeDetailPage({
               review: search.review ?? "",
               reason: search.reason ?? "",
             }}
+          />
+        ) : null}
+
+        {approvalVisible ? (
+          <ApprovalPanel
+            details={details}
+            reviewLines={reviewLines}
+            approval={approval}
+            approvalLines={approvalLines}
           />
         ) : null}
       </div>

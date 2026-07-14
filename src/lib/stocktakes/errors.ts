@@ -91,6 +91,17 @@ const STOCKTAKE_ERROR_MESSAGES: Record<string, string> = {
     "Kode exception wajib diisi.",
   STOCKTAKE_EXCEPTION_CODE_TOO_LONG:
     "Kode exception maksimal 100 karakter.",
+  STOCKTAKE_APPROVAL_CONFIRMATION_REQUIRED:
+    "Konfirmasi approval wajib dicentang.",
+  STOCKTAKE_APPROVAL_VERSION_CONFLICT:
+    "Stocktake sudah berubah sejak halaman dibuka. Muat ulang sebelum approval.",
+  STOCKTAKE_APPROVAL_REQUIRED:
+    "Semua line harus selesai direview tanpa exception sebelum approval.",
+  STOCKTAKE_APPROVAL_NOTE_TOO_LONG:
+    "Catatan approval maksimal 2.000 karakter.",
+  STALE_STOCKTAKE_BASIS:
+    "Basis count atau review sudah berubah. Muat ulang dan periksa seluruh line.",
+
   STOCKTAKE_NOTE_TOO_LONG: "Catatan stocktake maksimal 2.000 karakter.",
   STOCKTAKE_METADATA_MUST_BE_OBJECT:
     "Metadata stocktake tidak valid.",

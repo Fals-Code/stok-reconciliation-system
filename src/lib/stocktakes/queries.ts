@@ -2,6 +2,8 @@ import "server-only";
 
 import { getAdminSession } from "@/lib/auth";
 import type {
+  StocktakeApproval,
+  StocktakeApprovalLine,
   StocktakeBatchOption,
   StocktakeCountAttempt,
   StocktakeCreateOptions,
@@ -196,6 +198,41 @@ export async function getStocktakeCountAttempts(
 
   return authenticatedFetch<StocktakeCountAttempt[]>(
     `stocktake_count_attempts?organization_id=eq.${organizationId}&stocktake_id=eq.${encodedStocktakeId}&select=*&order=stocktake_line_id.asc,attempt_no.asc`,
+    context,
+  );
+}
+
+
+export async function getLatestStocktakeApproval(
+  stocktakeId: string,
+): Promise<StocktakeApproval | null> {
+  const context = await getRequestContext();
+  const organizationId = encodeURIComponent(
+    context.session.profile.organization_id,
+  );
+  const encodedStocktakeId = encodeURIComponent(stocktakeId);
+
+  const rows = await authenticatedFetch<StocktakeApproval[]>(
+    `stocktake_approvals?organization_id=eq.${organizationId}&stocktake_id=eq.${encodedStocktakeId}&select=*&order=approval_version_no.desc&limit=1`,
+    context,
+  );
+
+  return rows[0] ?? null;
+}
+
+export async function getStocktakeApprovalLines(
+  stocktakeId: string,
+  approvalId: string,
+): Promise<StocktakeApprovalLine[]> {
+  const context = await getRequestContext();
+  const organizationId = encodeURIComponent(
+    context.session.profile.organization_id,
+  );
+  const encodedStocktakeId = encodeURIComponent(stocktakeId);
+  const encodedApprovalId = encodeURIComponent(approvalId);
+
+  return authenticatedFetch<StocktakeApprovalLine[]>(
+    `stocktake_approval_lines?organization_id=eq.${organizationId}&stocktake_id=eq.${encodedStocktakeId}&approval_id=eq.${encodedApprovalId}&select=*&order=line_no.asc`,
     context,
   );
 }

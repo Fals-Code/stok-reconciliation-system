@@ -1,3 +1,4 @@
+import ApprovalPanel from "@/app/stocktakes/components/approval-panel";
 import {
   requestStocktakeReviewRecountAction,
   reviewStocktakeLineAction,
@@ -310,9 +311,6 @@ export default function ReviewPanel({
         line.review_decision_code === "VARIANCE_ACCEPTED") &&
       !line.exception_code,
   ).length;
-  const approvalReady =
-    lines.length > 0 && approvalReadyLines === lines.length;
-
   return (
     <section className="mt-8">
       <div className="panel-card">
@@ -606,28 +604,7 @@ export default function ReviewPanel({
         ) : null}
       </div>
 
-      <section
-        className={`mt-6 rounded-2xl border p-5 ${
-          approvalReady
-            ? "border-emerald-400/20 bg-emerald-400/[0.055]"
-            : "border-white/10 bg-white/[0.025]"
-        }`}
-      >
-        <p
-          className={`font-semibold ${
-            approvalReady ? "text-emerald-100" : "text-slate-200"
-          }`}
-        >
-          {approvalReady
-            ? "Semua line siap untuk approval."
-            : "Approval belum dapat dilakukan."}
-        </p>
-        <p className="mt-2 text-sm leading-6 text-slate-400">
-          {approvalReady
-            ? "Approval immutable dan versioned akan ditambahkan pada slice berikutnya."
-            : "Semua line harus direview sebagai MATCHED atau VARIANCE_ACCEPTED, tanpa exception."}
-        </p>
-      </section>
+      <ApprovalPanel details={details} reviewLines={lines} />
     </section>
   );
 }

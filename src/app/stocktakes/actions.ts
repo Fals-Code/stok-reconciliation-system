@@ -11,6 +11,7 @@ import {
   STOCKTAKE_SCOPE_MODES,
   STOCKTAKE_TYPES,
   STOCKTAKE_VISIBILITIES,
+  type StocktakeApprovalResponse,
   type StocktakeBucket,
   type StocktakeCompleteCountingResponse,
   type StocktakeCountResponse,
@@ -215,7 +216,8 @@ function lifecycleMetadata(
     | "recount"
     | "complete-counting"
     | "review-line"
-    | "review-recount",
+    | "review-recount"
+    | "approve",
 ) {
   return {
     source: "admin-stocktake-ui",
@@ -631,6 +633,55 @@ export async function requestStocktakeReviewRecountAction(
       stocktakeId,
       "success",
       `Line dikembalikan ke Counting untuk attempt setelah ${result.currentAttemptNo}.`,
+    );
+  } catch (error) {
+    destination = detailDestination(
+      stocktakeId,
+      "error",
+      stocktakeErrorMessage(error),
+    );
+  }
+
+  redirect(destination);
+}
+
+
+export async function approveStocktakeAction(formData: FormData) {
+  const session = await requireAdminSession();
+  const stocktakeId = requiredUuid(formData, "stocktakeId");
+  const stocktakeVersion = requiredPositiveVersion(formData);
+  const confirmation = formData.get("confirmation") === "on";
+
+  let destination: string;
+
+  try {
+    const note =
+      String(formData.get("note") ?? "").trim() || null;
+
+    const result = await callRpc<StocktakeApprovalResponse>(
+      "approve_stocktake",
+      {
+        p_organization_id: session.profile.organization_id,
+        p_idempotency_key:
+          `stocktake:${stocktakeId}:approve:${stocktakeVersion}`,
+        p_stocktake_id: stocktakeId,
+        p_expected_stocktake_version: stocktakeVersion,
+        p_confirmation: confirmation,
+        p_note: note,
+        p_metadata: {
+          ...lifecycleMetadata(session.user.id, "approve"),
+          stocktakeVersion,
+        },
+      },
+    );
+
+    revalidatePath("/stocktakes");
+    revalidatePath(`/stocktakes/${stocktakeId}`);
+
+    destination = detailDestination(
+      stocktakeId,
+      "success",
+      `Stocktake disetujui sebagai approval version ${result.approvalVersion}.`,
     );
   } catch (error) {
     destination = detailDestination(

@@ -377,3 +377,66 @@ export type StocktakeReviewRecountResponse = {
   requestedByUserId: string | null;
   requestedByProcessName: string | null;
 };
+
+
+export type StocktakeApproval = {
+  approval_id: string;
+  organization_id: string;
+  stocktake_id: string;
+  approval_version_no: number;
+  approval_hash: string;
+  approved_at: string;
+  approved_by: string | null;
+  process_name: string | null;
+  stocktake_version_no: number;
+  snapshot_ledger_seq: number;
+  tolerance_policy_snapshot: {
+    units: number;
+    percent: number;
+  };
+  rule_version: string;
+  line_count: number;
+  variance_line_count: number;
+  total_variance_qty: number;
+  note: string | null;
+  metadata: Record<string, unknown>;
+  created_at: string;
+};
+
+export type StocktakeApprovalLine = {
+  approval_line_id: string;
+  organization_id: string;
+  stocktake_id: string;
+  approval_id: string;
+  stocktake_line_id: string;
+  line_no: number;
+  line_version_no: number;
+  review_decision_code: "MATCHED" | "VARIANCE_ACCEPTED";
+  final_attempt_id: string;
+  final_physical_qty: number;
+  expected_qty_at_count: number;
+  variance_qty: number;
+  reason_code: StocktakeVarianceReason | null;
+  review_note: string | null;
+  expected_formula_version: string;
+  count_cutoff_ledger_seq: number;
+  created_at: string;
+};
+
+export type StocktakeApprovalResponse = {
+  status: "APPROVED";
+  stocktakeId: string;
+  stocktakeNo: string;
+  approvalId: string;
+  approvalVersion: number;
+  approvalHash: string;
+  lineCount: number;
+  varianceLineCount: number;
+  totalVarianceQty: number;
+  stocktakeVersion: number;
+  idempotencyKey: string;
+  requestHash: string;
+  approvedAt: string;
+  approvedByUserId: string | null;
+  approvedByProcessName: string | null;
+};
