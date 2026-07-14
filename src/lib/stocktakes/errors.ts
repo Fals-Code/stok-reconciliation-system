@@ -20,6 +20,11 @@ const STOCKTAKE_ERROR_MESSAGES: Record<string, string> = {
     "Permintaan stocktake yang sama masih diproses.",
   IDEMPOTENCY_COMMAND_FAILED:
     "Permintaan stocktake sebelumnya gagal dan perlu diperiksa.",
+  STOCKTAKE_ID_REQUIRED: "ID stocktake tidak valid.",
+  STOCKTAKE_NOT_FOUND:
+    "Sesi stocktake tidak ditemukan pada organisasi Admin saat ini.",
+  STOCKTAKE_INVALID_STATE:
+    "Aksi ini tidak valid untuk status stocktake saat ini. Muat ulang halaman.",
   STOCKTAKE_TITLE_REQUIRED: "Judul stocktake wajib diisi.",
   STOCKTAKE_TITLE_TOO_LONG: "Judul stocktake maksimal 200 karakter.",
   STOCKTAKE_TYPE_NOT_SUPPORTED: "Tipe stocktake tidak didukung.",
@@ -35,6 +40,12 @@ const STOCKTAKE_ERROR_MESSAGES: Record<string, string> = {
     "Scope stocktake mengandung produk, batch, atau bucket duplikat.",
   STOCKTAKE_SCOPE_EMPTY:
     "Scope stocktake tidak menghasilkan inventory yang dapat dihitung.",
+  STOCKTAKE_SCOPE_ENTITY_NOT_FOUND:
+    "Produk atau batch pada scope tidak lagi tersedia dalam organisasi ini.",
+  STOCKTAKE_SNAPSHOT_INCOMPLETE:
+    "Snapshot atau count line tidak dapat dibuat secara lengkap. Sesi tidak dimulai.",
+  STOCKTAKE_START_CONFIRMATION_REQUIRED:
+    "Konfirmasi pembuatan snapshot dan count line wajib diberikan.",
   STOCKTAKE_NOTE_TOO_LONG: "Catatan stocktake maksimal 2.000 karakter.",
   STOCKTAKE_METADATA_MUST_BE_OBJECT:
     "Metadata stocktake tidak valid.",

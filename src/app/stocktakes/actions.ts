@@ -13,11 +13,16 @@ import {
   STOCKTAKE_VISIBILITIES,
   type StocktakeBucket,
   type StocktakeCreateResponse,
+  type StocktakePrepareResponse,
   type StocktakeScopeDefinition,
   type StocktakeScopeMode,
+  type StocktakeStartResponse,
   type StocktakeType,
   type StocktakeVisibility,
 } from "@/lib/stocktakes/types";
+
+const UUID_PATTERN =
+  /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 
 function required(formData: FormData, key: string) {
   const value = formData.get(key);
@@ -27,6 +32,16 @@ function required(formData: FormData, key: string) {
   }
 
   return value.trim();
+}
+
+function requiredUuid(formData: FormData, key: string) {
+  const value = required(formData, key);
+
+  if (!UUID_PATTERN.test(value)) {
+    throw new Error("STOCKTAKE_ID_REQUIRED");
+  }
+
+  return value;
 }
 
 function enumValue<T extends string>(
@@ -125,6 +140,24 @@ function createScope(formData: FormData): StocktakeScopeDefinition {
   return scope;
 }
 
+function detailDestination(
+  stocktakeId: string,
+  kind: "success" | "error",
+  message: string,
+) {
+  const params = new URLSearchParams({ [kind]: message });
+  return `/stocktakes/${encodeURIComponent(stocktakeId)}?${params.toString()}`;
+}
+
+function lifecycleMetadata(actorUserId: string, action: "prepare" | "start") {
+  return {
+    source: "admin-stocktake-ui",
+    version: 1,
+    action,
+    actorUserId,
+  };
+}
+
 export async function createStocktakeAction(formData: FormData) {
   const session = await requireAdminSession();
   const idempotencyKey = required(formData, "idempotencyKey");
@@ -169,11 +202,11 @@ export async function createStocktakeAction(formData: FormData) {
     revalidatePath("/stocktakes");
     revalidatePath(`/stocktakes/${result.stocktakeId}`);
 
-    const success = new URLSearchParams({
-      success: `${result.stocktakeNo} berhasil dibuat sebagai Draft.`,
-    });
-
-    destination = `/stocktakes/${result.stocktakeId}?${success.toString()}`;
+    destination = detailDestination(
+      result.stocktakeId,
+      "success",
+      `${result.stocktakeNo} berhasil dibuat sebagai Draft.`,
+    );
   } catch (error) {
     const errorParams = new URLSearchParams({
       idempotencyKey,
@@ -181,6 +214,79 @@ export async function createStocktakeAction(formData: FormData) {
     });
 
     destination = `/stocktakes/new?${errorParams.toString()}`;
+  }
+
+  redirect(destination);
+}
+
+export async function prepareStocktakeAction(formData: FormData) {
+  const session = await requireAdminSession();
+  const stocktakeId = requiredUuid(formData, "stocktakeId");
+
+  let destination: string;
+
+  try {
+    const result = await callRpc<StocktakePrepareResponse>(
+      "prepare_stocktake",
+      {
+        p_organization_id: session.profile.organization_id,
+        p_idempotency_key: `stocktake:${stocktakeId}:prepare:v1`,
+        p_stocktake_id: stocktakeId,
+        p_metadata: lifecycleMetadata(session.user.id, "prepare"),
+      },
+    );
+
+    revalidatePath("/stocktakes");
+    revalidatePath(`/stocktakes/${stocktakeId}`);
+
+    destination = detailDestination(
+      stocktakeId,
+      "success",
+      `${result.stocktakeNo} siap dimulai. ${result.scopeLineCount} line scope tervalidasi pada ledger sequence ${result.validationLedgerSeq}.`,
+    );
+  } catch (error) {
+    destination = detailDestination(
+      stocktakeId,
+      "error",
+      stocktakeErrorMessage(error),
+    );
+  }
+
+  redirect(destination);
+}
+
+export async function startStocktakeAction(formData: FormData) {
+  const session = await requireAdminSession();
+  const stocktakeId = requiredUuid(formData, "stocktakeId");
+
+  let destination: string;
+
+  try {
+    if (!checkbox(formData, "confirmStart")) {
+      throw new Error("STOCKTAKE_START_CONFIRMATION_REQUIRED");
+    }
+
+    const result = await callRpc<StocktakeStartResponse>("start_stocktake", {
+      p_organization_id: session.profile.organization_id,
+      p_idempotency_key: `stocktake:${stocktakeId}:start:v1`,
+      p_stocktake_id: stocktakeId,
+      p_metadata: lifecycleMetadata(session.user.id, "start"),
+    });
+
+    revalidatePath("/stocktakes");
+    revalidatePath(`/stocktakes/${stocktakeId}`);
+
+    destination = detailDestination(
+      stocktakeId,
+      "success",
+      `${result.stocktakeNo} mulai dihitung. ${result.lineCount} line dibuat dari ledger sequence ${result.snapshotLedgerSeq}.`,
+    );
+  } catch (error) {
+    destination = detailDestination(
+      stocktakeId,
+      "error",
+      stocktakeErrorMessage(error),
+    );
   }
 
   redirect(destination);

@@ -2,6 +2,10 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 
 import {
+  prepareStocktakeAction,
+  startStocktakeAction,
+} from "@/app/stocktakes/actions";
+import {
   STOCKTAKE_BUCKET_LABELS,
   STOCKTAKE_SCOPE_LABELS,
   STOCKTAKE_STATUS_META,
@@ -10,7 +14,10 @@ import {
   type StocktakePillTone,
 } from "@/lib/stocktakes/constants";
 import { getStocktakeDetails } from "@/lib/stocktakes/queries";
-import type { StocktakeScopeDefinition } from "@/lib/stocktakes/types";
+import type {
+  StocktakeDetails,
+  StocktakeScopeDefinition,
+} from "@/lib/stocktakes/types";
 
 export const dynamic = "force-dynamic";
 
@@ -72,6 +79,92 @@ function scopeEntitySummary(scope: StocktakeScopeDefinition) {
   return "Seluruh inventory aktif";
 }
 
+function DraftAction({ details }: { details: StocktakeDetails }) {
+  return (
+    <section className="mt-6 rounded-2xl border border-amber-400/20 bg-amber-400/[0.055] p-5">
+      <div className="flex flex-col gap-5 lg:flex-row lg:items-end lg:justify-between">
+        <div>
+          <p className="font-semibold text-amber-100">
+            Validasi konfigurasi sebelum penghitungan.
+          </p>
+          <p className="mt-2 max-w-3xl text-sm leading-6 text-slate-400">
+            Prepare memastikan produk atau batch masih berada dalam organisasi,
+            scope menghasilkan line, dan mode tetap CONTINUOUS. Tahap ini tidak
+            membuat snapshot, count line, ledger entry, atau perubahan saldo.
+          </p>
+          <p className="mt-3 text-xs text-slate-500">
+            Tolerance tetap {formatNumber(details.tolerance_policy_snapshot.units)}
+            {" unit / "}
+            {formatNumber(details.tolerance_policy_snapshot.percent)}%.
+          </p>
+        </div>
+
+        <form action={prepareStocktakeAction}>
+          <input type="hidden" name="stocktakeId" value={details.stocktake_id} />
+          <button className="primary-button" type="submit">
+            Validasi dan siapkan sesi
+          </button>
+        </form>
+      </div>
+    </section>
+  );
+}
+
+function ReadyAction({ details }: { details: StocktakeDetails }) {
+  return (
+    <section className="mt-6 rounded-2xl border border-emerald-400/20 bg-emerald-400/[0.055] p-5">
+      <p className="font-semibold text-emerald-100">
+        Scope valid dan sesi siap dimulai.
+      </p>
+      <p className="mt-2 max-w-3xl text-sm leading-6 text-slate-400">
+        Start mengambil batas ledger terbaru secara atomik, membuat line
+        penghitungan dan snapshot immutable, lalu memindahkan sesi ke COUNTING.
+        Tidak ada quantity yang dikoreksi pada tahap ini.
+      </p>
+
+      <form action={startStocktakeAction} className="mt-5">
+        <input type="hidden" name="stocktakeId" value={details.stocktake_id} />
+
+        <label className="flex max-w-3xl items-start gap-3 rounded-xl border border-white/10 bg-slate-950/40 p-4">
+          <input
+            className="mt-1"
+            type="checkbox"
+            name="confirmStart"
+            required
+          />
+          <span>
+            <span className="text-sm font-semibold text-white">
+              Saya memahami bahwa snapshot dan count line akan dibuat.
+            </span>
+            <span className="mt-1 block text-xs leading-5 text-slate-500">
+              Snapshot bersumber dari ledger dan tidak diedit dari browser.
+            </span>
+          </span>
+        </label>
+
+        <button className="primary-button mt-4" type="submit">
+          Mulai penghitungan
+        </button>
+      </form>
+    </section>
+  );
+}
+
+function CountingNotice() {
+  return (
+    <section className="mt-6 rounded-2xl border border-sky-400/20 bg-sky-400/[0.055] p-5">
+      <p className="font-semibold text-sky-100">
+        Snapshot sudah dibuat dan sesi berada pada COUNTING.
+      </p>
+      <p className="mt-2 text-sm leading-6 text-slate-400">
+        Count entry dan recount akan ditambahkan pada slice berikutnya. Halaman
+        ini tetap read-only agar line tidak diubah melalui jalur yang belum
+        tervalidasi.
+      </p>
+    </section>
+  );
+}
+
 export default async function StocktakeDetailPage({
   params,
   searchParams,
@@ -117,8 +210,8 @@ export default async function StocktakeDetailPage({
                 {details.title}
               </h1>
               <p className="mt-3 max-w-3xl text-sm leading-6 text-slate-400">
-                Konfigurasi ini tersimpan sebagai catatan stocktake. Quantity stok
-                belum berubah dan line belum dibuat sebelum lifecycle dilanjutkan.
+                Browser hanya menjalankan command yang valid untuk status saat
+                ini. Status akhir, snapshot, dan line tetap ditentukan server.
               </p>
             </div>
 
@@ -196,6 +289,7 @@ export default async function StocktakeDetailPage({
                     details.tolerance_policy_snapshot.percent,
                   )}%`,
                 ],
+                ["Mulai", formatDate(details.started_at)],
                 ["Dibuat", formatDate(details.created_at)],
                 ["Diperbarui", formatDate(details.updated_at)],
               ].map(([label, value]) => (
@@ -268,16 +362,14 @@ export default async function StocktakeDetailPage({
         </section>
 
         {details.status_code === "DRAFT" ? (
-          <section className="mt-6 rounded-2xl border border-amber-400/20 bg-amber-400/[0.055] p-5">
-            <p className="font-semibold text-amber-100">
-              Sesi masih Draft dan belum memengaruhi stok.
-            </p>
-            <p className="mt-2 text-sm leading-6 text-slate-400">
-              Prepare dan start akan ditambahkan pada slice berikutnya setelah
-              create flow ini tervalidasi.
-            </p>
-          </section>
+          <DraftAction details={details} />
         ) : null}
+
+        {details.status_code === "READY" ? (
+          <ReadyAction details={details} />
+        ) : null}
+
+        {details.status_code === "COUNTING" ? <CountingNotice /> : null}
       </div>
     </main>
   );

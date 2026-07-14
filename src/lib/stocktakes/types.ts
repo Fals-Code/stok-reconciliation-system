@@ -140,6 +140,29 @@ export type StocktakeCreateResponse = {
   createdAt: string;
 };
 
+export type StocktakePrepareResponse = {
+  status: "READY";
+  stocktakeId: string;
+  stocktakeNo: string;
+  scopeLineCount: number;
+  validationLedgerSeq: number;
+  idempotencyKey: string;
+  requestHash: string;
+  preparedAt: string;
+};
+
+export type StocktakeStartResponse = {
+  status: "COUNTING";
+  stocktakeId: string;
+  stocktakeNo: string;
+  snapshotLedgerSeq: number;
+  snapshotSource: "LEDGER";
+  lineCount: number;
+  idempotencyKey: string;
+  requestHash: string;
+  startedAt: string;
+};
+
 export type StocktakeDetailData = {
   details: StocktakeDetails;
   summary: StocktakeListItem | null;
