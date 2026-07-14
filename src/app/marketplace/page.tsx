@@ -162,6 +162,9 @@ export default async function MarketplacePage({
             <Link className="nav-link border border-white/10" href="/returns">
               Returns
             </Link>
+            <Link className="nav-link border border-white/10" href="/reconciliation">
+              Reconciliation
+            </Link>
             <Link className="nav-link border border-white/10" href="/">
               Dashboard
             </Link>
