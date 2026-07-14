@@ -508,8 +508,8 @@ select is(
       and issue.source_ref =
         'RECON-INSPECTION-INTEGRATION-INSPECTION-001'
   ),
-  'core-integrity-v6',
-  'return inspection evidence records the v6 rule set'
+  'core-integrity-v7',
+  'return inspection evidence records the v7 rule set'
 );
 
 select is(
