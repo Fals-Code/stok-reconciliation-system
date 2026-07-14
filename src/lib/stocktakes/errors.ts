@@ -69,6 +69,28 @@ const STOCKTAKE_ERROR_MESSAGES: Record<string, string> = {
     "Nomor attempt line tidak valid. Muat ulang halaman.",
   STOCKTAKE_VERSION_INVALID:
     "Versi stocktake tidak valid. Muat ulang halaman.",
+  STOCKTAKE_LINE_VERSION_REQUIRED:
+    "Versi line wajib tersedia sebelum review.",
+  STOCKTAKE_LINE_VERSION_CONFLICT:
+    "Line sudah berubah sejak halaman dibuka. Muat ulang dan tinjau versi terbaru.",
+  STOCKTAKE_REVIEW_INVALID_STATE:
+    "Sesi tidak lagi berada pada tahap Review.",
+  STOCKTAKE_REVIEW_DECISION_REQUIRED:
+    "Keputusan review wajib dipilih.",
+  STOCKTAKE_REVIEW_DECISION_INVALID:
+    "Keputusan review tidak sesuai dengan nilai variance line.",
+  STOCKTAKE_REASON_REQUIRED:
+    "Reason wajib dipilih untuk menerima variance.",
+  STOCKTAKE_REASON_NOT_SUPPORTED:
+    "Reason variance tidak didukung oleh kontrak server.",
+  STOCKTAKE_REVIEW_NOTE_REQUIRED:
+    "Catatan review wajib diisi untuk reason UNKNOWN atau OTHER.",
+  STOCKTAKE_REVIEW_NOTE_TOO_LONG:
+    "Catatan review maksimal 2.000 karakter.",
+  STOCKTAKE_EXCEPTION_REQUIRED:
+    "Kode exception wajib diisi.",
+  STOCKTAKE_EXCEPTION_CODE_TOO_LONG:
+    "Kode exception maksimal 100 karakter.",
   STOCKTAKE_NOTE_TOO_LONG: "Catatan stocktake maksimal 2.000 karakter.",
   STOCKTAKE_METADATA_MUST_BE_OBJECT:
     "Metadata stocktake tidak valid.",

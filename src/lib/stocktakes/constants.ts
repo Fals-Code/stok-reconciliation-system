@@ -6,6 +6,8 @@ import {
   STOCKTAKE_VISIBILITIES,
   type StocktakeBucket,
   type StocktakeCountStatus,
+  type StocktakeReviewDecision,
+  type StocktakeVarianceReason,
   type StocktakeListItem,
   type StocktakeScopeMode,
   type StocktakeStatus,
@@ -87,3 +89,43 @@ export {
   STOCKTAKE_TYPES,
   STOCKTAKE_VISIBILITIES,
 };
+
+export const STOCKTAKE_REVIEW_DECISION_META: Record<
+  StocktakeReviewDecision,
+  { label: string; tone: StocktakePillTone }
+> = {
+  MATCHED: { label: "Matched", tone: "success" },
+  VARIANCE_ACCEPTED: { label: "Variance diterima", tone: "warning" },
+  RECOUNT_REQUIRED: { label: "Recount diminta", tone: "warning" },
+  EXCEPTION: { label: "Exception", tone: "danger" },
+};
+
+export const STOCKTAKE_VARIANCE_REASON_LABELS: Record<
+  StocktakeVarianceReason,
+  string
+> = {
+  UNRECORDED_MANUAL_OUTBOUND: "Manual outbound belum tercatat",
+  UNRECORDED_INBOUND: "Inbound belum tercatat",
+  RETURN_MISMATCH: "Ketidaksesuaian return",
+  WRONG_BATCH_COUNT: "Salah hitung batch",
+  WRONG_BUCKET_COUNT: "Salah hitung bucket",
+  DAMAGE_NOT_RECORDED: "Kerusakan belum tercatat",
+  EXPIRY_NOT_RECORDED: "Expiry belum tercatat",
+  INITIAL_BALANCE_UNCERTAIN: "Saldo awal tidak pasti",
+  COUNT_TIMING_DIFFERENCE: "Perbedaan waktu counting",
+  DUPLICATE_MOVEMENT: "Movement duplikat",
+  SOURCE_EVENT_FAILURE: "Kegagalan source event",
+  PROJECTION_DRIFT: "Projection drift",
+  PHYSICAL_LOSS: "Kehilangan fisik",
+  PHYSICAL_SURPLUS: "Surplus fisik",
+  MASTER_DATA_ERROR: "Kesalahan master data",
+  UNKNOWN: "Belum diketahui",
+  OTHER: "Lainnya",
+};
+
+export const STOCKTAKE_VARIANCE_REASON_OPTIONS = Object.entries(
+  STOCKTAKE_VARIANCE_REASON_LABELS,
+).map(([value, label]) => ({
+  value: value as StocktakeVarianceReason,
+  label,
+}));

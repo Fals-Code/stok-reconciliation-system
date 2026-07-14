@@ -2,6 +2,7 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 
 import CountingPanel from "@/app/stocktakes/components/counting-panel";
+import ReviewPanel from "@/app/stocktakes/components/review-panel";
 import {
   prepareStocktakeAction,
   startStocktakeAction,
@@ -15,8 +16,10 @@ import {
   type StocktakePillTone,
 } from "@/lib/stocktakes/constants";
 import {
+  getStocktakeCountAttempts,
   getStocktakeCountingLines,
   getStocktakeDetails,
+  getStocktakeReviewLines,
 } from "@/lib/stocktakes/queries";
 import type {
   StocktakeDetails,
@@ -154,30 +157,24 @@ function ReadyAction({ details }: { details: StocktakeDetails }) {
   );
 }
 
-function ReviewNotice() {
-  return (
-    <section className="mt-6 rounded-2xl border border-violet-400/20 bg-violet-400/[0.055] p-5">
-      <p className="font-semibold text-violet-100">
-        Counting selesai dan sesi berada pada REVIEW.
-      </p>
-      <p className="mt-2 text-sm leading-6 text-slate-400">
-        Variance review, review recount, dan approval akan ditambahkan pada
-        slice berikutnya. Expected quantity dan variance kini dapat dibaca
-        melalui kontrak review server.
-      </p>
-    </section>
-  );
-}
-
 export default async function StocktakeDetailPage({
   params,
   searchParams,
 }: {
   params: Promise<{ stocktakeId: string }>;
-  searchParams: Promise<{ success?: string; error?: string }>;
+  searchParams: Promise<{
+    success?: string;
+    error?: string;
+    q?: string;
+    bucket?: string;
+    variance?: string;
+    review?: string;
+    reason?: string;
+  }>;
 }) {
   const { stocktakeId } = await params;
-  const feedback = await searchParams;
+  const search = await searchParams;
+  const feedback = search;
   const data = await getStocktakeDetails(stocktakeId);
 
   if (!data) {
@@ -192,6 +189,13 @@ export default async function StocktakeDetailPage({
           details.visibility_code,
         )
       : [];
+  const [reviewLines, countAttempts] =
+    details.status_code === "REVIEW"
+      ? await Promise.all([
+          getStocktakeReviewLines(stocktakeId),
+          getStocktakeCountAttempts(stocktakeId),
+        ])
+      : [[], []];
   const status = STOCKTAKE_STATUS_META[details.status_code];
   const scope = details.scope_definition;
 
@@ -391,7 +395,20 @@ export default async function StocktakeDetailPage({
           />
         ) : null}
 
-        {details.status_code === "REVIEW" ? <ReviewNotice /> : null}
+        {details.status_code === "REVIEW" ? (
+          <ReviewPanel
+            details={details}
+            lines={reviewLines}
+            attempts={countAttempts}
+            filters={{
+              query: search.q ?? "",
+              bucket: search.bucket ?? "",
+              variance: search.variance ?? "",
+              review: search.review ?? "",
+              reason: search.reason ?? "",
+            }}
+          />
+        ) : null}
       </div>
     </main>
   );

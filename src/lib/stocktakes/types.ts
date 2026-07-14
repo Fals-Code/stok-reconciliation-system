@@ -261,3 +261,119 @@ export type StocktakeCompleteCountingResponse = {
   requestHash: string;
   countingCompletedAt: string;
 };
+
+
+export type StocktakeReviewDecision =
+  | "MATCHED"
+  | "VARIANCE_ACCEPTED"
+  | "RECOUNT_REQUIRED"
+  | "EXCEPTION";
+
+export type StocktakeVarianceReason =
+  | "UNRECORDED_MANUAL_OUTBOUND"
+  | "UNRECORDED_INBOUND"
+  | "RETURN_MISMATCH"
+  | "WRONG_BATCH_COUNT"
+  | "WRONG_BUCKET_COUNT"
+  | "DAMAGE_NOT_RECORDED"
+  | "EXPIRY_NOT_RECORDED"
+  | "INITIAL_BALANCE_UNCERTAIN"
+  | "COUNT_TIMING_DIFFERENCE"
+  | "DUPLICATE_MOVEMENT"
+  | "SOURCE_EVENT_FAILURE"
+  | "PROJECTION_DRIFT"
+  | "PHYSICAL_LOSS"
+  | "PHYSICAL_SURPLUS"
+  | "MASTER_DATA_ERROR"
+  | "UNKNOWN"
+  | "OTHER";
+
+export type StocktakeReviewLine = {
+  stocktake_line_id: string;
+  organization_id: string;
+  stocktake_id: string;
+  line_no: number;
+  product_id: string;
+  batch_id: string;
+  bucket_code: StocktakeBucket;
+  product_sku_snapshot: string;
+  product_name_snapshot: string;
+  batch_code_snapshot: string;
+  expiry_date_snapshot: string;
+  system_qty_at_snapshot: number;
+  final_attempt_id: string | null;
+  final_physical_qty: number | null;
+  expected_qty_at_count: number | null;
+  variance_qty: number | null;
+  count_cutoff_ledger_seq: number | null;
+  expected_formula_version: string | null;
+  count_attempt_no: number;
+  count_status_code: StocktakeCountStatus;
+  review_status_code: StocktakeReviewStatus;
+  review_decision_code: StocktakeReviewDecision | null;
+  reason_code: StocktakeVarianceReason | null;
+  review_note: string | null;
+  exception_code: string | null;
+  created_at: string;
+  updated_at: string;
+  version_no: number;
+};
+
+export type StocktakeCountAttempt = {
+  count_attempt_id: string;
+  organization_id: string;
+  stocktake_id: string;
+  stocktake_line_id: string;
+  attempt_no: number;
+  physical_qty: number;
+  counted_at: string;
+  count_cutoff_ledger_seq: number;
+  expected_qty_at_count: number;
+  variance_qty: number;
+  expected_formula_version: string;
+  counted_by: string | null;
+  process_name: string | null;
+  count_method_code: string;
+  zero_confirmed: boolean;
+  note: string | null;
+  idempotency_key: string;
+  request_hash: string;
+  status_code: string;
+  created_at: string;
+};
+
+export type StocktakeReviewResponse = {
+  status: "REVIEWED";
+  stocktakeId: string;
+  stocktakeLineId: string;
+  decisionCode: Exclude<StocktakeReviewDecision, "RECOUNT_REQUIRED">;
+  reasonCode: StocktakeVarianceReason | null;
+  reviewNote: string | null;
+  exceptionCode: string | null;
+  lineVersion: number;
+  stocktakeVersion: number;
+  idempotencyKey: string;
+  requestHash: string;
+  reviewedAt: string;
+  reviewedByUserId: string | null;
+  reviewedByProcessName: string | null;
+};
+
+export type StocktakeReviewRecountResponse = {
+  status: "COUNTING";
+  stocktakeId: string;
+  stocktakeLineId: string;
+  countStatusCode: "RECOUNT_REQUESTED";
+  reviewStatusCode: "PENDING";
+  reviewDecisionCode: "RECOUNT_REQUIRED";
+  currentAttemptNo: number;
+  currentCountAttemptId: string;
+  lineVersion: number;
+  stocktakeVersion: number;
+  reason: string;
+  idempotencyKey: string;
+  requestHash: string;
+  requestedAt: string;
+  requestedByUserId: string | null;
+  requestedByProcessName: string | null;
+};

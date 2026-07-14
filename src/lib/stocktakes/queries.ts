@@ -3,12 +3,14 @@ import "server-only";
 import { getAdminSession } from "@/lib/auth";
 import type {
   StocktakeBatchOption,
+  StocktakeCountAttempt,
   StocktakeCreateOptions,
   StocktakeCountingLine,
   StocktakeDetailData,
   StocktakeDetails,
   StocktakeListItem,
   StocktakeProductOption,
+  StocktakeReviewLine,
   StocktakeVisibility,
 } from "@/lib/stocktakes/types";
 
@@ -163,6 +165,37 @@ export async function getStocktakeCountingLines(
 
   return authenticatedFetch<StocktakeCountingLine[]>(
     `${view}?organization_id=eq.${organizationId}&stocktake_id=eq.${encodedStocktakeId}&select=*&order=line_no.asc`,
+    context,
+  );
+}
+
+
+export async function getStocktakeReviewLines(
+  stocktakeId: string,
+): Promise<StocktakeReviewLine[]> {
+  const context = await getRequestContext();
+  const organizationId = encodeURIComponent(
+    context.session.profile.organization_id,
+  );
+  const encodedStocktakeId = encodeURIComponent(stocktakeId);
+
+  return authenticatedFetch<StocktakeReviewLine[]>(
+    `stocktake_review_lines?organization_id=eq.${organizationId}&stocktake_id=eq.${encodedStocktakeId}&select=*&order=line_no.asc`,
+    context,
+  );
+}
+
+export async function getStocktakeCountAttempts(
+  stocktakeId: string,
+): Promise<StocktakeCountAttempt[]> {
+  const context = await getRequestContext();
+  const organizationId = encodeURIComponent(
+    context.session.profile.organization_id,
+  );
+  const encodedStocktakeId = encodeURIComponent(stocktakeId);
+
+  return authenticatedFetch<StocktakeCountAttempt[]>(
+    `stocktake_count_attempts?organization_id=eq.${organizationId}&stocktake_id=eq.${encodedStocktakeId}&select=*&order=stocktake_line_id.asc,attempt_no.asc`,
     context,
   );
 }

@@ -17,6 +17,8 @@ import {
   type StocktakeCreateResponse,
   type StocktakePrepareResponse,
   type StocktakeRecountResponse,
+  type StocktakeReviewRecountResponse,
+  type StocktakeReviewResponse,
   type StocktakeScopeDefinition,
   type StocktakeScopeMode,
   type StocktakeStartResponse,
@@ -206,7 +208,14 @@ function detailDestination(
 
 function lifecycleMetadata(
   actorUserId: string,
-  action: "prepare" | "start" | "count" | "recount" | "complete-counting",
+  action:
+    | "prepare"
+    | "start"
+    | "count"
+    | "recount"
+    | "complete-counting"
+    | "review-line"
+    | "review-recount",
 ) {
   return {
     source: "admin-stocktake-ui",
@@ -488,6 +497,140 @@ export async function completeStocktakeCountingAction(formData: FormData) {
       stocktakeId,
       "success",
       `${result.stocktakeNo} masuk ke Review dengan ${result.varianceLineCount} line variance.`,
+    );
+  } catch (error) {
+    destination = detailDestination(
+      stocktakeId,
+      "error",
+      stocktakeErrorMessage(error),
+    );
+  }
+
+  redirect(destination);
+}
+
+
+export async function reviewStocktakeLineAction(formData: FormData) {
+  const session = await requireAdminSession();
+  const stocktakeId = requiredUuid(formData, "stocktakeId");
+  const stocktakeLineId = requiredUuid(
+    formData,
+    "stocktakeLineId",
+    "STOCKTAKE_LINE_ID_REQUIRED",
+  );
+  const lineVersionRaw = required(formData, "lineVersion");
+
+  if (!/^\d+$/.test(lineVersionRaw)) {
+    throw new Error("STOCKTAKE_LINE_VERSION_REQUIRED");
+  }
+
+  const lineVersion = Number(lineVersionRaw);
+
+  if (!Number.isSafeInteger(lineVersion) || lineVersion <= 0) {
+    throw new Error("STOCKTAKE_LINE_VERSION_REQUIRED");
+  }
+
+  let destination: string;
+
+  try {
+    const decisionCode = required(formData, "decisionCode");
+    const reasonCode =
+      String(formData.get("reasonCode") ?? "").trim() || null;
+    const reviewNote =
+      String(formData.get("reviewNote") ?? "").trim() || null;
+    const exceptionCode =
+      String(formData.get("exceptionCode") ?? "").trim() || null;
+
+    const result = await callRpc<StocktakeReviewResponse>(
+      "review_stocktake_line",
+      {
+        p_organization_id: session.profile.organization_id,
+        p_idempotency_key:
+          `stocktake:${stocktakeId}:line:${stocktakeLineId}:review:${lineVersion}`,
+        p_stocktake_id: stocktakeId,
+        p_stocktake_line_id: stocktakeLineId,
+        p_expected_line_version: lineVersion,
+        p_decision_code: decisionCode,
+        p_reason_code: reasonCode,
+        p_review_note: reviewNote,
+        p_exception_code: exceptionCode,
+        p_metadata: {
+          ...lifecycleMetadata(session.user.id, "review-line"),
+          lineVersion,
+        },
+      },
+    );
+
+    revalidatePath("/stocktakes");
+    revalidatePath(`/stocktakes/${stocktakeId}`);
+
+    destination = detailDestination(
+      stocktakeId,
+      "success",
+      `Line ${result.stocktakeLineId.slice(0, 8)} direview sebagai ${result.decisionCode}.`,
+    );
+  } catch (error) {
+    destination = detailDestination(
+      stocktakeId,
+      "error",
+      stocktakeErrorMessage(error),
+    );
+  }
+
+  redirect(destination);
+}
+
+export async function requestStocktakeReviewRecountAction(
+  formData: FormData,
+) {
+  const session = await requireAdminSession();
+  const stocktakeId = requiredUuid(formData, "stocktakeId");
+  const stocktakeLineId = requiredUuid(
+    formData,
+    "stocktakeLineId",
+    "STOCKTAKE_LINE_ID_REQUIRED",
+  );
+  const lineVersionRaw = required(formData, "lineVersion");
+
+  if (!/^\d+$/.test(lineVersionRaw)) {
+    throw new Error("STOCKTAKE_LINE_VERSION_REQUIRED");
+  }
+
+  const lineVersion = Number(lineVersionRaw);
+
+  if (!Number.isSafeInteger(lineVersion) || lineVersion <= 0) {
+    throw new Error("STOCKTAKE_LINE_VERSION_REQUIRED");
+  }
+
+  let destination: string;
+
+  try {
+    const reason = required(formData, "reason");
+
+    const result = await callRpc<StocktakeReviewRecountResponse>(
+      "request_stocktake_review_recount",
+      {
+        p_organization_id: session.profile.organization_id,
+        p_idempotency_key:
+          `stocktake:${stocktakeId}:line:${stocktakeLineId}:review-recount:${lineVersion}`,
+        p_stocktake_id: stocktakeId,
+        p_stocktake_line_id: stocktakeLineId,
+        p_expected_line_version: lineVersion,
+        p_reason: reason,
+        p_metadata: {
+          ...lifecycleMetadata(session.user.id, "review-recount"),
+          lineVersion,
+        },
+      },
+    );
+
+    revalidatePath("/stocktakes");
+    revalidatePath(`/stocktakes/${stocktakeId}`);
+
+    destination = detailDestination(
+      stocktakeId,
+      "success",
+      `Line dikembalikan ke Counting untuk attempt setelah ${result.currentAttemptNo}.`,
     );
   } catch (error) {
     destination = detailDestination(
