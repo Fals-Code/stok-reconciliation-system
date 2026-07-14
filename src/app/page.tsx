@@ -162,6 +162,9 @@ export default async function Home({
             <a className="nav-link" href="#ledger">Ledger</a>
           </nav>
           <div className="flex items-center gap-2">
+            <Link className="nav-link border border-white/10" href="/stocktakes">
+              Stocktakes
+            </Link>
             <Link className="nav-link border border-white/10" href="/marketplace">
               Marketplace
             </Link>

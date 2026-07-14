@@ -348,6 +348,9 @@ export default async function ReturnsPage({
             <a className="nav-link" href="#timeline">Timeline</a>
           </nav>
           <div className="flex items-center gap-2">
+            <Link className="nav-link border border-white/10" href="/stocktakes">
+              Stocktakes
+            </Link>
             <Link className="nav-link border border-white/10" href="/marketplace">
               Marketplace
             </Link>

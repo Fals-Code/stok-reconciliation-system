@@ -159,6 +159,9 @@ export default async function MarketplacePage({
             <a className="nav-link" href="#allocations">FEFO</a>
           </nav>
           <div className="flex items-center gap-2">
+            <Link className="nav-link border border-white/10" href="/stocktakes">
+              Stocktakes
+            </Link>
             <Link className="nav-link border border-white/10" href="/returns">
               Returns
             </Link>
