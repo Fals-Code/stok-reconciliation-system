@@ -1,4 +1,4 @@
-import Link from "next/link";
+import PageContextBar from "@/app/app-shell/page-context-bar";
 import { notFound } from "next/navigation";
 
 import ApprovalPanel from "@/app/stocktakes/components/approval-panel";
@@ -234,20 +234,12 @@ export default async function StocktakeDetailPage({
 
   return (
     <main className="min-h-screen bg-slate-950 text-slate-100">
-      <header className="border-b border-white/10 bg-slate-950/90">
-        <div className="mx-auto flex max-w-6xl items-center justify-between gap-5 px-5 py-4 lg:px-8">
-          <div>
-            <p className="font-mono text-xs uppercase tracking-[0.2em] text-emerald-300">
-              {details.stocktake_no}
-            </p>
-            <p className="mt-1 text-sm text-slate-400">Stocktake session</p>
-          </div>
-
-          <Link className="nav-link border border-white/10" href="/stocktakes">
-            Kembali ke daftar
-          </Link>
-        </div>
-      </header>
+      <PageContextBar
+        backHref="/stocktakes"
+        backLabel="Kembali ke daftar"
+        eyebrow={details.stocktake_no}
+        title="Stocktake session"
+      />
 
       <div className="mx-auto max-w-6xl px-5 py-8 lg:px-8">
         <section>

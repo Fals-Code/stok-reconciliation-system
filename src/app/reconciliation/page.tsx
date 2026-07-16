@@ -1,6 +1,7 @@
 import { randomUUID } from "node:crypto";
 
 import Link from "next/link";
+import PageSectionNav from "@/app/app-shell/page-section-nav";
 
 import { runReconciliationAction } from "@/app/actions";
 import {
@@ -570,45 +571,13 @@ export default async function ReconciliationPage({
 
   return (
     <main className="min-h-screen bg-slate-950 text-slate-100">
-      <header className="sticky top-0 z-20 border-b border-white/10 bg-slate-950/90 backdrop-blur">
-        <div className="mx-auto flex max-w-[1500px] items-center justify-between gap-5 px-5 py-4 lg:px-8">
-          <div>
-            <p className="font-mono text-xs uppercase tracking-[0.2em] text-emerald-300">
-              GlowLab Inventory
-            </p>
-            <p className="mt-1 text-sm text-slate-400">
-              Kontrol konsistensi stok
-            </p>
-          </div>
-
-          <nav className="hidden items-center gap-2 text-sm md:flex">
-            <a className="nav-link" href="#overview">
-              Ringkasan
-            </a>
-            <a className="nav-link" href="#issues">
-              Masalah
-            </a>
-            <a className="nav-link" href="#runs">
-              Riwayat
-            </a>
-          </nav>
-
-          <div className="flex min-w-0 flex-1 items-center justify-end gap-2 overflow-x-auto pb-1 [&>*]:shrink-0">
-            <Link className="nav-link border border-white/10" href="/stocktakes">
-              Stocktakes
-            </Link>
-            <Link className="nav-link border border-white/10" href="/marketplace">
-              Marketplace
-            </Link>
-            <Link className="nav-link border border-white/10" href="/returns">
-              Retur
-            </Link>
-            <Link className="nav-link border border-white/10" href="/">
-              Dashboard
-            </Link>
-          </div>
-        </div>
-      </header>
+      <PageSectionNav
+        items={[
+          { href: "#overview", label: "Ringkasan" },
+          { href: "#issues", label: "Masalah" },
+          { href: "#runs", label: "Riwayat" },
+        ]}
+      />
 
       <div className="mx-auto max-w-[1500px] px-5 py-8 lg:px-8">
         <section id="overview" className="scroll-mt-24">

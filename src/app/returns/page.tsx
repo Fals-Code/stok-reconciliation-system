@@ -1,4 +1,5 @@
 import Link from "next/link";
+import PageSectionNav from "@/app/app-shell/page-section-nav";
 
 import {
   confirmReturnReceiptAction,
@@ -331,38 +332,14 @@ export default async function ReturnsPage({
 
   return (
     <main className="min-h-screen bg-slate-950 text-slate-100">
-      <header className="sticky top-0 z-20 border-b border-white/10 bg-slate-950/90 backdrop-blur">
-        <div className="mx-auto flex max-w-[1500px] items-center justify-between gap-5 px-5 py-4 lg:px-8">
-          <div>
-            <p className="font-mono text-xs uppercase tracking-[0.2em] text-emerald-300">
-              GlowLab Returns
-            </p>
-            <p className="mt-1 text-sm text-slate-400">
-              Quarantine-first return control
-            </p>
-          </div>
-          <nav className="hidden items-center gap-2 text-sm md:flex">
-            <a className="nav-link" href="#overview">Overview</a>
-            <a className="nav-link" href="#actions">Actions</a>
-            <a className="nav-link" href="#returns">Returns</a>
-            <a className="nav-link" href="#timeline">Timeline</a>
-          </nav>
-          <div className="flex min-w-0 flex-1 items-center justify-end gap-2 overflow-x-auto pb-1 [&>*]:shrink-0">
-            <Link className="nav-link border border-white/10" href="/stocktakes">
-              Stocktakes
-            </Link>
-            <Link className="nav-link border border-white/10" href="/marketplace">
-              Marketplace
-            </Link>
-            <Link className="nav-link border border-white/10" href="/reconciliation">
-              Reconciliation
-            </Link>
-            <Link className="nav-link border border-white/10" href="/">
-              Dashboard
-            </Link>
-          </div>
-        </div>
-      </header>
+      <PageSectionNav
+        items={[
+          { href: "#overview", label: "Ringkasan" },
+          { href: "#actions", label: "Actions" },
+          { href: "#returns", label: "Returns" },
+          { href: "#timeline", label: "Timeline" },
+        ]}
+      />
 
       <div className="mx-auto max-w-[1500px] px-5 py-8 lg:px-8">
         <section id="overview" className="scroll-mt-24">
