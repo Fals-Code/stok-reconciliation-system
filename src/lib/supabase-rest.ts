@@ -409,6 +409,38 @@ export type NotificationListFilters = {
   beforeId?: string | null;
 };
 
+export type NotificationReadStateCode =
+  | "UNREAD"
+  | "READ"
+  | "ARCHIVED_FOR_USER";
+
+export type NotificationReadStateMutationResponse = {
+  notificationId: string;
+  userId: string;
+  action:
+    | "SET_UNREAD"
+    | "SET_READ"
+    | "SET_ARCHIVED"
+    | "ALREADY_UNREAD"
+    | "ALREADY_READ"
+    | "ALREADY_ARCHIVED";
+  readStateCode: NotificationReadStateCode;
+  notificationVersionNo: number;
+};
+
+export type NotificationLifecycleMutationResponse = {
+  notificationId: string;
+  action:
+    | "ACKNOWLEDGED"
+    | "ALREADY_ACKNOWLEDGED"
+    | "ACKNOWLEDGMENT_REVOKED"
+    | "ALREADY_OPEN";
+  lifecycleStatusCode: "OPEN" | "ACKNOWLEDGED";
+  acknowledgedAt?: string | null;
+  acknowledgedBy?: string | null;
+  versionNo: number;
+};
+
 export type DashboardData = {
   products: ProductInventory[];
   batches: BatchInventory[];
@@ -702,6 +734,45 @@ export async function getNotificationEventHistory(
       p_limit: limit,
       p_after_occurred_at: null,
       p_after_id: null,
+    },
+  );
+}
+
+export async function setNotificationReadState(
+  notificationId: string,
+  readStateCode: NotificationReadStateCode,
+) {
+  return callRpc<NotificationReadStateMutationResponse>(
+    "set_notification_read_state",
+    {
+      p_notification_id: notificationId,
+      p_read_state_code: readStateCode,
+    },
+  );
+}
+
+export async function acknowledgeNotification(
+  notificationId: string,
+  note: string | null = null,
+) {
+  return callRpc<NotificationLifecycleMutationResponse>(
+    "acknowledge_notification",
+    {
+      p_notification_id: notificationId,
+      p_note: note,
+    },
+  );
+}
+
+export async function revokeNotificationAcknowledgment(
+  notificationId: string,
+  note: string | null = null,
+) {
+  return callRpc<NotificationLifecycleMutationResponse>(
+    "revoke_notification_acknowledgment",
+    {
+      p_notification_id: notificationId,
+      p_note: note,
     },
   );
 }

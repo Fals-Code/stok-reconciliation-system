@@ -3,6 +3,11 @@ import type { ReactNode } from "react";
 
 import PageSectionNav from "@/app/app-shell/page-section-nav";
 import {
+  acknowledgeNotificationAction,
+  revokeNotificationAcknowledgmentAction,
+  setNotificationReadStateAction,
+} from "@/app/notifications/actions";
+import {
   getNotificationDetail,
   getNotificationEventHistory,
   getNotificationList,
@@ -10,6 +15,7 @@ import {
   type NotificationEventHistoryItem,
   type NotificationListItem,
   type NotificationListFilters,
+  type NotificationReadStateCode,
 } from "@/lib/supabase-rest";
 
 export const dynamic = "force-dynamic";
@@ -27,6 +33,8 @@ type SearchParams = {
   before?: string;
   beforeId?: string;
   notificationId?: string;
+  success?: string;
+  error?: string;
 };
 
 type FilterState = {
@@ -355,6 +363,175 @@ function DetailField({
   );
 }
 
+const READ_STATE_ACTIONS = [
+  {
+    code: "UNREAD",
+    label: "Tandai belum dibaca",
+    description: "Kembalikan alert ke antrean unread akun ini.",
+  },
+  {
+    code: "READ",
+    label: "Tandai sudah dibaca",
+    description: "Simpan versi notification yang sudah dilihat.",
+  },
+  {
+    code: "ARCHIVED_FOR_USER",
+    label: "Arsipkan",
+    description: "Sembunyikan alert dari daftar utama akun ini.",
+  },
+] as const satisfies readonly {
+  code: NotificationReadStateCode;
+  label: string;
+  description: string;
+}[];
+
+function ActionContextFields({
+  notificationId,
+  returnTo,
+}: {
+  notificationId: string;
+  returnTo: string;
+}) {
+  return (
+    <>
+      <input name="notificationId" type="hidden" value={notificationId} />
+      <input name="returnTo" type="hidden" value={returnTo} />
+    </>
+  );
+}
+
+function NotificationActions({
+  detail,
+  returnTo,
+}: {
+  detail: NotificationDetail;
+  returnTo: string;
+}) {
+  const readActions = READ_STATE_ACTIONS.filter(
+    (action) => action.code !== detail.read_state_code,
+  );
+
+  return (
+    <section className="mt-6 grid gap-5 xl:grid-cols-2">
+      <div className="rounded-2xl border border-white/10 bg-white/[0.02] p-5">
+        <p className="section-kicker">Status pribadi</p>
+        <h3 className="mt-1 text-lg font-semibold text-white">
+          Atur status baca akun ini.
+        </h3>
+        <p className="mt-2 text-sm leading-6 text-slate-500">
+          Perubahan ini tidak mengubah lifecycle organisasi atau status untuk
+          Admin lain.
+        </p>
+
+        <div className="mt-5 space-y-3">
+          {readActions.map((action) => (
+            <form
+              action={setNotificationReadStateAction}
+              className="flex flex-col gap-3 rounded-xl border border-white/10 bg-slate-950/45 p-4 sm:flex-row sm:items-center sm:justify-between"
+              key={action.code}
+            >
+              <ActionContextFields
+                notificationId={detail.notification_id}
+                returnTo={returnTo}
+              />
+              <input
+                name="readStateCode"
+                type="hidden"
+                value={action.code}
+              />
+              <div>
+                <p className="text-sm font-medium text-slate-200">
+                  {action.label}
+                </p>
+                <p className="mt-1 text-xs leading-5 text-slate-500">
+                  {action.description}
+                </p>
+              </div>
+              <button
+                className={[
+                  "shrink-0 rounded-xl border px-3 py-2 text-sm font-medium transition",
+                  action.code === "ARCHIVED_FOR_USER"
+                    ? "border-amber-400/20 bg-amber-400/[0.07] text-amber-100 hover:bg-amber-400/10"
+                    : "border-white/10 bg-white/[0.035] text-slate-200 hover:border-emerald-400/25 hover:bg-emerald-400/[0.08]",
+                ].join(" ")}
+                type="submit"
+              >
+                {action.label}
+              </button>
+            </form>
+          ))}
+        </div>
+      </div>
+
+      <div className="rounded-2xl border border-white/10 bg-white/[0.02] p-5">
+        <p className="section-kicker">Lifecycle organisasi</p>
+        <h3 className="mt-1 text-lg font-semibold text-white">
+          Catat tanggung jawab atas alert.
+        </h3>
+        <p className="mt-2 text-sm leading-6 text-slate-500">
+          Acknowledge dan pembatalannya ditulis ke audit trail dan berlaku
+          untuk organisasi, bukan hanya akun ini.
+        </p>
+
+        {detail.lifecycle_status_code === "OPEN" ? (
+          <form action={acknowledgeNotificationAction} className="mt-5">
+            <ActionContextFields
+              notificationId={detail.notification_id}
+              returnTo={returnTo}
+            />
+            <label className="field-label">
+              Catatan acknowledgment
+              <textarea
+                maxLength={2000}
+                name="note"
+                placeholder="Opsional: siapa yang menindaklanjuti dan langkah awalnya."
+                rows={4}
+              />
+            </label>
+            <button className="primary-button mt-4" type="submit">
+              Acknowledge notification
+            </button>
+          </form>
+        ) : null}
+
+        {detail.lifecycle_status_code === "ACKNOWLEDGED" ? (
+          <form
+            action={revokeNotificationAcknowledgmentAction}
+            className="mt-5"
+          >
+            <ActionContextFields
+              notificationId={detail.notification_id}
+              returnTo={returnTo}
+            />
+            <label className="field-label">
+              Alasan pembatalan
+              <textarea
+                maxLength={2000}
+                name="note"
+                placeholder="Opsional: jelaskan mengapa alert perlu kembali open."
+                rows={4}
+              />
+            </label>
+            <button
+              className="mt-4 rounded-xl border border-amber-400/25 bg-amber-400/[0.07] px-4 py-2.5 text-sm font-semibold text-amber-100 transition hover:bg-amber-400/12"
+              type="submit"
+            >
+              Batalkan acknowledgment
+            </button>
+          </form>
+        ) : null}
+
+        {detail.lifecycle_status_code === "RESOLVED" ? (
+          <div className="mt-5 rounded-xl border border-emerald-400/20 bg-emerald-400/[0.055] p-4 text-sm leading-6 text-emerald-100">
+            Notification sudah resolved. Lifecycle ditutup oleh evaluator dan
+            tidak dapat di-acknowledge ulang.
+          </div>
+        ) : null}
+      </div>
+    </section>
+  );
+}
+
 function NotificationDetailPanel({
   detail,
   history,
@@ -406,6 +583,11 @@ function NotificationDetailPanel({
         />
         <Pill label={labelFromCode(detail.category_code)} tone="neutral" />
       </div>
+
+      <NotificationActions
+        detail={detail}
+        returnTo={notificationHref(state, {}, "detail")}
+      />
 
       <dl className="mt-6 grid gap-3 sm:grid-cols-2">
         <DetailField label="Rule" value={detail.rule_code} />
@@ -538,6 +720,10 @@ export default async function NotificationsPage({
 }) {
   const params = await searchParams;
   const state = normalizeSearchParams(params);
+  const feedbackError = params.error?.trim().slice(0, 500) || null;
+  const feedbackSuccess = feedbackError
+    ? null
+    : params.success?.trim().slice(0, 500) || null;
 
   const filters: NotificationListFilters = {
     lifecycleStatusCode:
@@ -639,6 +825,18 @@ export default async function NotificationsPage({
             ))}
           </div>
         </section>
+
+        {feedbackSuccess ? (
+          <div className="mt-6 rounded-2xl border border-emerald-400/20 bg-emerald-400/10 px-5 py-4 text-sm text-emerald-100">
+            {feedbackSuccess}
+          </div>
+        ) : null}
+
+        {feedbackError ? (
+          <div className="mt-6 rounded-2xl border border-rose-400/20 bg-rose-400/10 px-5 py-4 text-sm text-rose-100">
+            {feedbackError}
+          </div>
+        ) : null}
 
         <section className="mt-10 scroll-mt-24" id="filters">
           <div className="mb-5">
