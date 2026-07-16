@@ -1,22 +1,37 @@
 ---
 title: "Product Requirements Document - Sistem Rekonsiliasi Stok"
 document_id: "02-product-requirements"
-version: "1.0.0"
-status: "Draft for Phase 1 Delivery"
-last_updated: "2026-07-12"
+version: "1.0.1"
+status: "Phase 1 Baseline - Role Model Superseded"
+last_updated: "2026-07-16"
 language: "id-ID"
 timezone: "Asia/Jakarta"
 product_phase: "Phase 1 / MVP"
 depends_on:
   - "stok-management-system.pdf"
   - "01-project-brief.md"
+  - "06-user-roles-and-flows.md"
 source_of_truth_order:
   - "Keputusan bisnis eksplisit pada stok-management-system.pdf"
   - "Klarifikasi dan guardrail pada 01-project-brief.md"
   - "Keputusan produk terdokumentasi setelah PRD ini"
+  - "06-user-roles-and-flows.md untuk keputusan role, approval, dan hak akses"
 ---
 
 # Product Requirements Document: Sistem Rekonsiliasi Stok
+
+> [!IMPORTANT]
+> **Pemberitahuan perubahan model role**
+>
+> Keputusan produk terbaru menetapkan bahwa Fase 1 memiliki tepat satu role aplikasi, yaitu `ADMIN`.
+> Seluruh definisi role, approval, dan hak akses pada dokumen ini tunduk pada
+> [`06-user-roles-and-flows.md`](./06-user-roles-and-flows.md).
+>
+> Referensi lama terhadap `OPERATOR`, `VIEWER`, `WAREHOUSE_OPERATOR`,
+> `OWNER_VIEWER`, atau pemisahan kemampuan berdasarkan role tidak lagi menjadi
+> requirement aktif Fase 1. Beberapa akun Admin individual tetap diperbolehkan
+> dan seluruh tindakan harus tetap dikaitkan dengan actor serta organisasi yang
+> terautentikasi.
 
 ## 1. Tujuan Dokumen
 
@@ -75,7 +90,7 @@ Pada fase 1, produk harus memungkinkan tim gudang untuk:
 | KPI-04 | Alokasi batch salah | 0 pada pengujian FEFO, split batch, kedaluwarsa, dan stok tidak cukup |
 | KPI-05 | Saldo negatif | 0 saldo negatif yang dapat diposting melalui jalur resmi |
 | KPI-06 | Drill-down transaksi | Seluruh saldo uji dapat ditelusuri sampai movement dan dokumen sumber |
-| KPI-07 | Alur operator | Penerimaan, outbound, retur, dan opname dapat diselesaikan tanpa akses database |
+| KPI-07 | Alur Admin | Penerimaan, outbound, retur, dan opname dapat diselesaikan tanpa akses database |
 | KPI-08 | Deployment | Aplikasi live, seed demo tersedia, dan alur inti dapat dicoba langsung |
 
 Target ini mengukur kebenaran sistem, bukan metrik kosmetik seperti jumlah tombol. Inventaris yang salah tetap salah meskipun tombolnya memiliki animasi yang sangat halus.
@@ -110,7 +125,7 @@ Simulator, impor CSV, dan API marketplace masa depan harus menghasilkan event ka
 
 Ketika invariant tidak terpenuhi, sistem harus menolak transaksi secara utuh dan menjelaskan penyebabnya.
 
-### P-08. Antarmuka ditujukan untuk operator gudang
+### P-08. Antarmuka ditujukan untuk Admin operasional stok
 
 Bahasa, urutan langkah, dan pesan kesalahan harus menggunakan istilah bisnis yang dapat dipahami tanpa pengetahuan teknis.
 
@@ -137,55 +152,44 @@ Bahasa, urutan langkah, dan pesan kesalahan harus menggunakan istilah bisnis yan
 
 ## 6. Pengguna dan Hak Utama
 
-### 6.1 Admin
+### 6.1 Admin Operasional Stok
 
-Tujuan utama Admin adalah menjaga konfigurasi, integritas data, dan persetujuan tindakan berisiko.
+Fase 1 memiliki tepat satu role aplikasi:
+
+```text
+ADMIN
+```
+
+Sistem dapat memiliki beberapa akun Admin individual agar setiap mutation,
+approval, posting, dan tindakan audit dapat dikaitkan dengan actor yang benar.
 
 Admin dapat:
 
-- Mengelola pengguna dan peran.
-- Mengelola produk, batch, resep bundle, alasan, kanal, dan konfigurasi notifikasi.
-- Mencatat dan memposting transaksi operasional.
-- Menyetujui koreksi stok opname.
-- Membuat reversal sesuai wewenang.
-- Menjalankan simulator, impor, dan rekonsiliasi.
-- Melihat seluruh ledger dan audit trail.
+- melihat dashboard, posisi stok, batch, ledger, dan audit trail;
+- mengelola produk, batch, bundle, kanal, alasan, dan mapping marketplace;
+- mencatat receipt dan outbound manual;
+- menjalankan simulator marketplace;
+- menerima dan menginspeksi retur;
+- menjalankan stocktake, review, approval, dan posting adjustment;
+- menjalankan rekonsiliasi;
+- membuat reversal sesuai invariant domain;
+- meninjau dan mengelola notifikasi;
+- mengelola akun Admin lain sesuai guardrail keamanan.
 
-### 6.2 Operator Gudang
+Hak Admin tidak mengizinkan:
 
-Tujuan utama Operator adalah mencatat kejadian fisik dengan cepat dan benar.
+- mengedit saldo secara langsung;
+- mengubah atau menghapus ledger entry yang telah diposting;
+- melewati FEFO pada outbound normal;
+- menjadikan unidentified return batch sebagai `SELLABLE`;
+- memakai `service_role` dari browser;
+- melewati tenant isolation, RLS, idempotency, atau validasi domain.
 
-Operator dapat:
+### 6.2 Status bagian multi-role sebelumnya
 
-- Mencatat penerimaan barang.
-- Memproses pengeluaran manual.
-- Memproses status pengiriman pesanan.
-- Menerima dan menginspeksi retur.
-- Mengisi hasil hitung stok opname.
-- Melihat stok, batch, notifikasi, dan riwayat yang relevan.
-
-Operator tidak dapat:
-
-- Mengubah movement yang telah diposting.
-- Mengedit saldo secara langsung.
-- Memilih batch untuk pengiriman normal ketika FEFO berlaku.
-- Menyetujui koreksi opname miliknya sendiri apabila kebijakan persetujuan aktif.
-
-### 6.3 Owner atau Viewer
-
-Tujuan utama Viewer adalah memantau posisi stok dan risiko operasional.
-
-Viewer dapat melihat:
-
-- Dashboard.
-- Posisi stok dan batch.
-- Ledger.
-- Retur dan klaim.
-- Hasil opname.
-- Issue rekonsiliasi.
-- Audit trail.
-
-Viewer tidak dapat membuat atau memposting transaksi.
+Model multi-role pada versi awal PRD
+telah **superseded**. Perbedaan tugas operasional tetap dapat dijalankan oleh
+akun Admin yang berbeda, tetapi bukan melalui role aplikasi yang berbeda.
 
 ## 7. Prioritas Requirement
 
@@ -198,24 +202,25 @@ Setiap requirement menggunakan skala berikut:
 
 ## 8. Matriks Hak Akses Ringkas
 
-| Kemampuan | Admin | Operator | Viewer |
-|---|:---:|:---:|:---:|
-| Melihat dashboard dan stok | Ya | Ya | Ya |
-| Mengelola produk dan batch | Ya | Terbatas lihat | Tidak |
-| Posting penerimaan | Ya | Ya | Tidak |
-| Posting outbound manual | Ya | Ya | Tidak |
-| Memproses event pesanan | Ya | Ya | Tidak |
-| Inspeksi retur | Ya | Ya | Tidak |
-| Membuat sesi opname | Ya | Ya | Tidak |
-| Mengisi hitung fisik | Ya | Ya | Tidak |
-| Menyetujui koreksi opname | Ya | Tidak | Tidak |
-| Membuat reversal | Ya | Tidak | Tidak |
-| Menjalankan simulator | Ya | Terbatas environment demo | Tidak |
-| Mengimpor CSV | Ya | Ya sesuai tipe impor | Tidak |
-| Mengelola pengguna | Ya | Tidak | Tidak |
-| Melihat audit trail | Ya | Terbatas aktivitas terkait | Ya |
+Matriks multi-role pada versi awal PRD telah **superseded**.
 
-Hak final harus ditegakkan pada sisi server dan database. Menyembunyikan tombol saja bukan otorisasi; itu sekadar dekorasi keamanan.
+| Kemampuan | ADMIN |
+|---|:---:|
+| Melihat dashboard, stok, batch, ledger, dan audit trail | Ya |
+| Mengelola produk, batch, bundle, kanal, dan alasan | Ya |
+| Posting penerimaan | Ya |
+| Posting outbound manual | Ya |
+| Memproses event marketplace | Ya |
+| Menerima dan menginspeksi retur | Ya |
+| Membuat dan menjalankan stocktake | Ya |
+| Review, approval, dan posting adjustment | Ya |
+| Membuat reversal yang memenuhi invariant | Ya |
+| Menjalankan simulator, import, dan rekonsiliasi | Ya |
+| Mengelola akun Admin | Ya |
+
+Seluruh kemampuan tetap dibatasi oleh autentikasi, status akun aktif,
+organization scope, RLS, validation, idempotency, dan business rules. Satu role
+bukan berarti satu akun dan bukan pula izin untuk melewati domain contract.
 
 ## 9. Cakupan Fase 1
 
@@ -272,14 +277,15 @@ Sistem harus menyediakan login untuk pengguna terdaftar.
 
 **Prioritas:** Must
 
-Setiap profil pengguna harus memiliki satu role aktif: `ADMIN`, `OPERATOR`, atau `VIEWER`.
+Setiap profil pengguna aktif harus memiliki role aplikasi konstan `ADMIN`.
 
 **Acceptance criteria:**
 
-- Role menentukan kemampuan baca dan mutasi.
-- Penolakan akses berlaku pada UI, server, dan database.
-- Perubahan role tercatat pada audit trail.
-
+- UI tidak menyediakan pilihan role.
+- Role aplikasi tidak dapat diubah menjadi role lain pada Fase 1.
+- Akses tetap memerlukan autentikasi, profil aktif, dan organization scope yang valid.
+- Seluruh mutation tetap tunduk pada RLS, authorization server-side, idempotency, dan business rules.
+- Role infrastruktur seperti `anon`, `authenticated`, dan `service_role` bukan role aplikasi.
 ### AUTH-003 - Status akun
 
 **Prioritas:** Must
@@ -296,8 +302,10 @@ Admin dapat mengaktifkan atau menonaktifkan akun tanpa menghapus histori penggun
 
 **Prioritas:** Should
 
-Admin dapat mengatur nama tampilan, role, dan status akun. Pengguna dapat melihat identitas dan role sendiri.
+Admin dapat mengatur nama tampilan dan status akun. Role aplikasi selalu
+`ADMIN` dan tidak tersedia sebagai field yang dapat diedit.
 
+Pengguna dapat melihat identitas, organisasi, status akun, dan role dirinya.
 ## 11. Requirement Master Produk dan Batch
 
 ### PRD-001 - Membuat produk
@@ -346,7 +354,7 @@ Produk yang pernah memiliki transaksi tidak boleh dihapus permanen melalui UI.
 
 **Prioritas:** Must
 
-Admin atau Operator yang berwenang dapat membuat batch dengan:
+Admin dapat membuat batch dengan:
 
 - Produk.
 - Kode batch.
@@ -452,7 +460,7 @@ Sistem dapat menyimpan angka spreadsheet lama sebagai pembanding tanpa menjadika
 
 **Prioritas:** Must
 
-Admin atau Operator dapat membuat penerimaan dari maklon dengan:
+Admin dapat membuat penerimaan dari maklon dengan:
 
 - Nomor referensi dokumen.
 - Tanggal dan waktu diterima.
@@ -662,7 +670,7 @@ Jika available tidak mencukupi, sistem tidak membuat reservasi parsial secara di
 - Pesanan ditandai `STOCK_EXCEPTION` atau status ekuivalen.
 - Kekurangan per produk ditampilkan.
 - Tidak ada reserved negatif atau melebihi sellable.
-- Admin/Operator dapat memproses setelah stok tersedia.
+- Admin/Admin dapat memproses setelah stok tersedia.
 
 ### ORD-005 - Timeline pesanan
 
@@ -872,7 +880,7 @@ Event marketplace atau input resmi dapat membuat retur yang mereferensikan pesan
 
 **Prioritas:** Must
 
-Operator dapat menandai item retur telah tiba.
+Admin dapat menandai item retur telah tiba.
 
 **Acceptance criteria:**
 
@@ -884,7 +892,7 @@ Operator dapat menandai item retur telah tiba.
 
 **Prioritas:** Must
 
-Operator memilih hasil per item:
+Admin memilih hasil per item:
 
 - `SELLABLE`.
 - `DAMAGED`.
@@ -1138,7 +1146,7 @@ Pengguna dapat mengekspor hasil filter ledger ke CSV tanpa mengubah data.
 
 **Prioritas:** Must
 
-Admin atau Operator dapat membuat sesi opname dengan scope produk atau seluruh gudang.
+Admin dapat membuat sesi opname dengan scope produk atau seluruh gudang.
 
 ### STK-002 - Status opname
 
@@ -1168,7 +1176,7 @@ Ketika sesi dimulai, sistem menyimpan snapshot saldo per produk, batch, dan buck
 
 **Prioritas:** Must
 
-Operator dapat mengisi kuantitas fisik per produk, batch, dan kondisi.
+Admin dapat mengisi kuantitas fisik per produk, batch, dan kondisi.
 
 **Acceptance criteria:**
 
@@ -1841,110 +1849,110 @@ Cabang:
 
 ### AT-01 - Penerimaan barang
 
-**Given** Produk A dan Batch A1 valid.  
-**When** operator memposting penerimaan 100 unit ke sellable.  
+**Given** Produk A dan Batch A1 valid.
+**When** Admin memposting penerimaan 100 unit ke sellable.
 **Then** sellable dan on hand bertambah 100, ledger memiliki movement inbound, serta dokumen dapat ditelusuri dua arah.
 
 ### AT-02 - Pesanan baru hanya mereservasi
 
-**Given** Produk A sellable 100 dan reserved 0.  
-**When** pesanan 10 unit diterima.  
+**Given** Produk A sellable 100 dan reserved 0.
+**When** pesanan 10 unit diterima.
 **Then** on hand tetap 100, reserved 10, available 90, dan belum ada outbound final.
 
 ### AT-03 - Pengiriman FEFO split batch
 
-**Given** Batch A1 tersedia 5 dengan kedaluwarsa lebih dekat dan A2 tersedia 20.  
-**When** pesanan 10 unit mencapai trigger keluar.  
+**Given** Batch A1 tersedia 5 dengan kedaluwarsa lebih dekat dan A2 tersedia 20.
+**When** pesanan 10 unit mencapai trigger keluar.
 **Then** sistem mengalokasikan 5 dari A1 dan 5 dari A2 serta membuat movement per batch.
 
 ### AT-04 - Pembatalan sebelum keluar
 
-**Given** pesanan masih reserved.  
-**When** event pembatalan diterima.  
+**Given** pesanan masih reserved.
+**When** event pembatalan diterima.
 **Then** reservasi dilepas dan tidak ada inbound maupun outbound fisik.
 
 ### AT-05 - Pembatalan setelah keluar
 
-**Given** pesanan telah `PHYSICALLY_OUT`.  
-**When** event pembatalan diterima.  
+**Given** pesanan telah `PHYSICALLY_OUT`.
+**When** event pembatalan diterima.
 **Then** stok tidak langsung bertambah dan proses pengembalian dibuat.
 
 ### AT-06 - Retur layak jual
 
-**Given** retur 2 unit diharapkan.  
-**When** barang diterima ke quarantine lalu diinspeksi sellable.  
+**Given** retur 2 unit diharapkan.
+**When** barang diterima ke quarantine lalu diinspeksi sellable.
 **Then** quarantine kembali nol, sellable bertambah 2, dan batch asal tertaut.
 
 ### AT-07 - Retur rusak
 
-**Given** retur 1 unit diterima ke quarantine.  
-**When** operator menetapkan damaged.  
+**Given** retur 1 unit diterima ke quarantine.
+**When** Admin menetapkan damaged.
 **Then** damaged bertambah 1, sellable tidak bertambah, dan movement transfer tercatat.
 
 ### AT-08 - Retur hilang
 
-**Given** barang retur tidak pernah tiba.  
-**When** ditetapkan lost.  
+**Given** barang retur tidak pernah tiba.
+**When** ditetapkan lost.
 **Then** tidak ada inbound dan kasus klaim memiliki tenggat.
 
 ### AT-09 - Bonus manual
 
-**Given** stok tersedia mencukupi.  
-**When** operator mengeluarkan 3 unit dengan alasan bonus dan kanal manual.  
+**Given** stok tersedia mencukupi.
+**When** Admin mengeluarkan 3 unit dengan alasan bonus dan kanal manual.
 **Then** outbound memakai FEFO dan ledger menyimpan alasan serta kanal terpisah.
 
 ### AT-10 - Bundle
 
-**Given** satu bundle berisi 2 Produk A dan 1 Produk B.  
-**When** pesanan 3 bundle diterima.  
+**Given** satu bundle berisi 2 Produk A dan 1 Produk B.
+**When** pesanan 3 bundle diterima.
 **Then** kebutuhan menjadi 6 A dan 3 B tanpa membuat stok bundle.
 
 ### AT-11 - Duplikasi event
 
-**Given** event pengiriman telah diproses.  
-**When** event dengan source dan external event ID sama dikirim lagi.  
+**Given** event pengiriman telah diproses.
+**When** event dengan source dan external event ID sama dikirim lagi.
 **Then** tidak terbentuk reservasi, alokasi, movement, atau status ganda.
 
 ### AT-12 - Stok tidak cukup
 
-**Given** kebutuhan 10 dan available 8.  
-**When** posting outbound dijalankan.  
+**Given** kebutuhan 10 dan available 8.
+**When** posting outbound dijalankan.
 **Then** seluruh proses gagal tanpa alokasi parsial atau perubahan saldo.
 
 ### AT-13 - Stok opname
 
-**Given** expected balance 50 dan hitung fisik 47.  
-**When** koreksi disetujui dan diposting.  
+**Given** expected balance 50 dan hitung fisik 47.
+**When** koreksi disetujui dan diposting.
 **Then** adjustment -3 dibuat, movement awal tetap ada, dan laporan menyimpan approver.
 
 ### AT-14 - Rekonsiliasi menemukan outbound tanpa movement
 
-**Given** data uji mengandung pesanan keluar tanpa ledger.  
-**When** rekonsiliasi dijalankan.  
+**Given** data uji mengandung pesanan keluar tanpa ledger.
+**When** rekonsiliasi dijalankan.
 **Then** issue severity tinggi dibuat dan dapat dibuka ke pesanan terkait.
 
 ### AT-15 - Dua pengiriman bersamaan
 
-**Given** available hanya cukup untuk satu dari dua transaksi bersamaan.  
-**When** kedua transaksi diposting secara konkuren.  
+**Given** available hanya cukup untuk satu dari dua transaksi bersamaan.
+**When** kedua transaksi diposting secara konkuren.
 **Then** maksimal satu berhasil dan saldo tidak negatif.
 
 ### AT-16 - Batch kedaluwarsa dilewati
 
-**Given** batch terdekat telah expired dan batch berikutnya masih valid.  
-**When** FEFO dijalankan.  
+**Given** batch terdekat telah expired dan batch berikutnya masih valid.
+**When** FEFO dijalankan.
 **Then** batch expired tidak digunakan.
 
 ### AT-17 - Reversal tidak menghapus histori
 
-**Given** satu movement inbound valid.  
-**When** Admin membalik transaksi.  
+**Given** satu movement inbound valid.
+**When** Admin membalik transaksi.
 **Then** movement awal dan reversal keduanya tetap terlihat serta saldo bersih sesuai.
 
 ### AT-18 - Impor campuran valid dan invalid
 
-**Given** file memiliki baris valid, invalid, dan duplikat.  
-**When** validasi dijalankan.  
+**Given** file memiliki baris valid, invalid, dan duplikat.
+**When** validasi dijalankan.
 **Then** hasil per baris jelas dan tidak ada data berubah sebelum commit.
 
 ## 38. Release Gates Fase 1
@@ -1961,7 +1969,7 @@ Release tidak boleh dinyatakan selesai apabila salah satu kondisi berikut masih 
 8. Database tidak dapat dibangun ulang dari migration.
 9. Seed demo tidak dapat menjalankan alur utama.
 10. Aplikasi belum tersedia pada deployment live.
-11. Operator tidak dapat melihat alasan kegagalan transaksi.
+11. Admin tidak dapat melihat alasan kegagalan transaksi.
 12. Drill-down dari saldo ke dokumen sumber belum berfungsi.
 
 ## 39. Urutan Implementasi yang Disarankan
@@ -2004,7 +2012,7 @@ CRUD produk memang lebih mudah dipamerkan pada hari pertama, tetapi engine stok 
 | Dua ritme rekonsiliasi | REC dan STK |
 | Kondisi retur diputuskan gudang | P-05, RET-002 sampai RET-004 |
 | Stack Next.js + TypeScript + Supabase | NFR dan rujukan teknis |
-| Produk live dan mudah dipakai operator | KPI-07, KPI-08, UX, Release Gates |
+| Produk live dan mudah dipakai Admin | KPI-07, KPI-08, UX, Release Gates |
 
 ## 41. Asumsi Fase 1
 
@@ -2033,7 +2041,7 @@ CRUD produk memang lebih mudah dipamerkan pada hari pertama, tetapi engine stok 
 | OQ-05 | Format ekspor Shopee dan TikTok yang benar-benar tersedia? | Mapping CSV | Klien/Engineering |
 | OQ-06 | Apakah transaksi operasional dihentikan saat opname? | Rumus expected balance | Operasional Gudang |
 | OQ-07 | Berapa batas ukuran file impor fase 1? | UX, validasi, dan performa | Engineering/Product |
-| OQ-08 | Apakah operator boleh memproses ulang event gagal? | Permission dan audit | Product |
+| OQ-08 | Apakah Admin boleh memproses ulang event gagal? | Permission dan audit | Product |
 | OQ-09 | Apakah lokasi rak/bin diperlukan pada fase 1? | Model batch dan counting | Klien/Product |
 | OQ-10 | Toleransi selisih apa yang dianggap kritis per produk? | Severity rekonsiliasi | Klien/Product |
 
@@ -2051,48 +2059,48 @@ Fase 1 dinyatakan selesai ketika:
 - Simulator, CSV, dan event processor menggunakan pipeline yang sama.
 - README menjelaskan setup, environment variable, migration, seed, testing, dan deployment.
 - Data demo mencakup normal flow dan kasus selisih.
-- Operator dapat menyelesaikan penerimaan, pengiriman, retur, dan opname tanpa bantuan developer.
-- Viewer dapat menjelaskan saldo uji melalui drill-down tanpa akses teknis.
+- Admin dapat menyelesaikan penerimaan, pengiriman, retur, dan opname tanpa bantuan developer.
+- Admin dapat menjelaskan saldo uji melalui drill-down tanpa akses teknis.
 - Tidak ada secret atau service-role key di client bundle atau repository.
 
 ## 44. Rujukan Teknis Resmi
 
 Rujukan berikut mendukung requirement teknis dan nonfungsional. Rujukan ini tidak menggantikan keputusan bisnis pada brief klien.
 
-1. Next.js, **Route Handlers**  
+1. Next.js, **Route Handlers**
    https://nextjs.org/docs/app/getting-started/route-handlers
 
-2. Next.js, **App Router**  
+2. Next.js, **App Router**
    https://nextjs.org/docs/app
 
-3. Supabase, **Use Supabase Auth with Next.js**  
+3. Supabase, **Use Supabase Auth with Next.js**
    https://supabase.com/docs/guides/auth/quickstarts/nextjs
 
-4. Supabase, **Row Level Security**  
+4. Supabase, **Row Level Security**
    https://supabase.com/docs/guides/database/postgres/row-level-security
 
-5. Supabase, **Securing Your API**  
+5. Supabase, **Securing Your API**
    https://supabase.com/docs/guides/api/securing-your-api
 
-6. Supabase, **Database Functions**  
+6. Supabase, **Database Functions**
    https://supabase.com/docs/guides/database/functions
 
-7. Supabase, **Testing Overview**  
+7. Supabase, **Testing Overview**
    https://supabase.com/docs/guides/local-development/testing/overview
 
-8. PostgreSQL, **Transaction Isolation**  
+8. PostgreSQL, **Transaction Isolation**
    https://www.postgresql.org/docs/current/transaction-iso.html
 
-9. PostgreSQL, **Explicit Locking**  
+9. PostgreSQL, **Explicit Locking**
    https://www.postgresql.org/docs/current/explicit-locking.html
 
-10. W3C WAI, **WCAG 2.2 Quick Reference**  
+10. W3C WAI, **WCAG 2.2 Quick Reference**
     https://www.w3.org/WAI/WCAG22/quickref/
 
-11. OWASP, **Input Validation Cheat Sheet**  
+11. OWASP, **Input Validation Cheat Sheet**
     https://cheatsheetseries.owasp.org/cheatsheets/Input_Validation_Cheat_Sheet.html
 
-12. OWASP, **Logging Cheat Sheet**  
+12. OWASP, **Logging Cheat Sheet**
     https://cheatsheetseries.owasp.org/cheatsheets/Logging_Cheat_Sheet.html
 
 ## 45. Sumber Proyek

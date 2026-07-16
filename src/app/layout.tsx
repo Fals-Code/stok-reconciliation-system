@@ -1,5 +1,8 @@
 import type { Metadata } from "next";
-import AuthControls from "@/app/auth-controls";
+
+import AppShell from "@/app/app-shell/app-shell";
+import { getAdminSession } from "@/lib/auth";
+
 import "./globals.css";
 
 export const metadata: Metadata = {
@@ -8,16 +11,34 @@ export const metadata: Metadata = {
     "Dashboard operasional untuk penerimaan, outbound FEFO, posisi inventory, dan immutable stock ledger.",
 };
 
-export default function RootLayout({
+export default async function RootLayout({
   children,
 }: Readonly<{
   children: React.ReactNode;
 }>) {
+  const session = await getAdminSession();
+  const appMode =
+    process.env.NEXT_PUBLIC_APP_MODE?.trim().toUpperCase() || "LOCAL";
+
   return (
     <html lang="id" data-scroll-behavior="smooth">
       <body>
-        {children}
-        <AuthControls />
+        {session ? (
+          <AppShell
+            appMode={appMode}
+            profile={{
+              displayName: session.profile.display_name,
+              email: session.user.email ?? null,
+              organizationCode: session.profile.organization_code,
+              organizationName: session.profile.organization_name,
+              roleCode: session.profile.role_code,
+            }}
+          >
+            {children}
+          </AppShell>
+        ) : (
+          children
+        )}
       </body>
     </html>
   );

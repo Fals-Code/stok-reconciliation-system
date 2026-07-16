@@ -33,6 +33,7 @@ Sistem dirancang untuk mencatat setiap pergerakan barang, mengalokasikan batch s
 - [Deployment](#deployment)
 - [Workflow Kontribusi](#workflow-kontribusi)
 - [Troubleshooting](#troubleshooting)
+- [Status Implementasi Fase 1](#status-implementasi-fase-1)
 - [Definition of Done](#definition-of-done)
 - [Referensi Resmi](#referensi-resmi)
 
@@ -1371,39 +1372,66 @@ Public environment variables dapat tertanam saat build.
 
 ---
 
+## Status Implementasi Fase 1
+
+Status berikut menggambarkan source pada branch saat ini. Status ini bukan pengganti acceptance test dan bukan klaim bahwa seluruh Fase 1 telah selesai.
+
+| Area | Status | Tersedia saat ini | Sisa utama |
+|---|---|---|---|
+| Identitas dan Admin Auth | **Implemented** | Login/logout, session server-only, validasi profil aktif `ADMIN`, proteksi route, dan audit actor individual | UI pengelolaan akun Admin |
+| Shared Admin shell | **Implemented** | Sidebar desktop, navigasi mobile, active route, organisasi, mode aplikasi, akun, dan logout | Badge notifikasi serta status rekonsiliasi berbasis data live |
+| Produk dan batch | **Partial** | Schema, seed, read model, posisi produk/batch, dan pilihan transaksi | CRUD master data, pengarsipan, detail batch, bundle, dan mapping listing |
+| Ledger dan projection | **Implemented** | Ledger append-only, idempotent posting, bucket fisik, serta projection produk dan batch | Drill-down lengkap, reversal umum, damaged disposal, dan expired disposal melalui Admin UI |
+| Receipt dan manual outbound | **Implemented** | Receipt dari maklon, outbound manual dengan reason/channel, dan alokasi FEFO | Preview/reversal receipt dan workflow disposal khusus |
+| Marketplace lifecycle | **Implemented** | Reservasi, release/cancel, trigger shipment, physical outbound FEFO, dan simulator Admin | CSV import dan penyelesaian bundle/listing flow |
+| Return dan claim | **Partial** | Expected return, receipt ke `QUARANTINE`, inspeksi net-zero, unidentified batch guardrail, dan lost return | Claim deadline, reminder, overdue, late arrival, dan claim administration |
+| Stocktake | **Implemented** | Create, prepare, continuous count, blind/non-blind count, review, approval immutable, posting adjustment, dan audit linkage | Frozen mode dan penyempurnaan UX lanjutan |
+| Reconciliation | **Implemented** | Manual run, delapan integrity checks, issue, evidence, history, dan Admin UI | Scheduled daily run serta integrasi Notification Center |
+| Notification Center | **Not started** | Business rules dan desain tersedia | Migration, evaluator, dedup episode, outbox, scheduler, RLS, dan UI |
+| CSV import | **Not started** | Contract kanonis telah didokumentasikan | Upload privat, parsing, validation, preview, commit, error report, dan idempotency |
+| Release engineering | **Partial** | Lint, typecheck, build, pgTAP, seed, dan demo bootstrap tersedia secara lokal | GitHub Actions, deployment live, smoke test production, dan final golden demo |
+
+Keterangan:
+
+- **Implemented** berarti alur utama tersedia pada source dan telah memiliki validasi terkait.
+- **Partial** berarti fondasi atau sebagian alur tersedia, tetapi acceptance criteria Fase 1 belum lengkap.
+- **Not started** berarti belum ditemukan implementasi runtime pada source.
+
+---
 ## Definition of Done
 
 Fase 1 tidak selesai hanya karena halaman dapat dibuka.
 
+Checkbox `[x]` berarti requirement utama telah tersedia pada source saat ini. Item parsial tetap dibiarkan belum dicentang sampai seluruh acceptance criteria dan release gate terkait selesai.
+
 Minimum:
 
-- [ ] Login Admin aktif.
-- [ ] Produk dan batch.
-- [ ] Initial balance melalui ledger.
-- [ ] Maklon receipt.
-- [ ] Shopee reservation dan `SHIPPED`.
-- [ ] TikTok reservation dan `IN_TRANSIT`.
-- [ ] FEFO split.
-- [ ] Pembatalan sebelum dan sesudah outbound.
-- [ ] Manual outbound dengan reason/channel.
+- [x] Login Admin aktif.
+- [ ] Produk dan batch. **Partial:** schema, seed, projection, dan read model tersedia; Admin CRUD dan detail master data belum lengkap.
+- [ ] Initial balance melalui ledger. **Partial:** ledger mendukung source movement, tetapi workflow cutover khusus belum lengkap.
+- [x] Maklon receipt.
+- [x] Shopee reservation dan `SHIPPED`.
+- [x] TikTok reservation dan `IN_TRANSIT`.
+- [x] FEFO split.
+- [ ] Pembatalan sebelum dan sesudah outbound. **Partial:** release/cancel reservation tersedia; koreksi setelah physical outbound masih memerlukan reversal/return flow yang lengkap.
+- [x] Manual outbound dengan reason/channel.
 - [ ] Bundle expansion.
-- [ ] Return expected.
-- [ ] Return receipt ke quarantine.
-- [ ] Return inspection.
-- [ ] Lost return dan claim.
+- [x] Return expected.
+- [x] Return receipt ke quarantine.
+- [x] Return inspection.
+- [ ] Lost return dan claim. **Partial:** lost return tersedia; claim deadline, reminder, overdue, dan administrasi claim belum lengkap.
 - [ ] Expiry notification.
-- [ ] Stocktake.
-- [ ] Reconciliation.
+- [x] Stocktake.
+- [x] Reconciliation.
 - [ ] Drill-down ledger.
-- [ ] Simulator.
+- [x] Simulator.
 - [ ] CSV import.
-- [ ] RLS dan security tests.
-- [ ] Concurrency tests.
+- [x] RLS dan security tests.
+- [ ] Concurrency tests. **Partial:** idempotency dan duplicate-effect guardrail tersedia; pengujian race condition paralel masih menjadi release gate.
 - [ ] Deployment live.
 - [ ] Demo script lulus.
-- [ ] Tidak ada unexpected critical reconciliation issue.
-- [ ] Tidak ada harga atau nilai uang.
-
+- [ ] Tidak ada unexpected critical reconciliation issue. **Release gate:** harus dibuktikan dari clean reconciliation run sebelum rilis.
+- [x] Tidak ada harga atau nilai uang.
 ---
 
 ## Referensi Resmi

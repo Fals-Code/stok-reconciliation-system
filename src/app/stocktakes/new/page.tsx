@@ -1,6 +1,7 @@
 import { randomUUID } from "node:crypto";
 
 import Link from "next/link";
+import PageContextBar from "@/app/app-shell/page-context-bar";
 import { redirect } from "next/navigation";
 
 import { createStocktakeAction } from "@/app/stocktakes/actions";
@@ -94,22 +95,12 @@ export default async function NewStocktakePage({
 
   return (
     <main className="min-h-screen bg-slate-950 text-slate-100">
-      <header className="border-b border-white/10 bg-slate-950/90">
-        <div className="mx-auto flex max-w-6xl items-center justify-between gap-5 px-5 py-4 lg:px-8">
-          <div>
-            <p className="font-mono text-xs uppercase tracking-[0.2em] text-emerald-300">
-              Create Stocktake
-            </p>
-            <p className="mt-1 text-sm text-slate-400">
-              Session configuration
-            </p>
-          </div>
-
-          <Link className="nav-link border border-white/10" href="/stocktakes">
-            Kembali ke daftar
-          </Link>
-        </div>
-      </header>
+      <PageContextBar
+        backHref="/stocktakes"
+        backLabel="Kembali ke daftar"
+        eyebrow="Create Stocktake"
+        title="Session configuration"
+      />
 
       <div className="mx-auto max-w-6xl px-5 py-8 lg:px-8">
         <section>
