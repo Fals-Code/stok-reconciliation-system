@@ -333,6 +333,82 @@ export type ReconciliationData = {
   issues: ReconciliationIssue[];
   evidence: ReconciliationIssueEvidence[];
 };
+export type NotificationListItem = {
+  notification_id: string;
+  rule_code: string;
+  notification_type_code: string;
+  category_code: string;
+  entity_type_code: string;
+  entity_id: string;
+  episode_no: number;
+  lifecycle_status_code: "OPEN" | "ACKNOWLEDGED" | "RESOLVED";
+  stage_code: string;
+  severity_code: "INFO" | "WARNING" | "HIGH" | "CRITICAL";
+  title: string;
+  message: string;
+  action_code: string;
+  action_route: string | null;
+  condition_started_at: string;
+  due_at: string | null;
+  first_seen_at: string;
+  last_seen_at: string;
+  occurrence_count: number;
+  acknowledged_at: string | null;
+  acknowledged_by: string | null;
+  acknowledgment_note: string | null;
+  resolved_at: string | null;
+  resolution_code: string | null;
+  read_state_code: "UNREAD" | "READ" | "ARCHIVED_FOR_USER";
+  read_at: string | null;
+  archived_at: string | null;
+  version_no: number;
+};
+
+export type NotificationDetail = NotificationListItem & {
+  previous_notification_id: string | null;
+  rule_id: string;
+  rule_version: string;
+  template_version: string;
+  last_reminded_at: string | null;
+  acknowledged_by_display_name: string | null;
+  resolution_snapshot: Record<string, unknown>;
+  source_snapshot: Record<string, unknown>;
+  config_snapshot: Record<string, unknown>;
+  last_seen_version_no: number | null;
+  created_at: string;
+  updated_at: string;
+};
+
+export type NotificationEventHistoryItem = {
+  event_id: string;
+  event_type_code: string;
+  from_lifecycle_status_code: string | null;
+  to_lifecycle_status_code: string | null;
+  from_stage_code: string | null;
+  to_stage_code: string | null;
+  from_severity_code: string | null;
+  to_severity_code: string | null;
+  source_snapshot: Record<string, unknown>;
+  note: string | null;
+  actor_type_code: string;
+  actor_user_id: string | null;
+  actor_display_name: string | null;
+  process_name: string | null;
+  occurred_at: string;
+  correlation_id: string;
+};
+
+export type NotificationListFilters = {
+  lifecycleStatusCode?: string | null;
+  severityCode?: string | null;
+  categoryCode?: string | null;
+  readStateCode?: string | null;
+  includeArchived?: boolean;
+  limit?: number;
+  beforeLastSeenAt?: string | null;
+  beforeId?: string | null;
+};
+
 export type DashboardData = {
   products: ProductInventory[];
   batches: BatchInventory[];
@@ -580,6 +656,66 @@ export async function getReconciliationRunData(
 
   return { run, checks };
 }
+export async function getNotificationList(
+  filters: NotificationListFilters = {},
+) {
+  return callRpc<NotificationListItem[]>("notification_list", {
+    p_lifecycle_status_code: filters.lifecycleStatusCode ?? null,
+    p_severity_code: filters.severityCode ?? null,
+    p_category_code: filters.categoryCode ?? null,
+    p_read_state_code: filters.readStateCode ?? null,
+    p_include_archived: filters.includeArchived ?? false,
+    p_limit: filters.limit ?? 50,
+    p_before_last_seen_at: filters.beforeLastSeenAt ?? null,
+    p_before_id: filters.beforeId ?? null,
+  });
+}
+
+export async function getNotificationDetail(notificationId: string) {
+  const normalizedNotificationId = notificationId.trim();
+
+  if (!UUID_PATTERN.test(normalizedNotificationId)) {
+    return null;
+  }
+
+  const rows = await callRpc<NotificationDetail[]>("notification_detail", {
+    p_notification_id: normalizedNotificationId,
+  });
+
+  return rows[0] ?? null;
+}
+
+export async function getNotificationEventHistory(
+  notificationId: string,
+  limit = 100,
+) {
+  const normalizedNotificationId = notificationId.trim();
+
+  if (!UUID_PATTERN.test(normalizedNotificationId)) {
+    return [];
+  }
+
+  return callRpc<NotificationEventHistoryItem[]>(
+    "notification_event_history",
+    {
+      p_notification_id: normalizedNotificationId,
+      p_limit: limit,
+      p_after_occurred_at: null,
+      p_after_id: null,
+    },
+  );
+}
+
+export async function getNotificationUnreadCount() {
+  const value = await callRpc<number | string>(
+    "notification_unread_count",
+    {},
+  );
+  const normalized = typeof value === "number" ? value : Number(value);
+
+  return Number.isFinite(normalized) ? normalized : 0;
+}
+
 export async function callRpc<T>(name: string, body: Record<string, unknown>) {
   return apiFetch<T>(`rpc/${name}`, {
     method: "POST",
