@@ -12,7 +12,8 @@
     "lint": "eslint .",
     "typecheck": "tsc --noEmit",
     "demo:admin": "node scripts/create-demo-admin.mjs",
-    "test:notification-write-actions": "node scripts/test-notification-write-actions.mjs"
+    "test:notification-write-actions": "node scripts/test-notification-write-actions.mjs",
+    "test:notification-admin-operations": "node scripts/test-notification-admin-operations.mjs"
   },
   "dependencies": {
     "next": "16.2.10",

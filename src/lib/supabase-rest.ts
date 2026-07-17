@@ -441,6 +441,98 @@ export type NotificationLifecycleMutationResponse = {
   versionNo: number;
 };
 
+
+export type NotificationEvaluationFamilyCode =
+  | "EXPIRY"
+  | "RETURN_INSPECTION"
+  | "RECONCILIATION"
+  | "STOCKTAKE";
+
+export type NotificationOperationsSummary = {
+  organizationId: string;
+  userId: string;
+  generatedAt: string;
+  staleLockTimeoutSeconds: number;
+  outbox: {
+    pendingCount: number;
+    processingCount: number;
+    failedRetryableCount: number;
+    failedFinalCount: number;
+    completedCount: number;
+    actionableCount: number;
+    staleProcessingCount: number;
+    oldestActionableAt: string | null;
+  };
+  ruleRuns: {
+    startedCount: number;
+    succeededLast24Hours: number;
+    partiallyFailedLast24Hours: number;
+    failedLast24Hours: number;
+  };
+  notifications: {
+    openCount: number;
+    acknowledgedCount: number;
+    criticalActiveCount: number;
+    highActiveCount: number;
+    unreadCount: number;
+  };
+  adminOperations: {
+    retryRequestsLast24Hours: number;
+    evaluationRequestsLast24Hours: number;
+    latestRequestedAt: string | null;
+  };
+};
+
+export type NotificationOutboxActionableItem = {
+  outbox_event_id: string;
+  event_type_code: string;
+  source_event_key: string;
+  entity_type_code: string;
+  entity_id: string;
+  occurred_at: string;
+  status_code:
+    | "PENDING"
+    | "PROCESSING"
+    | "FAILED_RETRYABLE"
+    | "FAILED_FINAL";
+  attempt_count: number;
+  retry_budget_started_at_attempt: number;
+  retry_cycle_attempt_count: number;
+  available_at: string;
+  locked_at: string | null;
+  locked_by: string | null;
+  completed_at: string | null;
+  last_error_code: string | null;
+  last_error_detail: Record<string, unknown>;
+  correlation_id: string;
+  created_at: string;
+  can_retry: boolean;
+  is_stale_processing: boolean;
+};
+
+export type NotificationAdminOperationResponse = {
+  action:
+    | "EVALUATION_REQUESTED"
+    | "RETRY_REQUESTED"
+    | "REPLAYED";
+  originalAction?: string;
+  adminOperationId: string;
+  outboxEventId: string;
+  eventTypeCode: string;
+  evaluationFamilyCode?: NotificationEvaluationFamilyCode;
+  previousStatusCode?: string;
+  statusCode: string;
+  attemptCount?: number;
+  retryBudgetStartedAtAttempt?: number;
+  retryCycleAttemptCount?: number;
+  availableAt?: string;
+  requestedAt: string;
+  requestedByUserId: string;
+  reason: string;
+  correlationId: string;
+  enqueueAction?: string;
+};
+
 export type DashboardData = {
   products: ProductInventory[];
   batches: BatchInventory[];
@@ -773,6 +865,57 @@ export async function revokeNotificationAcknowledgment(
     {
       p_notification_id: notificationId,
       p_note: note,
+    },
+  );
+}
+
+
+export async function getNotificationOperationsSummary() {
+  return callRpc<NotificationOperationsSummary>(
+    "get_notification_operations_summary",
+    {},
+  );
+}
+
+export async function getNotificationOutboxActionableList(
+  statusCode: string | null = null,
+  limit = 50,
+) {
+  return callRpc<NotificationOutboxActionableItem[]>(
+    "notification_outbox_actionable_list",
+    {
+      p_status_code: statusCode,
+      p_limit: limit,
+    },
+  );
+}
+
+export async function runNotificationEvaluation(
+  evaluationFamilyCode: NotificationEvaluationFamilyCode,
+  reason: string,
+  idempotencyKey: string,
+) {
+  return callRpc<NotificationAdminOperationResponse>(
+    "run_notification_evaluation",
+    {
+      p_evaluation_family_code: evaluationFamilyCode,
+      p_reason: reason,
+      p_idempotency_key: idempotencyKey,
+    },
+  );
+}
+
+export async function retryNotificationOutboxEvent(
+  outboxEventId: string,
+  reason: string,
+  idempotencyKey: string,
+) {
+  return callRpc<NotificationAdminOperationResponse>(
+    "retry_notification_outbox_event",
+    {
+      p_outbox_event_id: outboxEventId,
+      p_reason: reason,
+      p_idempotency_key: idempotencyKey,
     },
   );
 }
