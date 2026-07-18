@@ -1,8 +1,8 @@
 -- ============================================================================
 -- File: seed.sql
 -- Project: Sistem Rekonsiliasi Stok
--- Version: 1.0.0
--- Last updated: 2026-07-13
+-- Version: 1.1.0
+-- Last updated: 2026-07-18
 -- Target: Supabase local / test / staging / isolated demo environment
 -- Timezone: Asia/Jakarta
 -- Application role model: ADMIN only
@@ -287,7 +287,7 @@ values
     '20000000-0000-4000-8000-000000000009'::uuid,
     'RETURN_SELLABLE',
     'Retur Layak Jual',
-    'TRANSFER',
+    'INBOUND',
     false,
     true,
     true
