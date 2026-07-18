@@ -715,9 +715,9 @@ begin
           end if;
 
           v_action_route :=
-            '/admin/products/'
-            || v_candidate.product_id::text
-            || '/batches/'
+            '/?batchId='
+            || v_candidate.entity_id::text
+            || '#batch-'
             || v_candidate.entity_id::text;
 
           v_source_snapshot := jsonb_build_object(

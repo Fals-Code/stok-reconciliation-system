@@ -2,7 +2,7 @@ begin;
 
 create extension if not exists pgtap with schema extensions;
 
-select plan(65);
+select plan(69);
 
 -- 1-6: internal and browser-facing command contract
 select has_function(
@@ -391,7 +391,7 @@ values (
   repeat('e', 64),
   'OPEN',
   'D30',
-  'HIGH',
+  'CRITICAL',
   'Batch mendekati kedaluwarsa',
   'Batch serum berada dalam ambang 30 hari.',
   'OPEN_BATCH_EXPIRY_DETAIL',
@@ -434,7 +434,34 @@ select set_config(
 
 set local role authenticated;
 
--- 25: first organization-level acknowledgment
+-- 25-26: Critical acknowledgment requires a meaningful note
+select throws_ok(
+  $sql$
+    select api.acknowledge_notification(
+      '95200000-0000-4000-8000-000000000001'::uuid,
+      null,
+      '97200000-0000-4000-8000-000000000010'::uuid
+    )
+  $sql$,
+  'P0001',
+  'NOTIFICATION_CRITICAL_ACK_NOTE_REQUIRED',
+  'Critical notification rejects acknowledgment without a note'
+);
+
+select throws_ok(
+  $sql$
+    select api.acknowledge_notification(
+      '95200000-0000-4000-8000-000000000001'::uuid,
+      '   ',
+      '97200000-0000-4000-8000-000000000011'::uuid
+    )
+  $sql$,
+  'P0001',
+  'NOTIFICATION_CRITICAL_ACK_NOTE_REQUIRED',
+  'Critical notification rejects a blank acknowledgment note'
+);
+
+-- 27: first organization-level acknowledgment with a valid Critical note
 select is(
   (
     api.acknowledge_notification(
@@ -1177,6 +1204,123 @@ select is(
 );
 
 reset role;
+
+-- Regression: non-Critical acknowledgment note remains optional.
+insert into notification.notifications (
+  id,
+  organization_id,
+  rule_id,
+  rule_code_snapshot,
+  rule_version_snapshot,
+  template_version_snapshot,
+  notification_type_code,
+  category_code,
+  entity_type_code,
+  entity_id,
+  episode_no,
+  previous_notification_id,
+  deduplication_key,
+  deduplication_hash,
+  lifecycle_status_code,
+  stage_code,
+  severity_code,
+  title,
+  message,
+  action_code,
+  action_route,
+  condition_started_at,
+  due_at,
+  first_seen_at,
+  last_seen_at,
+  occurrence_count,
+  source_snapshot,
+  config_snapshot,
+  created_at,
+  updated_at,
+  version_no
+)
+values (
+  '95200000-0000-4000-8000-000000000002'::uuid,
+  '00000000-0000-4000-8000-000000000001'::uuid,
+  '80000000-0000-4000-8000-000000000001'::uuid,
+  'EXPIRY_RISK',
+  '1.0.0',
+  '1.0.0',
+  'EXPIRY_RISK',
+  'EXPIRY',
+  'PRODUCT_BATCH',
+  '40000000-0000-4000-8000-000000000002'::uuid,
+  1,
+  null,
+  'expiry_risk:product_batch:40000000-0000-4000-8000-000000000002:high-note-optional',
+  repeat('f', 64),
+  'OPEN',
+  'D30',
+  'HIGH',
+  'Batch berisiko kedaluwarsa',
+  'Batch High tetap boleh di-acknowledge tanpa catatan.',
+  'OPEN_BATCH_EXPIRY_DETAIL',
+  '/?batchId=40000000-0000-4000-8000-000000000002#batch-40000000-0000-4000-8000-000000000002',
+  '2026-07-16 21:10:00+07'::timestamptz,
+  '2026-08-01 23:59:59+07'::timestamptz,
+  '2026-07-16 21:10:00+07'::timestamptz,
+  '2026-07-16 21:10:00+07'::timestamptz,
+  1,
+  '{"riskQty":3,"daysRemaining":16}'::jsonb,
+  '{"thresholdDays":[90,60,30,0]}'::jsonb,
+  '2026-07-16 21:10:00+07'::timestamptz,
+  '2026-07-16 21:10:00+07'::timestamptz,
+  1
+);
+
+select set_config(
+  'request.jwt.claim.sub',
+  '94200000-0000-4000-8000-000000000001',
+  true
+);
+
+select set_config(
+  'request.jwt.claim.role',
+  'authenticated',
+  true
+);
+
+select set_config(
+  'request.jwt.claims',
+  jsonb_build_object(
+    'sub',
+    '94200000-0000-4000-8000-000000000001',
+    'role',
+    'authenticated'
+  )::text,
+  true
+);
+
+set local role authenticated;
+
+select is(
+  (
+    api.acknowledge_notification(
+      '95200000-0000-4000-8000-000000000002'::uuid,
+      null,
+      '97200000-0000-4000-8000-000000000012'::uuid
+    ) ->> 'action'
+  ),
+  'ACKNOWLEDGED',
+  'High notification may be acknowledged without a note'
+);
+
+reset role;
+
+select ok(
+  (
+    select acknowledgment_note is null
+    from notification.notifications
+    where id =
+      '95200000-0000-4000-8000-000000000002'::uuid
+  ),
+  'High acknowledgment persists a null optional note'
+);
 
 select * from finish();
 rollback;

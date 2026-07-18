@@ -2,7 +2,7 @@ begin;
 
 create extension if not exists pgtap with schema extensions;
 
-select plan(75);
+select plan(77);
 
 -- 1-4: public read API contract
 select has_function(
@@ -857,7 +857,7 @@ select set_config(
 
 set local role authenticated;
 
--- 22-43: list filters, per-user state, stable ordering, and validation
+-- 22-44: list filters, per-user state, stable ordering, and validation
 select is(
   (select count(*) from api.notification_list()),
   3::bigint,
@@ -989,6 +989,17 @@ select is(
   (
     select count(*)
     from api.notification_list(
+      p_read_state_code => 'ARCHIVED_FOR_USER'
+    )
+  ),
+  1::bigint,
+  'archive filter includes archived rows without a second include flag'
+);
+
+select is(
+  (
+    select count(*)
+    from api.notification_list(
       p_include_archived => true
     )
   ),
@@ -1095,14 +1106,14 @@ select is(
   'listing notifications creates no current-user state side effect'
 );
 
--- 44: unread badge is current-user scoped
+-- 45: unread badge is current-user scoped
 select is(
   api.notification_unread_count(),
   2::bigint,
   'Admin One unread count includes only their UNREAD rows'
 );
 
--- 45-53: detail remains read-only and includes full current-user context
+-- 46-54: detail remains read-only and includes full current-user context
 select is(
   (
     select read_state_code
@@ -1198,7 +1209,7 @@ select is(
   'reading detail does not mark the notification as read'
 );
 
--- 54-64: event history is chronological, paginated, isolated, and read-only
+-- 55-65: event history is chronological, paginated, isolated, and read-only
 select is(
   (
     select count(*)
@@ -1362,7 +1373,7 @@ select set_config(
 
 set local role authenticated;
 
--- 65-70: per-user list and badge isolation
+-- 66-72: per-user list and badge isolation
 select is(
   (select count(*) from api.notification_list()),
   4::bigint,
@@ -1404,8 +1415,21 @@ select is(
 
 select is(
   api.notification_unread_count(),
-  3::bigint,
-  'Admin Two receives an independent unread badge count'
+  2::bigint,
+  'Admin Two unread badge excludes resolved notification history'
+);
+
+select is(
+  (
+    select count(*)
+    from api.notification_list(
+      p_lifecycle_status_code => 'RESOLVED',
+      p_read_state_code => 'UNREAD',
+      p_include_archived => true
+    )
+  ),
+  1::bigint,
+  'resolved unread history remains queryable despite badge exclusion'
 );
 
 select is(
@@ -1446,7 +1470,7 @@ select set_config(
 
 set local role authenticated;
 
--- 71-75: organization isolation in every public query
+-- 73-77: organization isolation in every public query
 select is(
   (select count(*) from api.notification_list()),
   1::bigint,

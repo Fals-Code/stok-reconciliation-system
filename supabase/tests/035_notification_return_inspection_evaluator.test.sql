@@ -612,7 +612,7 @@ select is(
       and notification_row.lifecycle_status_code = 'OPEN'
   ),
   (
-    select '/admin/returns/' || id::text
+    select '/returns?returnId=' || id::text
     from operations.returns
     where external_return_ref = 'NTF-RETURN-001'
   ),

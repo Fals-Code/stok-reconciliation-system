@@ -893,7 +893,7 @@ begin
           );
 
           v_action_route :=
-            '/admin/returns/'
+            '/returns?returnId='
             || v_candidate.entity_id::text;
 
           v_source_snapshot := jsonb_build_object(

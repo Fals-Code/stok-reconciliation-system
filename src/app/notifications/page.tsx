@@ -91,6 +91,10 @@ function normalizeOption(
 
 function normalizeSearchParams(params: SearchParams): FilterState {
   const before = params.before?.trim() || null;
+  const readState = normalizeOption(
+    params.readState,
+    readStateOptions.map(([value]) => value),
+  );
   const beforeId =
     params.beforeId && UUID_PATTERN.test(params.beforeId.trim())
       ? params.beforeId.trim()
@@ -113,11 +117,9 @@ function normalizeSearchParams(params: SearchParams): FilterState {
       params.category,
       categoryOptions.map(([value]) => value),
     ),
-    readState: normalizeOption(
-      params.readState,
-      readStateOptions.map(([value]) => value),
-    ),
-    includeArchived: params.archived === "1",
+    readState,
+    includeArchived:
+      params.archived === "1" || readState === "ARCHIVED_FOR_USER",
     before:
       before && !Number.isNaN(new Date(before).getTime()) ? before : null,
     beforeId,
@@ -407,6 +409,9 @@ function NotificationActions({
   detail: NotificationDetail;
   returnTo: string;
 }) {
+  const criticalNoteRequired =
+    detail.severity_code === "CRITICAL" &&
+    detail.lifecycle_status_code === "OPEN";
   const readActions = READ_STATE_ACTIONS.filter(
     (action) => action.code !== detail.read_state_code,
   );
@@ -480,11 +485,19 @@ function NotificationActions({
               returnTo={returnTo}
             />
             <label className="field-label">
-              Catatan acknowledgment
+              {criticalNoteRequired
+                ? "Catatan acknowledgment wajib"
+                : "Catatan acknowledgment"}
               <textarea
+                aria-required={criticalNoteRequired}
                 maxLength={2000}
                 name="note"
-                placeholder="Opsional: siapa yang menindaklanjuti dan langkah awalnya."
+                placeholder={
+                  criticalNoteRequired
+                    ? "Wajib: siapa yang menindaklanjuti dan langkah awal yang dilakukan."
+                    : "Opsional: siapa yang menindaklanjuti dan langkah awalnya."
+                }
+                required={criticalNoteRequired}
                 rows={4}
               />
             </label>
@@ -630,20 +643,29 @@ function NotificationDetailPanel({
         </div>
       ) : null}
 
-      <div className="mt-7 grid gap-5 xl:grid-cols-2">
-        <section>
-          <h3 className="text-lg font-semibold text-white">Source snapshot</h3>
-          <pre className="mt-3 max-h-96 overflow-auto rounded-2xl border border-white/10 bg-slate-950/80 p-4 text-xs leading-6 text-slate-300">
-            {formatJson(detail.source_snapshot)}
-          </pre>
-        </section>
-        <section>
-          <h3 className="text-lg font-semibold text-white">Config snapshot</h3>
-          <pre className="mt-3 max-h-96 overflow-auto rounded-2xl border border-white/10 bg-slate-950/80 p-4 text-xs leading-6 text-slate-300">
-            {formatJson(detail.config_snapshot)}
-          </pre>
-        </section>
-      </div>
+      <details className="mt-7 rounded-2xl border border-white/10 bg-white/[0.02]">
+        <summary className="cursor-pointer px-5 py-4 text-sm font-medium text-slate-300 transition hover:text-white">
+          Diagnostics teknis
+        </summary>
+        <div className="grid gap-5 border-t border-white/10 p-5 xl:grid-cols-2">
+          <section>
+            <h3 className="text-sm font-semibold text-white">
+              Source snapshot
+            </h3>
+            <pre className="mt-3 max-h-96 overflow-auto rounded-2xl border border-white/10 bg-slate-950/80 p-4 text-xs leading-6 text-slate-300">
+              {formatJson(detail.source_snapshot)}
+            </pre>
+          </section>
+          <section>
+            <h3 className="text-sm font-semibold text-white">
+              Config snapshot
+            </h3>
+            <pre className="mt-3 max-h-96 overflow-auto rounded-2xl border border-white/10 bg-slate-950/80 p-4 text-xs leading-6 text-slate-300">
+              {formatJson(detail.config_snapshot)}
+            </pre>
+          </section>
+        </div>
+      </details>
 
       <section className="mt-8">
         <div className="flex items-end justify-between gap-4">

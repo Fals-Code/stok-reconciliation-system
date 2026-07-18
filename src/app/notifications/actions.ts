@@ -97,6 +97,8 @@ function notificationErrorMessage(error: unknown) {
       "Notifikasi yang sudah resolved tidak dapat diubah lifecycle-nya.",
     NOTIFICATION_ACKNOWLEDGMENT_NOTE_TOO_LONG:
       "Catatan acknowledgment maksimal 2.000 karakter.",
+    NOTIFICATION_CRITICAL_ACK_NOTE_REQUIRED:
+      "Notifikasi Critical wajib disertai catatan tindak lanjut.",
     NOTIFICATION_ACKNOWLEDGED_AT_STALE:
       "Waktu acknowledgment lebih lama daripada awal notification episode.",
     NOTIFICATION_REVOCATION_TIME_STALE:

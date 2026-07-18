@@ -100,6 +100,13 @@ begin
     );
   end if;
 
+  if v_notification.severity_code = 'CRITICAL'
+     and v_note is null then
+    raise exception using
+      errcode = 'P0001',
+      message = 'NOTIFICATION_CRITICAL_ACK_NOTE_REQUIRED';
+  end if;
+
   if p_acknowledged_at < v_notification.first_seen_at then
     raise exception using
       errcode = 'P0001',

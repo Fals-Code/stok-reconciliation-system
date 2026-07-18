@@ -634,7 +634,7 @@ select is(
         'c8300000-0000-4000-8000-000000000001'::uuid
       and lifecycle_status_code = 'OPEN'
   ),
-  '/admin/reconciliation/issues/c8300000-0000-4000-8000-000000000001',
+  '/reconciliation?issueId=c8300000-0000-4000-8000-000000000001',
   'issue notification deep-links to source issue'
 );
 
@@ -1509,7 +1509,7 @@ select is(
         'c8200000-0000-4000-8000-000000000002'::uuid
       and lifecycle_status_code = 'OPEN'
   ),
-  '/admin/reconciliation/runs/c8200000-0000-4000-8000-000000000002',
+  '/reconciliation?runId=c8200000-0000-4000-8000-000000000002',
   'failure notification deep-links to failed run'
 );
 

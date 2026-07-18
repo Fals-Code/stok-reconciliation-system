@@ -807,7 +807,7 @@ begin
           );
 
           v_action_route :=
-            '/admin/reconciliation/issues/'
+            '/reconciliation?issueId='
             || v_candidate.entity_id::text;
 
           v_source_snapshot := jsonb_build_object(
@@ -1525,7 +1525,7 @@ begin
           );
 
           v_action_route :=
-            '/admin/reconciliation/runs/'
+            '/reconciliation?runId='
             || v_candidate.entity_id::text;
 
           v_source_snapshot := jsonb_build_object(

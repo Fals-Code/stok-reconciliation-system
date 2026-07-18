@@ -872,7 +872,7 @@ select is(
         'e8200000-0000-4000-8000-000000000001'::uuid
       and lifecycle_status_code = 'OPEN'
   ),
-  '/admin/stocktakes/e8200000-0000-4000-8000-000000000001?filter=recount-required',
+  '/stocktakes/e8200000-0000-4000-8000-000000000001?filter=recount-required',
   'recount notification deep-links with recount filter'
 );
 
@@ -1391,7 +1391,7 @@ select is(
         'e8200000-0000-4000-8000-000000000002'::uuid
       and lifecycle_status_code = 'OPEN'
   ),
-  '/admin/stocktakes/e8200000-0000-4000-8000-000000000002',
+  '/stocktakes/e8200000-0000-4000-8000-000000000002',
   'post failure notification deep-links to stocktake'
 );
 

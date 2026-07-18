@@ -188,6 +188,7 @@ begin
     )
     and (
       v_include_archived
+      or v_read_state_code = 'ARCHIVED'
       or coalesce(user_state.read_state_code, 'UNREAD') <> 'ARCHIVED'
     )
     and (
@@ -385,6 +386,10 @@ begin
    and user_state.notification_id = notification_row.id
    and user_state.user_id = v_user_id
   where notification_row.organization_id = v_organization_id
+    and notification_row.lifecycle_status_code in (
+      'OPEN',
+      'ACKNOWLEDGED'
+    )
     and coalesce(user_state.read_state_code, 'UNREAD') = 'UNREAD';
 
   return v_count;

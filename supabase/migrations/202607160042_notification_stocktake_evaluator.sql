@@ -721,7 +721,7 @@ begin
           );
 
           v_action_route :=
-            '/admin/stocktakes/'
+            '/stocktakes/'
             || v_candidate.entity_id::text
             || '?filter=recount-required';
 
@@ -1551,7 +1551,7 @@ begin
           end if;
 
           v_action_route :=
-            '/admin/stocktakes/'
+            '/stocktakes/'
             || v_candidate.entity_id::text;
 
           v_source_snapshot := jsonb_build_object(

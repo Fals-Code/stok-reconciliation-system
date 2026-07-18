@@ -701,7 +701,7 @@ select is(
     where entity_id =
       '40800000-0000-4000-8000-000000000001'::uuid
   ),
-  '/admin/products/30800000-0000-4000-8000-000000000001/batches/40800000-0000-4000-8000-000000000001',
+  '/?batchId=40800000-0000-4000-8000-000000000001#batch-40800000-0000-4000-8000-000000000001',
   'expiry notification stores a server-generated batch deep link'
 );
 

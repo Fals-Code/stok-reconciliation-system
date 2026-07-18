@@ -1379,15 +1379,15 @@ Status berikut menggambarkan source pada branch saat ini. Status ini bukan pengg
 | Area | Status | Tersedia saat ini | Sisa utama |
 |---|---|---|---|
 | Identitas dan Admin Auth | **Implemented** | Login/logout, session server-only, validasi profil aktif `ADMIN`, proteksi route, dan audit actor individual | UI pengelolaan akun Admin |
-| Shared Admin shell | **Implemented** | Sidebar desktop, navigasi mobile, active route, organisasi, mode aplikasi, akun, dan logout | Badge notifikasi serta status rekonsiliasi berbasis data live |
+| Shared Admin shell | **Implemented** | Sidebar desktop, navigasi mobile, active route, organisasi, mode aplikasi, akun, logout, serta unread badge Notification Center berbasis data live | Status rekonsiliasi global berbasis data live |
 | Produk dan batch | **Partial** | Schema, seed, read model, posisi produk/batch, dan pilihan transaksi | CRUD master data, pengarsipan, detail batch, bundle, dan mapping listing |
 | Ledger dan projection | **Implemented** | Ledger append-only, idempotent posting, bucket fisik, serta projection produk dan batch | Drill-down lengkap, reversal umum, damaged disposal, dan expired disposal melalui Admin UI |
 | Receipt dan manual outbound | **Implemented** | Receipt dari maklon, outbound manual dengan reason/channel, dan alokasi FEFO | Preview/reversal receipt dan workflow disposal khusus |
 | Marketplace lifecycle | **Implemented** | Reservasi, release/cancel, trigger shipment, physical outbound FEFO, dan simulator Admin | CSV import dan penyelesaian bundle/listing flow |
 | Return dan claim | **Partial** | Expected return, receipt ke `QUARANTINE`, inspeksi net-zero, unidentified batch guardrail, dan lost return | Claim deadline, reminder, overdue, late arrival, dan claim administration |
 | Stocktake | **Implemented** | Create, prepare, continuous count, blind/non-blind count, review, approval immutable, posting adjustment, dan audit linkage | Frozen mode dan penyempurnaan UX lanjutan |
-| Reconciliation | **Implemented** | Manual run, delapan integrity checks, issue, evidence, history, dan Admin UI | Scheduled daily run serta integrasi Notification Center |
-| Notification Center | **Not started** | Business rules dan desain tersedia | Migration, evaluator, dedup episode, outbox, scheduler, RLS, dan UI |
+| Reconciliation | **Implemented** | Manual run, delapan integrity checks, issue, evidence, history, Admin UI, serta alert Notification Center untuk issue dan run failure | Scheduled daily run production |
+| Notification Center | **Implemented** | Lifecycle OPEN/ACKNOWLEDGED/RESOLVED, per-Admin read state, unread badge aktif, evaluator expiry/return/reconciliation/stocktake, dedup episode, transactional outbox, retry, RLS, detail/history, deep link, dan Admin Operations UI | Claim deadline, import failure, marketplace stalled evaluator, production scheduler/cron, dan optional realtime refresh |
 | CSV import | **Not started** | Contract kanonis telah didokumentasikan | Upload privat, parsing, validation, preview, commit, error report, dan idempotency |
 | Release engineering | **Partial** | Lint, typecheck, build, pgTAP, seed, dan demo bootstrap tersedia secara lokal | GitHub Actions, deployment live, smoke test production, dan final golden demo |
 
@@ -1420,7 +1420,7 @@ Minimum:
 - [x] Return receipt ke quarantine.
 - [x] Return inspection.
 - [ ] Lost return dan claim. **Partial:** lost return tersedia; claim deadline, reminder, overdue, dan administrasi claim belum lengkap.
-- [ ] Expiry notification.
+- [x] Expiry notification.
 - [x] Stocktake.
 - [x] Reconciliation.
 - [ ] Drill-down ledger.
