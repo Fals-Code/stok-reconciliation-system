@@ -1,13 +1,14 @@
 <!--
 File: 15-demo-script.md
 Project: Sistem Rekonsiliasi Stok
-Status: Approved live-demo baseline for Phase 1
-Version: 1.0.0
-Last updated: 2026-07-13
+Status: Phase 2 synced live-demo contract
+Version: 1.1.0
+Last updated: 2026-07-18
 Language: id-ID
 Timezone: Asia/Jakarta
 Application role model: ADMIN only
-Primary source: stok-management-system.pdf
+Primary source: VibeDev Phase 2 Sync Update v2, 13 Juni 2026
+Baseline source: stok-management-system.pdf
 Depends on:
   - 01-project-brief.md
   - 02-product-requirements.md
@@ -122,8 +123,8 @@ Teknologi dijelaskan saat mendukung bukti, bukan sebagai parade nama paket.
 | `DEM-GOAL-008` | Membuktikan alasan dan kanal disimpan terpisah. |
 | `DEM-GOAL-009` | Membuktikan bundle dipecah menjadi produk satuan. |
 | `DEM-GOAL-010` | Membuktikan retur expected tidak otomatis menambah stok. |
-| `DEM-GOAL-011` | Membuktikan receipt retur masuk quarantine. |
-| `DEM-GOAL-012` | Membuktikan kondisi retur ditentukan melalui inspection. |
+| `DEM-GOAL-011` | Membuktikan receipt retur hanya menambah pending inspection dan tetap stock-neutral. |
+| `DEM-GOAL-012` | Membuktikan sellable membuat inbound ke batch `RETURN` baru, sedangkan damaged hanya dicatat untuk audit/klaim. |
 | `DEM-GOAL-013` | Membuktikan lost return dan claim tidak mengubah stok. |
 | `DEM-GOAL-014` | Membuktikan duplicate event tidak menggandakan movement. |
 | `DEM-GOAL-015` | Membuktikan stok opname memakai snapshot dan adjustment ledger. |
@@ -448,7 +449,7 @@ Tidak ada stock balance untuk `BND-GLOW-01`.
 
 Urutan utama menghasilkan angka berikut.
 
-| Step | Serum Sellable | Serum Reserved | Serum Available | Serum Quarantine | Serum Damaged | Cleanser Sellable |
+| Step | Serum Sellable | Serum Reserved | Serum Available | Pending Inspection | Damaged Return Classification | Cleanser Sellable |
 |---:|---:|---:|---:|---:|---:|---:|
 | Baseline | 25 | 0 | 25 | 0 | 0 | 15 |
 | Maklon +10 | 35 | 0 | 35 | 0 | 0 | 15 |
@@ -494,30 +495,33 @@ CLN-2611-A -> 1
 Return inspection sellable:
 
 ```text
-SER-2612-B -> +2
+RET-{receipt-line-id} sellable = +2
+batch_kind_code = RETURN
+source batch SER-2612-B = provenance only
 ```
 
 Before stocktake:
 
 ```text
 SER-2608-A sellable = 0
-SER-2612-B sellable = 14
+SER-2612-B sellable = 12
 SER-2701-C sellable = 10
+RET-{receipt-line-id} sellable = 2
 Total = 24
 ```
 
 Stocktake count on `SER-2612-B`:
 
 ```text
-expected = 14
-physical = 13
+expected = 12
+physical = 11
 variance = -1
 ```
 
 After adjustment:
 
 ```text
-SER-2612-B = 13
+SER-2612-B = 11
 Serum total sellable = 23
 ```
 
@@ -1176,19 +1180,24 @@ Konfirmasi barang tiba:
 
 ```text
 received qty = 3
-batch = SER-2612-B
+source batch provenance = SER-2612-B
 ```
 
 #### Narasi
 
-> “Begitu barang benar-benar tiba, sistem memasukkannya ke quarantine, bukan langsung sellable.”
+> “Barang sudah tiba, tetapi receipt hanya mencatat pending inspection. Stok fisik sistem belum berubah.”
 
 #### Expected
 
 ```text
-QUARANTINE +3
+api.confirm_return_receipt
+received qty = 3
+pending inspection 0 -> 3
+stock transaction = none
+ledger entry = none
+projection delta = 0
+stock effect = NONE
 sellable remains 22
-quarantine 0 -> 3
 ```
 
 ### 26.3 Inspection
@@ -1205,26 +1214,32 @@ DAMAGED 1
 #### Expected
 
 ```text
-QUARANTINE -3
-SELLABLE +2
-DAMAGED +1
+api.inspect_return
+RETURN_SELLABLE_INBOUND +2
+destination = new batch `RETURN`
+source batch SER-2612-B = provenance only
+DAMAGED 1 = audit classification
+damaged stock movement = none
 ```
 
 Final:
 
 ```text
 Serum sellable 22 -> 24
-quarantine 3 -> 0
-damaged 0 -> 1
+pending inspection 3 -> 0
+damaged return classification 0 -> 1
+damaged stock bucket remains 0
 ```
 
 ### Bukti
 
 - source return;
-- receipt;
-- quarantine ledger;
+- receipt dengan `stockEffectCode = NONE`;
 - inspection record;
-- transfer ledger net zero;
+- stock transaction `RETURN_SELLABLE_INBOUND`;
+- batch tujuan dengan `batch_kind_code = RETURN`;
+- provenance batch asal;
+- damaged allocation tanpa ledger destination;
 - actor/time/note.
 
 ### Kalimat Kunci
@@ -1258,8 +1273,8 @@ damaged 0 -> 1
 lost qty = 1
 ledger effect = none
 claim created
-claim window snapshot = 40 days
-deadline basis stored
+claim window = 40 calendar days
+deadline basis = operations.returns.created_at
 ```
 
 Untuk golden clock:
@@ -1353,13 +1368,13 @@ Visibility BLIND
 Expected system quantity:
 
 ```text
-14
+12
 ```
 
 Physical count input:
 
 ```text
-13
+11
 ```
 
 ### 29.1 Start
@@ -1380,7 +1395,7 @@ Physical count input:
 
 1. buka count task;
 2. tunjukkan bahwa expected tidak terlihat;
-3. input `13`;
+3. input `11`;
 4. submit.
 
 #### Narasi
@@ -1392,8 +1407,8 @@ Physical count input:
 #### Expected
 
 ```text
-expected = 14
-physical = 13
+expected = 12
+physical = 11
 variance = -1
 ```
 
@@ -1414,6 +1429,7 @@ Post adjustment.
 ```text
 STOCKTAKE_ADJUSTMENT
 SER-2612-B SELLABLE -1
+SER-2612-B 12 -> 11
 Serum sellable 24 -> 23
 ```
 
@@ -1449,7 +1465,8 @@ Serum sellable 24 -> 23
    - ledger vs batch projection;
    - batch vs product projection;
    - allocation vs outbound;
-   - return receipt vs quarantine;
+   - `RETURN_RECEIPT_CONSISTENCY`;
+   - `RETURN_INSPECTION_CONSISTENCY`;
    - stocktake adjustment;
 3. buka movement breakdown Serum.
 
@@ -1539,16 +1556,17 @@ Final product position + ledger summary.
 
 ### Narasi Presenter
 
-> “Kita mulai dengan 25 unit serum. Masuk 10 dari maklon, lalu keluar melalui Shopee, TikTok, bonus, dan bundle. Sebagian retur kembali layak jual, satu rusak, satu hilang dan menjadi klaim. Opname menemukan selisih fisik satu unit dan membuat adjustment yang dapat diaudit.”
+> “Kita mulai dengan 25 unit serum. Masuk 10 dari maklon, lalu keluar melalui Shopee, TikTok, bonus, dan bundle. Dua unit retur kembali layak jual melalui batch RETURN baru, satu unit diklasifikasikan rusak tanpa movement stok, dan satu hilang menjadi klaim. Opname menemukan selisih fisik satu unit dan membuat adjustment yang dapat diaudit.”
 
-> “Saldo akhir sellable adalah 23, damaged 1, dan tidak ada quantity yang berubah tanpa transaction atau penjelasan. Simulator hanya menyuntikkan event. Seluruh reservation, FEFO, ledger, retur, opname, dan rekonsiliasi berada pada pipeline domain yang sama dengan impor dan calon API marketplace.”
+> “Saldo akhir sellable adalah 23. Damaged stock bucket tetap nol, sementara satu damaged return tercatat sebagai kondisi operasional. Setiap perubahan stok memiliki transaction dan ledger; setiap receipt, kondisi, dan klaim stock-neutral tetap memiliki audit trail.”
 
 ### Final Proof
 
 ```text
 Serum sellable = 23
-Serum damaged = 1
-Serum quarantine = 0
+Damaged stock bucket = 0
+Damaged return classification = 1
+Pending inspection = 0
 Active reserved = 0
 ```
 
@@ -1575,8 +1593,8 @@ Jangan menambahkan tur menu acak setelah closing.
 | TikTok out | Serum 26 | Check status mapping |
 | Bonus | Serum 24 | Check reason/FEFO |
 | Bundle | Serum 22, cleanser 14 | Check recipe snapshot |
-| Return receipt | Quarantine 3 | Check physical receipt |
-| Inspection | Sellable 24, damaged 1 | Check transfer |
+| Return receipt | Pending inspection 3; stock tetap 22 | Check receipt result |
+| Inspection | Sellable 24 pada batch RETURN baru; damaged classification 1; damaged stock 0 | Check transaction/audit |
 | Lost/claim | No stock effect | Stop if ledger exists |
 | Duplicate | No stock effect | Stop; idempotency defect |
 | Stocktake | Sellable 23 | Check adjustment |
@@ -1593,7 +1611,7 @@ Demo utama harus dihentikan dan di-reset bila:
 - stock menjadi negatif;
 - FEFO memilih expired/blocked batch;
 - return expected menambah stock;
-- return receipt masuk sellable langsung;
+- return receipt membuat stock transaction, ledger entry, atau projection delta;
 - claim membuat ledger;
 - stocktake posting parsial;
 - cross-organization data terlihat;
@@ -1617,7 +1635,7 @@ Versi ringkas harus tetap membuktikan:
 
 - reservation vs outbound;
 - FEFO;
-- return quarantine/inspection;
+- receipt stock-neutral dan inspection dengan dampak stok terpisah;
 - stocktake/reconciliation;
 - traceability.
 
@@ -1644,7 +1662,7 @@ Versi ringkas harus tetap membuktikan:
 - duplicate event melalui result card;
 - notification melalui bell.
 
-Tidak boleh memotong FEFO, retur quarantine, atau rekonsiliasi.
+Tidak boleh memotong FEFO, bukti receipt stock-neutral/inspection, atau rekonsiliasi.
 
 ---
 
@@ -1727,11 +1745,11 @@ Jawaban:
 
 ---
 
-## 42. Pertanyaan: Mengapa Retur Masuk Quarantine?
+## 42. Pertanyaan: Mengapa Receipt Retur Tidak Langsung Mengubah Stok?
 
 Jawaban:
 
-> “Status marketplace tidak membuktikan barang layak jual. Gudang harus menerima dan menginspeksi barang. Quarantine memisahkan kedatangan fisik dari keputusan kondisi.”
+> “Status marketplace dan kedatangan fisik belum membuktikan barang layak jual. Receipt hanya mencatat pending inspection. Setelah gudang menginspeksi, kuantitas sellable masuk ke batch RETURN baru, sedangkan damaged dicatat untuk audit tanpa movement stok kedua.”
 
 ---
 
@@ -1762,7 +1780,7 @@ Jawaban:
 
 Jawaban ringkas:
 
-> “Vitest untuk logic, pgTAP untuk schema/function/RLS, Playwright untuk flow live, harness paralel untuk concurrency, dan k6 untuk threshold performa. Release berhenti bila ada negative stock, duplicate movement, cross-org access, FEFO salah, atau retur melewati quarantine.”
+> “Vitest untuk logic, pgTAP untuk schema/function/RLS, Playwright untuk flow live, harness paralel untuk concurrency, dan k6 untuk threshold performa. Release berhenti bila ada negative stock, duplicate movement, cross-org access, FEFO salah, atau receipt retur mengubah stok atau sellable diposting tanpa inspeksi/provenance.”
 
 Buka test report bila diminta, bukan membacakan 278 scenario.
 
@@ -1790,7 +1808,7 @@ Jawaban:
 
 Jawaban:
 
-> “Sistem membuka late-arrival exception, menerima barang ke quarantine, mempertahankan histori lost dan claim, lalu menyelesaikan conflict secara audit. Histori lama tidak dihapus.”
+> “Sistem membuka late-arrival exception, mencatat receipt secara stock-neutral, mempertahankan histori lost dan claim, lalu menginspeksi barang melalui alur normal. Histori lama tidak dihapus.”
 
 ---
 
@@ -2167,10 +2185,10 @@ Jelaskan sekali.
 ### Return and Claim
 
 - `DEM-AC-015`: Expected return no stock effect.
-- `DEM-AC-016`: Receipt masuk quarantine.
-- `DEM-AC-017`: Inspection mixed dapat diposting.
+- `DEM-AC-016`: Receipt menambah pending inspection tanpa transaction, ledger, atau projection delta.
+- `DEM-AC-017`: Mixed inspection membuat sellable inbound ke batch `RETURN` baru dan damaged audit-only.
 - `DEM-AC-018`: Lost no stock effect.
-- `DEM-AC-019`: Claim deadline terlihat.
+- `DEM-AC-019`: Claim deadline terlihat sebagai 40 hari sejak `operations.returns.created_at`.
 - `DEM-AC-020`: Claim tidak mengubah stock.
 
 ### Integrity
@@ -2203,7 +2221,7 @@ Demo tidak dinyatakan siap bila:
 - service-role terdeteksi client;
 - duplicate menghasilkan movement kedua;
 - FEFO memilih batch salah;
-- return bypass quarantine;
+- return receipt mengubah stock atau sellable inspection tidak memakai batch RETURN baru/provenance;
 - claim mengubah stock;
 - stocktake posting parsial;
 - deployment tidak stabil;
@@ -2468,14 +2486,15 @@ Demo harus membuktikan cerita stok:
 Sementara itu:
 
 ```text
-1 return damaged
+1 damaged return classification
+damaged stock bucket 0
 1 return lost
 claim active
-quarantine 0
+pending inspection 0
 reserved 0
 ```
 
-Semua perubahan memiliki:
+Setiap perubahan stok memiliki:
 
 ```text
 source
@@ -2489,7 +2508,9 @@ timestamp
 ledger transaction
 ```
 
-Simulator hanya membuat event. FEFO memilih batch. Retur fisik masuk quarantine. Gudang menginspeksi kondisi. Klaim tidak mengubah stok. Opname membuat adjustment. Rekonsiliasi memastikan seluruh angka dapat dijelaskan.
+Setiap perubahan operasional stock-neutral memiliki receipt/inspection/claim event, actor, timestamp, provenance, dan `stockEffectCode = NONE`.
+
+Simulator hanya membuat event. FEFO memilih batch. Receipt retur tetap stock-neutral. Gudang menginspeksi kondisi; sellable masuk batch RETURN baru dan damaged tetap audit-only. Klaim tidak mengubah stok. Opname membuat adjustment. Rekonsiliasi memastikan seluruh angka dapat dijelaskan.
 
 Jika penonton hanya mengingat satu hal, biarkan itu menjadi ini:
 

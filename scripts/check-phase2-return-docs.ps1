@@ -54,19 +54,36 @@ $stalePatterns = [ordered]@{
     'Retur diterima ke quarantine',
     'retur masuk ke quarantine',
     'Receipt masuk:',
-    'Flow quarantine dan identifikasi'
+    'Flow quarantine dan identifikasi',
+    'retur masuk `QUARANTINE` sebelum inspection',
+    'Return received masuk quarantine.',
+    'return receipt quarantine',
+    'Receipt masuk quarantine.',
+    'Retur fisik masuk quarantine.',
+    'receipt: QUARANTINE +qty',
+    'receipt -> QUARANTINE',
+    'Quarantine 3',
+    'return quarantine/inspection',
+    'retur quarantine',
+    'return bypass quarantine'
   )
   "legacy-transfer" = @(
     'TRANSFER_QUARANTINE_TO_SELLABLE',
     'TRANSFER_QUARANTINE_TO_DAMAGED',
     'RETURN_INSPECTION_TRANSFER',
     'Transfer `QUARANTINE` ke `SELLABLE`',
-    'Transfer `QUARANTINE` ke `DAMAGED`'
+    'Transfer `QUARANTINE` ke `DAMAGED`',
+    'inspection: QUARANTINE -qty, SELLABLE +qty',
+    'quarantine ledger',
+    'transfer ledger net zero',
+    'Quarantine reclassification net zero'
   )
   "placeholder-batch" = @(
     'unidentified return batch',
     'UNIDENTIFIED_RETURN_BATCH',
     'controlled unidentified return batch',
+    'unidentified return quarantine',
+    'quarantine return',
     'REC_RETURN_BATCH_PLACEHOLDER_RELEASE'
   )
   "ambiguous-claim-basis" = @(
@@ -117,6 +134,10 @@ $phase2SourceDocs = @(
   "docs/10-fefo-batch-allocation.md"
 )
 
+if ($IncludeScenarioDocs) {
+  $phase2SourceDocs += $scenarioDocs
+}
+
 foreach ($relativePath in $phase2SourceDocs) {
   $fullPath = Join-Path $ProjectRoot $relativePath
   $sourceMatches = @(
@@ -128,6 +149,48 @@ foreach ($relativePath in $phase2SourceDocs) {
 
   if ($sourceMatches.Count -eq 0) {
     throw "Phase 2 source priority missing from: $relativePath"
+  }
+}
+
+if ($IncludeScenarioDocs) {
+  $scenarioRequiredPatterns = [ordered]@{
+    "docs/14-testing-scenarios.md" = @(
+      'api.confirm_return_receipt',
+      'api.inspect_return',
+      'RETURN_SELLABLE_INBOUND',
+      'RETURN_RECEIPT_CONSISTENCY',
+      'RETURN_INSPECTION_CONSISTENCY',
+      'operations.returns.created_at',
+      'batch_kind_code = RETURN',
+      'stock-neutral'
+    )
+    "docs/15-demo-script.md" = @(
+      'api.confirm_return_receipt',
+      'api.inspect_return',
+      'RETURN_SELLABLE_INBOUND',
+      'RETURN_RECEIPT_CONSISTENCY',
+      'RETURN_INSPECTION_CONSISTENCY',
+      'operations.returns.created_at',
+      'batch_kind_code = RETURN',
+      'stock-neutral'
+    )
+  }
+
+  foreach ($relativePath in $scenarioRequiredPatterns.Keys) {
+    $fullPath = Join-Path $ProjectRoot $relativePath
+
+    foreach ($pattern in $scenarioRequiredPatterns[$relativePath]) {
+      $matches = @(
+        Select-String `
+          -Path $fullPath `
+          -Pattern $pattern `
+          -SimpleMatch
+      )
+
+      if ($matches.Count -eq 0) {
+        throw "Required Phase 2 scenario marker '$pattern' missing from: $relativePath"
+      }
+    }
   }
 }
 
