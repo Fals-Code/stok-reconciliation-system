@@ -741,6 +741,26 @@ async function apiFetch<T>(
   return (await response.json()) as T;
 }
 
+async function apiFetchAll<T>(
+  path: string,
+  pageSize = 500,
+): Promise<T[]> {
+  const rows: T[] = [];
+  const separator = path.includes("?") ? "&" : "?";
+
+  for (let offset = 0; ; offset += pageSize) {
+    const page = await apiFetch<T[]>(
+      `${path}${separator}limit=${pageSize}&offset=${offset}`,
+    );
+
+    rows.push(...page);
+
+    if (page.length < pageSize) {
+      return rows;
+    }
+  }
+}
+
 async function resolveOrganizationId(organizationId?: string) {
   if (organizationId) {
     return organizationId;
@@ -778,26 +798,67 @@ export async function getDashboardData(
 
 export async function getEntryCorrectionData(
   organizationId?: string,
+  selectedTransactionId?: string,
 ): Promise<EntryCorrectionData> {
   const resolvedOrganizationId = await resolveOrganizationId(organizationId);
   const encodedOrganizationId = encodeURIComponent(resolvedOrganizationId);
+  const normalizedSelectedTransactionId =
+    selectedTransactionId?.trim() ?? "";
+  const selectedTransactionIsValid =
+    /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(
+      normalizedSelectedTransactionId,
+    );
+  const encodedSelectedTransactionId = encodeURIComponent(
+    normalizedSelectedTransactionId,
+  );
 
-  const [ledger, applications] = await Promise.all([
+  const selectedLedgerPromise = selectedTransactionIsValid
+    ? apiFetchAll<StockLedgerEntry>(
+        `stock_ledger?organization_id=eq.${encodedOrganizationId}&transaction_id=eq.${encodedSelectedTransactionId}&select=*&order=line_no.asc,ledger_seq.asc`,
+      )
+    : Promise.resolve([]);
+  const selectedApplicationsPromise = selectedTransactionIsValid
+    ? apiFetchAll<StockReversalApplication>(
+        `stock_reversal_applications?organization_id=eq.${encodedOrganizationId}&or=(original_transaction_id.eq.${encodedSelectedTransactionId},reversal_transaction_id.eq.${encodedSelectedTransactionId})&select=*&order=created_at.asc`,
+      )
+    : Promise.resolve([]);
+
+  const [
+    recentLedger,
+    recentApplications,
+    selectedLedger,
+    selectedApplications,
+  ] = await Promise.all([
     apiFetch<StockLedgerEntry[]>(
       `stock_ledger?organization_id=eq.${encodedOrganizationId}&select=*&order=ledger_seq.desc&limit=1000`,
     ),
     apiFetch<StockReversalApplication[]>(
       `stock_reversal_applications?organization_id=eq.${encodedOrganizationId}&select=*&order=created_at.desc&limit=1000`,
     ),
+    selectedLedgerPromise,
+    selectedApplicationsPromise,
   ]);
 
+  const ledgerById = new Map(
+    [...recentLedger, ...selectedLedger].map((entry) => [
+      entry.ledger_entry_id,
+      entry,
+    ]),
+  );
+  const applicationById = new Map(
+    [...recentApplications, ...selectedApplications].map((application) => [
+      application.reversal_application_id,
+      application,
+    ]),
+  );
+
   return {
-    ledger: ledger.filter((entry) =>
+    ledger: [...ledgerById.values()].filter((entry) =>
       ["RECEIPT", "MANUAL_OUTBOUND", "REVERSAL"].includes(
         entry.transaction_type_code,
       ),
     ),
-    applications,
+    applications: [...applicationById.values()],
   };
 }
 

@@ -55,7 +55,7 @@ const numberFormatter = new Intl.NumberFormat("id-ID");
 
 function formatNumber(value: number | null | undefined) {
   if (value === null || value === undefined || Number.isNaN(Number(value))) {
-    return "â€”";
+    return "-";
   }
 
   return numberFormatter.format(Number(value));
@@ -399,10 +399,10 @@ function ImpactPreview({
               <th>Produk / batch</th>
               <th>Bucket</th>
               <th className="text-right">Asal</th>
+              <th className="text-right">Sudah dibalik</th>
               <th className="text-right">Reversal</th>
-              <th className="text-right">Batch saat ini</th>
-              <th className="text-right">Batch setelah</th>
-              <th className="text-right">Sellable produk</th>
+              <th className="text-right">Batch kini ke setelah</th>
+              <th>Produk kini ke setelah</th>
               <th className="text-right">Reserved</th>
             </tr>
           </thead>
@@ -412,12 +412,15 @@ function ImpactPreview({
                 <td>
                   <p className="font-medium text-white">{line.productSku}</p>
                   <p className="mt-1 text-xs text-slate-500">
-                    {line.batchCode} Â· exp {line.expiryDate}
+                    {line.batchCode} / exp {line.expiryDate}
                   </p>
                 </td>
                 <td>{labelFromCode(line.bucketCode)}</td>
                 <td className="text-right font-mono text-slate-300">
                   {formatSigned(line.originalDelta)}
+                </td>
+                <td className="text-right font-mono text-slate-400">
+                  {formatNumber(line.quantityAlreadyReversed)}
                 </td>
                 <td
                   className={[
@@ -431,16 +434,33 @@ function ImpactPreview({
                 </td>
                 <td className="text-right">
                   {formatNumber(line.currentBatchBucketQty)}
-                </td>
-                <td className="text-right font-semibold text-white">
-                  {formatNumber(line.resultingBatchBucketQty)}
-                </td>
-                <td className="text-right">
-                  {formatNumber(line.currentProductSellableQty)}
-                  <span className="mx-1 text-slate-600">â†’</span>
+                  <span className="mx-1 text-slate-600">{" -> "}</span>
                   <span className="font-semibold text-white">
-                    {formatNumber(line.resultingProductSellableQty)}
+                    {formatNumber(line.resultingBatchBucketQty)}
                   </span>
+                </td>
+                <td className="min-w-56 text-xs leading-6 text-slate-400">
+                  <p>
+                    Sellable {formatNumber(line.currentProductSellableQty)}
+                    <span className="mx-1 text-slate-600">{" -> "}</span>
+                    <span className="font-semibold text-white">
+                      {formatNumber(line.resultingProductSellableQty)}
+                    </span>
+                  </p>
+                  <p>
+                    Quarantine {formatNumber(line.currentProductQuarantineQty)}
+                    <span className="mx-1 text-slate-600">{" -> "}</span>
+                    <span className="font-semibold text-white">
+                      {formatNumber(line.resultingProductQuarantineQty)}
+                    </span>
+                  </p>
+                  <p>
+                    Damaged {formatNumber(line.currentProductDamagedQty)}
+                    <span className="mx-1 text-slate-600">{" -> "}</span>
+                    <span className="font-semibold text-white">
+                      {formatNumber(line.resultingProductDamagedQty)}
+                    </span>
+                  </p>
                 </td>
                 <td className="text-right">
                   {formatNumber(line.currentProductReservedQty)}
@@ -465,7 +485,7 @@ function ImpactPreview({
           <div className="rounded-xl border border-white/10 bg-slate-950/35 p-4">
             <dt className="text-xs text-slate-500">Jumlah entry</dt>
             <dd className="mt-2 text-sm text-slate-200">
-              {formatNumber(preview.lineCount)} entry Â·{" "}
+              {formatNumber(preview.lineCount)} entry /{" "}
               {formatNumber(preview.totalAbsoluteQuantity)} unit absolut
             </dd>
           </div>
@@ -566,7 +586,10 @@ export default async function EntryCorrectionsPage({
   let data;
 
   try {
-    data = await getEntryCorrectionData();
+    data = await getEntryCorrectionData(
+      undefined,
+      state.transactionId ?? undefined,
+    );
   } catch (error) {
     return (
       <ConfigurationError
@@ -641,6 +664,17 @@ export default async function EntryCorrectionsPage({
     }
   }
 
+  const selectedActorUserId =
+    preview?.originalTransaction.actorUserId ??
+    (selectedGroup?.transactionTypeCode === "REVERSAL"
+      ? selectedApplication?.actor_user_id ?? null
+      : null);
+  const selectedProcessName =
+    preview?.originalTransaction.processName ??
+    (selectedGroup?.transactionTypeCode === "REVERSAL"
+      ? selectedApplication?.process_name ?? null
+      : null);
+
   const candidateCount = groups.filter(
     (group) =>
       SUPPORTED_SOURCE_TYPES.includes(
@@ -672,7 +706,7 @@ export default async function EntryCorrectionsPage({
         <section className="scroll-mt-24" id="overview">
           <div className="flex flex-col gap-6 xl:flex-row xl:items-end xl:justify-between">
             <div>
-              <p className="section-kicker">Kontrol stok Â· Koreksi Entri</p>
+              <p className="section-kicker">Kontrol stok / Koreksi Entri</p>
               <h1 className="mt-3 max-w-4xl text-3xl font-semibold tracking-tight sm:text-4xl">
                 Balik kesalahan input tanpa menghapus jejak transaksi.
               </h1>
@@ -683,7 +717,7 @@ export default async function EntryCorrectionsPage({
               </p>
             </div>
             <div className="rounded-2xl border border-amber-400/20 bg-amber-400/[0.055] px-4 py-3 text-sm text-amber-100">
-              Full-document reversal Â· bukan edit saldo
+              Full-document reversal / bukan edit saldo
             </div>
           </div>
 
@@ -947,6 +981,8 @@ export default async function EntryCorrectionsPage({
                   ["Tipe sumber", labelFromCode(selectedGroup.sourceTypeCode)],
                   ["Terjadi", `${formatDate(selectedGroup.occurredAt)} WIB`],
                   ["Dicatat", `${formatDate(selectedGroup.recordedAt)} WIB`],
+                  ["Aktor", selectedActorUserId ?? "Tidak tersedia"],
+                  ["Proses", selectedProcessName ?? "Tidak tersedia"],
                 ].map(([label, value]) => (
                   <div
                     className="rounded-xl border border-white/10 bg-slate-950/35 p-4"

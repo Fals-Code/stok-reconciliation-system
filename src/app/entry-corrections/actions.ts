@@ -43,7 +43,13 @@ function requiredPreviewHash(formData: FormData) {
 }
 
 function requiredNote(formData: FormData) {
-  const note = required(formData, "note");
+  const value = formData.get("note");
+
+  if (typeof value !== "string" || value.trim() === "") {
+    throw new Error("REVERSAL_NOTE_REQUIRED");
+  }
+
+  const note = value.trim();
 
   if (note.length > 2000) {
     throw new Error("REVERSAL_NOTE_TOO_LONG");

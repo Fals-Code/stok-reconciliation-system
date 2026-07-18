@@ -286,6 +286,42 @@ function runSqlJson(sql) {
   return JSON.parse(jsonLine);
 }
 
+function readLedgerWatermark() {
+  return runSqlJson(`
+select jsonb_build_object(
+  'entryCount',
+  count(*),
+  'maxLedgerSeq',
+  coalesce(max(ledger_seq), 0)
+)
+from inventory.stock_ledger_entries
+where organization_id = ${sqlLiteral(organizationId)}::uuid;
+`);
+}
+
+function readTransactionIdentityBySourceRef(sourceRef) {
+  return runSqlJson(`
+select coalesce(
+  (
+    select jsonb_build_object(
+      'transactionId',
+      transaction.id,
+      'transactionNo',
+      transaction.transaction_no
+    )
+    from inventory.stock_transactions transaction
+    where transaction.organization_id =
+          ${sqlLiteral(organizationId)}::uuid
+      and transaction.source_ref_snapshot =
+          ${sqlLiteral(sourceRef)}
+    order by transaction.recorded_at desc
+    limit 1
+  ),
+  '{}'::jsonb
+);
+`);
+}
+
 function setSmokeProfileActive(userId) {
   const output = runSql(
     `
@@ -462,6 +498,15 @@ function findForm(html, marker) {
   }
 
   return form;
+}
+
+function hasForm(html, marker) {
+  const forms = html.match(/<form\b[^>]*>.*?<\/form>/gis) ?? [];
+  const normalizedMarker = normalizeRenderedText(marker);
+
+  return forms.some((candidate) =>
+    normalizeRenderedText(candidate).includes(normalizedMarker),
+  );
 }
 
 function findServerActionName(formHtml) {
@@ -759,6 +804,78 @@ async function postReceipt({
   });
 }
 
+async function selectFefoFixture() {
+  const encodedOrganizationId = encodeURIComponent(organizationId);
+  const today = new Date().toISOString().slice(0, 10);
+  const rows = await restRows(
+    "batch_inventory" +
+      `?organization_id=eq.${encodedOrganizationId}` +
+      "&status_code=eq.ACTIVE" +
+      "&sellable_qty=gt.0" +
+      `&expiry_date=gte.${today}` +
+      "&select=batch_id,product_id,sku,product_name,batch_code," +
+      "expiry_date,status_code,sellable_qty" +
+      "&order=product_id.asc,expiry_date.asc,batch_code.asc",
+  );
+  const byProduct = new Map();
+
+  for (const row of rows) {
+    const current = byProduct.get(row.product_id) ?? [];
+    current.push(row);
+    byProduct.set(row.product_id, current);
+  }
+
+  for (const batches of byProduct.values()) {
+    if (batches.length < 2) continue;
+
+    const first = batches[0];
+    const second = batches[1];
+
+    return {
+      productId: first.product_id,
+      sku: first.sku,
+      first,
+      second,
+      quantity: Number(first.sellable_qty) + 1,
+    };
+  }
+
+  throw new Error(
+    "Fixture FEFO membutuhkan satu produk dengan minimal dua batch aktif.",
+  );
+}
+
+async function postManualOutbound({
+  sourceRef,
+  idempotencyKey,
+  productId,
+  quantity,
+  runId,
+}) {
+  return rpc("post_manual_outbound", {
+    p_organization_id: organizationId,
+    p_idempotency_key: idempotencyKey,
+    p_source_ref: sourceRef,
+    p_occurred_at: new Date().toISOString(),
+    p_reason_code: "OFFLINE_SALE",
+    p_lines: [
+      {
+        productId,
+        quantity,
+        sourceLineRef: "SMOKE-FEFO-LINE-1",
+      },
+    ],
+    p_note: "Temporary FEFO outbound for Entry Correction smoke.",
+    p_metadata: {
+      source: "entry-correction-ui-smoke",
+      version: 1,
+      runId,
+      fixture: "manual-outbound-fefo",
+      temporary: true,
+    },
+  });
+}
+
 async function previewReversal(transactionId) {
   return rpc("preview_stock_transaction_reversal", {
     p_organization_id: organizationId,
@@ -815,7 +932,7 @@ async function readLedgerByTransaction(transactionId) {
   );
 }
 
-async function cleanupReceipt({
+async function cleanupTransaction({
   transactionId,
   runId,
   fixture,
@@ -849,7 +966,7 @@ async function cleanupReceipt({
 
 async function main(args) {
   const runId = randomUUID();
-  const createdReceiptIds = [];
+  const createdTransactionIds = [];
 
   console.log("== Preflight ==");
 
@@ -1144,7 +1261,7 @@ select jsonb_build_object(
       JSON.stringify(posted),
     );
 
-    createdReceiptIds.push({
+    createdTransactionIds.push({
       transactionId: posted.transactionId,
       fixture: "success",
     });
@@ -1166,6 +1283,7 @@ select jsonb_build_object(
       }),
     );
 
+    const ledgerBeforePreview = readLedgerWatermark();
     const directPreview = await previewReversal(
       posted.transactionId,
     );
@@ -1189,6 +1307,18 @@ select jsonb_build_object(
       JSON.stringify(afterDirectPreview.snapshot) ===
         JSON.stringify(afterPost.snapshot),
       "Preview RPC tidak mengubah projection stok",
+    );
+
+    const ledgerAfterPreview = readLedgerWatermark();
+
+    assertTest(
+      JSON.stringify(ledgerAfterPreview) ===
+        JSON.stringify(ledgerBeforePreview),
+      "Preview RPC tidak menulis ledger entry",
+      JSON.stringify({
+        before: ledgerBeforePreview,
+        after: ledgerAfterPreview,
+      }),
     );
 
     let page = await getPage(
@@ -1357,6 +1487,16 @@ select jsonb_build_object(
       "Detail reversal menampilkan transaksi asal",
     );
 
+    assertTest(
+      containsText(originalDetail.html, "Diblokir") &&
+        containsText(
+          originalDetail.html,
+          "ORIGINAL_TRANSACTION_ALREADY_REVERSED",
+        ) &&
+        !hasForm(originalDetail.html, "Posting Koreksi Entri"),
+      "Transaksi yang sudah dibalik tampil blocked tanpa commit form",
+    );
+
     const replayPage = await invokeServerActionForm({
       pageUri:
         `${entryCorrectionUrl}` +
@@ -1408,6 +1548,180 @@ where transaction.organization_id =
       }),
     );
 
+    console.log("\n== Manual outbound FEFO dan reversal UI ==");
+
+    const fefoFixture = await selectFefoFixture();
+    const firstFefoBaseline = await readInventory(
+      fefoFixture.first.batch_id,
+      fefoFixture.productId,
+    );
+    const secondFefoBaseline = await readInventory(
+      fefoFixture.second.batch_id,
+      fefoFixture.productId,
+    );
+
+    assertTest(
+      Number(fefoFixture.first.sellable_qty) > 0 &&
+        Number(fefoFixture.second.sellable_qty) > 0,
+      "Fixture FEFO memakai dua batch dengan stok positif",
+      JSON.stringify(fefoFixture),
+    );
+
+    const outboundSourceRef =
+      `${FIXTURE_PREFIX}manual-outbound:${runId}`;
+    await postManualOutbound({
+      sourceRef: outboundSourceRef,
+      idempotencyKey:
+        `${FIXTURE_PREFIX}post:manual-outbound:${runId}`,
+      productId: fefoFixture.productId,
+      quantity: fefoFixture.quantity,
+      runId,
+    });
+
+    const outboundIdentity =
+      readTransactionIdentityBySourceRef(outboundSourceRef);
+
+    assertTest(
+      UUID_PATTERN.test(outboundIdentity?.transactionId ?? ""),
+      "Fixture manual outbound memiliki transaction ID",
+      JSON.stringify(outboundIdentity),
+    );
+
+    createdTransactionIds.push({
+      transactionId: outboundIdentity.transactionId,
+      fixture: "manual-outbound-fefo",
+    });
+
+    const outboundLedger = await readLedgerByTransaction(
+      outboundIdentity.transactionId,
+    );
+    const firstOutboundLine = outboundLedger.find(
+      (line) => line.batch_id === fefoFixture.first.batch_id,
+    );
+    const secondOutboundLine = outboundLedger.find(
+      (line) => line.batch_id === fefoFixture.second.batch_id,
+    );
+
+    assertTest(
+      outboundLedger.length === 2 &&
+        Number(firstOutboundLine?.quantity_delta) ===
+          -Number(fefoFixture.first.sellable_qty) &&
+        Number(secondOutboundLine?.quantity_delta) === -1,
+      "Manual outbound memakai dua batch FEFO secara deterministik",
+      JSON.stringify({
+        fixture: fefoFixture,
+        ledger: outboundLedger,
+      }),
+    );
+
+    let outboundPage = await getPage(
+      `${entryCorrectionUrl}` +
+        `?q=${encodeURIComponent(outboundSourceRef)}` +
+        "&type=MANUAL_OUTBOUND" +
+        `&transactionId=${outboundIdentity.transactionId}` +
+        "#detail",
+    );
+
+    assertTest(
+      containsText(outboundPage.html, "Aktor") &&
+        containsText(outboundPage.html, "Proses") &&
+        containsText(outboundPage.html, "Sudah dibalik") &&
+        containsText(outboundPage.html, "Quarantine") &&
+        containsText(outboundPage.html, "Damaged") &&
+        hasForm(outboundPage.html, "Posting Koreksi Entri"),
+      "Detail manual outbound menampilkan kontrak preview lengkap",
+    );
+
+    const outboundForm = findForm(
+      outboundPage.html,
+      "Posting Koreksi Entri",
+    );
+    const outboundFields = {
+      originalTransactionId: outboundIdentity.transactionId,
+      previewBasisHash: findInputValue(
+        outboundForm,
+        "previewBasisHash",
+      ),
+      idempotencyKey: findInputValue(
+        outboundForm,
+        "idempotencyKey",
+      ),
+      returnTo:
+        `/entry-corrections?q=${encodeURIComponent(outboundSourceRef)}` +
+        "&type=MANUAL_OUTBOUND" +
+        `&transactionId=${outboundIdentity.transactionId}` +
+        "#detail",
+      note: `Koreksi manual outbound FEFO smoke ${runId}.`,
+      confirmation: "on",
+    };
+
+    outboundPage = await invokeServerActionForm({
+      pageUri: outboundPage.uri,
+      pageHtml: outboundPage.html,
+      marker: "Posting Koreksi Entri",
+      fields: outboundFields,
+      baseUrl: args.baseUrl,
+    });
+
+    assertTest(
+      containsText(outboundPage.html, "berhasil membalik"),
+      "Manual outbound berhasil dibalik melalui UI",
+    );
+
+    const outboundApplications = await readApplications(
+      outboundIdentity.transactionId,
+    );
+    const outboundApplication = outboundApplications[0];
+    const outboundReversalLedger = await readLedgerByTransaction(
+      outboundApplication.reversal_transaction_id,
+    );
+    const outboundOriginalByBatch = new Map(
+      outboundLedger.map((line) => [
+        line.batch_id,
+        Number(line.quantity_delta),
+      ]),
+    );
+
+    assertTest(
+      outboundApplications.length === 2 &&
+        outboundReversalLedger.length === outboundLedger.length &&
+        outboundReversalLedger.every(
+          (line) =>
+            Number(line.quantity_delta) ===
+            -Number(outboundOriginalByBatch.get(line.batch_id)),
+        ),
+      "Reversal manual outbound memulihkan batch FEFO asal tanpa realokasi",
+      JSON.stringify({
+        original: outboundLedger,
+        reversal: outboundReversalLedger,
+      }),
+    );
+
+    const firstFefoAfterReversal = await readInventory(
+      fefoFixture.first.batch_id,
+      fefoFixture.productId,
+    );
+    const secondFefoAfterReversal = await readInventory(
+      fefoFixture.second.batch_id,
+      fefoFixture.productId,
+    );
+
+    assertTest(
+      firstFefoAfterReversal.snapshot.batchSellable ===
+        firstFefoBaseline.snapshot.batchSellable &&
+        secondFefoAfterReversal.snapshot.batchSellable ===
+          secondFefoBaseline.snapshot.batchSellable &&
+        firstFefoAfterReversal.snapshot.productSellable ===
+          firstFefoBaseline.snapshot.productSellable,
+      "Reversal manual outbound mengembalikan projection FEFO ke baseline",
+      JSON.stringify({
+        firstBefore: firstFefoBaseline.snapshot,
+        firstAfter: firstFefoAfterReversal.snapshot,
+        secondBefore: secondFefoBaseline.snapshot,
+        secondAfter: secondFefoAfterReversal.snapshot,
+      }),
+    );
+
     console.log("\n== Failure path dan stale preview ==");
 
     const staleSourceRef =
@@ -1423,7 +1737,7 @@ where transaction.organization_id =
       fixture: "stale",
     });
 
-    createdReceiptIds.push({
+    createdTransactionIds.push({
       transactionId: staleReceipt.transactionId,
       fixture: "stale",
     });
@@ -1455,6 +1769,31 @@ where transaction.organization_id =
         "#detail",
       note: `Stale preview smoke ${runId}.`,
     };
+
+    const missingReasonPage = await invokeServerActionForm({
+      pageUri: stalePage.uri,
+      pageHtml: stalePage.html,
+      marker: "Posting Koreksi Entri",
+      fields: {
+        ...staleFields,
+        note: "",
+        confirmation: "on",
+      },
+      baseUrl: args.baseUrl,
+    });
+
+    assertTest(
+      containsText(
+        missingReasonPage.html,
+        "Alasan koreksi wajib diisi",
+      ),
+      "Server Action menolak commit tanpa alasan koreksi",
+    );
+    assertTest(
+      (await readApplications(staleReceipt.transactionId))
+        .length === 0,
+      "Failure alasan tidak menulis reversal",
+    );
 
     const missingConfirmationPage =
       await invokeServerActionForm({
@@ -1490,7 +1829,7 @@ where transaction.organization_id =
       fixture: "interference",
     });
 
-    createdReceiptIds.push({
+    createdTransactionIds.push({
       transactionId: interferenceReceipt.transactionId,
       fixture: "interference",
     });
@@ -1534,9 +1873,9 @@ where transaction.organization_id =
   } finally {
     console.log("\n== Pemulihan stok fixture ==");
 
-    for (const fixture of createdReceiptIds) {
+    for (const fixture of createdTransactionIds) {
       try {
-        await cleanupReceipt({
+        await cleanupTransaction({
           transactionId: fixture.transactionId,
           runId,
           fixture: fixture.fixture,
