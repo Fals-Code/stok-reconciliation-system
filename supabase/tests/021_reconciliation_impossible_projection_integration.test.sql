@@ -322,10 +322,10 @@ select is(
     where issue.check_code =
         'IMPOSSIBLE_PROJECTION_STATE'
       and evidence.detail ->> 'ruleSetVersion' =
-        'core-integrity-v7'
+        'core-integrity-v8'
   ),
   2::bigint,
-  'impossible-state evidence records the v7 rule set'
+  'impossible-state evidence records the v8 rule set'
 );
 
 select is(

@@ -88,10 +88,13 @@ function returnErrorMessage(error: unknown) {
     RETURN_RECEIPT_EXCEEDS_SHIP_ALLOCATION: "Quantity penerimaan melebihi alokasi shipment yang dipilih.",
     RETURN_RECEIPT_ALREADY_POSTED: "Referensi penerimaan retur sudah pernah diposting.",
     RETURN_RECEIPT_LINE_NOT_FOUND: "Baris penerimaan retur tidak ditemukan.",
-    RETURN_INSPECTION_EXCEEDS_QUARANTINE: "Quantity inspeksi melebihi stok quarantine yang belum diperiksa.",
-    RETURN_BATCH_IDENTITY_REQUIRED_FOR_SELLABLE: "Batch belum teridentifikasi sehingga tidak boleh dipindahkan ke sellable.",
-    RETURN_BATCH_NOT_ACTIVE_FOR_SELLABLE: "Batch tidak aktif sehingga tidak boleh dipindahkan ke sellable.",
-    RETURN_BATCH_EXPIRED_FOR_SELLABLE: "Batch kedaluwarsa sehingga tidak boleh dipindahkan ke sellable.",
+    RETURN_INSPECTION_EXCEEDS_RECEIVED: "Quantity inspeksi melebihi jumlah diterima yang belum diperiksa.",
+    RETURN_BATCH_IDENTITY_REQUIRED_FOR_SELLABLE: "Batch asal belum teridentifikasi sehingga hasil retur tidak boleh dimasukkan sebagai layak jual.",
+    RETURN_SOURCE_BATCH_EXPIRED_FOR_SELLABLE: "Batch asal sudah kedaluwarsa sehingga hasil retur tidak dapat ditetapkan layak jual.",
+    RETURN_BATCH_KIND_INVALID: "Batch tujuan retur tidak memiliki jenis batch retur yang valid.",
+    RETURN_BATCH_NOT_ACTIVE_FOR_SELLABLE: "Batch retur tidak aktif sehingga tidak dapat menerima stok layak jual.",
+    RETURN_BATCH_EXPIRED_FOR_SELLABLE: "Batch retur sudah kedaluwarsa sehingga tidak dapat menerima stok layak jual.",
+    RETURN_SELLABLE_REASON_NOT_CONFIGURED: "Alasan pergerakan untuk retur layak jual belum dikonfigurasi.",
     RETURN_INSPECTION_ALREADY_POSTED: "Referensi inspeksi sudah pernah diposting.",
     RETURN_LOST_EXCEEDS_PENDING: "Quantity hilang melebihi sisa retur yang belum diterima.",
     RETURN_EVENT_ALREADY_APPLIED: "Referensi event retur sudah pernah diterapkan.",
@@ -494,7 +497,8 @@ export async function confirmReturnReceiptAction(formData: FormData) {
     const result = await callRpc<{
       returnRef: string;
       receiptRef: string;
-      transactionNo: string;
+      transactionNo: string | null;
+      stockEffectCode: "NONE";
       totalQuantity: number;
       status: string;
     }>("confirm_return_receipt", {
@@ -512,7 +516,9 @@ export async function confirmReturnReceiptAction(formData: FormData) {
       },
     });
 
-    message = `${result.transactionNo} menerima ${result.totalQuantity} unit ke quarantine.`;
+    message =
+      `${result.receiptRef} mencatat penerimaan fisik ${result.totalQuantity} unit. ` +
+      "Stok belum berubah sebelum hasil inspeksi ditetapkan.";
     revalidatePath("/");
     revalidatePath("/returns");
   } catch (error) {
@@ -544,7 +550,8 @@ export async function inspectReturnAction(formData: FormData) {
 
     const result = await callRpc<{
       inspectionRef: string;
-      transactionNo: string;
+      transactionNo: string | null;
+      stockEffectCode: "NONE" | "SELLABLE_INBOUND";
       totalQuantity: number;
       sellableQuantity: number;
       damagedQuantity: number;
@@ -571,7 +578,21 @@ export async function inspectReturnAction(formData: FormData) {
       },
     });
 
-    message = `${result.transactionNo} memindahkan ${result.sellableQuantity} unit ke sellable dan ${result.damagedQuantity} unit ke damaged.`;
+    if (result.sellableQuantity > 0) {
+      const transactionLabel = result.transactionNo ?? result.inspectionRef;
+      const damagedNote =
+        result.damagedQuantity > 0
+          ? ` ${result.damagedQuantity} unit rusak dicatat tanpa pergerakan stok.`
+          : "";
+
+      message =
+        `${transactionLabel} menambah ${result.sellableQuantity} unit layak jual ` +
+        `ke batch retur baru.${damagedNote}`;
+    } else {
+      message =
+        `${result.inspectionRef} mencatat ${result.damagedQuantity} unit rusak ` +
+        "tanpa pergerakan stok.";
+    }
     revalidatePath("/");
     revalidatePath("/returns");
   } catch (error) {
@@ -636,8 +657,8 @@ const RECONCILIATION_CHECK_CODES = [
   "BATCH_PRODUCT_PROJECTION",
   "RESERVATION_CONSISTENCY",
   "MARKETPLACE_ALLOCATION_CONSISTENCY",
-  "RETURN_RECEIPT_QUARANTINE",
-  "RETURN_INSPECTION_TRANSFER",
+  "RETURN_RECEIPT_CONSISTENCY",
+  "RETURN_INSPECTION_CONSISTENCY",
   "DUPLICATE_SOURCE_EFFECT",
   "IMPOSSIBLE_PROJECTION_STATE",
 ] as const;

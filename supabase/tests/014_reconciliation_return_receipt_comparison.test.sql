@@ -6,14 +6,14 @@ select plan(18);
 
 select has_function(
   'reconciliation'::name,
-  'find_return_receipt_quarantine_mismatches'::name,
+  'find_return_receipt_consistency_mismatches'::name,
   array['uuid']::text[]
 );
 
 select ok(
   not has_function_privilege(
     'authenticated',
-    'reconciliation.find_return_receipt_quarantine_mismatches(uuid)',
+    'reconciliation.find_return_receipt_consistency_mismatches(uuid)',
     'EXECUTE'
   ),
   'authenticated users cannot execute the internal return comparison'
@@ -22,7 +22,7 @@ select ok(
 select ok(
   not has_function_privilege(
     'anon',
-    'reconciliation.find_return_receipt_quarantine_mismatches(uuid)',
+    'reconciliation.find_return_receipt_consistency_mismatches(uuid)',
     'EXECUTE'
   ),
   'anonymous users cannot execute the internal return comparison'
@@ -31,7 +31,7 @@ select ok(
 select ok(
   not has_function_privilege(
     'service_role',
-    'reconciliation.find_return_receipt_quarantine_mismatches(uuid)',
+    'reconciliation.find_return_receipt_consistency_mismatches(uuid)',
     'EXECUTE'
   ),
   'service role cannot bypass the public reconciliation command'
@@ -40,7 +40,7 @@ select ok(
 select is(
   (
     select count(*)
-    from reconciliation.find_return_receipt_quarantine_mismatches(
+    from reconciliation.find_return_receipt_consistency_mismatches(
       '00000000-0000-4000-8000-000000000001'::uuid
     )
   ),
@@ -177,7 +177,7 @@ select is(
 select is(
   (
     select count(*)
-    from reconciliation.find_return_receipt_quarantine_mismatches(
+    from reconciliation.find_return_receipt_consistency_mismatches(
       '00000000-0000-4000-8000-000000000001'::uuid
     )
   ),
@@ -295,12 +295,12 @@ select is(
 select is(
   (
     select count(*)
-    from reconciliation.find_return_receipt_quarantine_mismatches(
+    from reconciliation.find_return_receipt_consistency_mismatches(
       '00000000-0000-4000-8000-000000000001'::uuid
     )
   ),
   0::bigint,
-  'valid physical return receipt agrees with quarantine ledger'
+  'valid physical return receipt is stock-neutral and internally consistent'
 );
 
 insert into return_comparison_snapshots (
@@ -330,7 +330,7 @@ alter table operations.return_receipt_lines
 select is(
   (
     select count(*)
-    from reconciliation.find_return_receipt_quarantine_mismatches(
+    from reconciliation.find_return_receipt_consistency_mismatches(
       '00000000-0000-4000-8000-000000000001'::uuid
     )
   ),
@@ -362,12 +362,12 @@ select is(
         || unexpected_transaction_count::text
         || ':'
         || issue_code
-    from reconciliation.find_return_receipt_quarantine_mismatches(
+    from reconciliation.find_return_receipt_consistency_mismatches(
       '00000000-0000-4000-8000-000000000001'::uuid
     )
   ),
-  '3:2:3:1:1:1:1:0:0:0:RETURN_RECEIPT_LINE_LINK_INVALID',
-  'return mismatch explains receipt, event-line, and quarantine ledger totals'
+  '3:2:0:1:1:0:1:0:0:0:RETURN_RECEIPT_LINE_LINK_INVALID',
+  'return mismatch explains receipt totals without a stock effect'
 );
 
 select is(
@@ -407,7 +407,7 @@ alter table operations.return_receipt_lines
 select is(
   (
     select count(*)
-    from reconciliation.find_return_receipt_quarantine_mismatches(
+    from reconciliation.find_return_receipt_consistency_mismatches(
       '00000000-0000-4000-8000-000000000001'::uuid
     )
   ),

@@ -2,11 +2,11 @@ begin;
 
 create extension if not exists pgtap with schema extensions;
 
-select plan(18);
+select plan(20);
 
 select has_function(
   'reconciliation',
-  'find_return_inspection_transfer_mismatches',
+  'find_return_inspection_consistency_mismatches',
   array['uuid']::text[],
   'return inspection comparison helper exists'
 );
@@ -19,7 +19,7 @@ select is(
       on namespace.oid = procedure.pronamespace
     where namespace.nspname = 'reconciliation'
       and procedure.proname =
-        'find_return_inspection_transfer_mismatches'
+        'find_return_inspection_consistency_mismatches'
       and pg_get_function_identity_arguments(procedure.oid) =
         'p_organization_id uuid'
   ),
@@ -35,12 +35,48 @@ select is(
       on namespace.oid = procedure.pronamespace
     where namespace.nspname = 'reconciliation'
       and procedure.proname =
-        'find_return_inspection_transfer_mismatches'
+        'find_return_inspection_consistency_mismatches'
       and pg_get_function_identity_arguments(procedure.oid) =
         'p_organization_id uuid'
   ),
-  'search_path=pg_catalog, inventory, operations',
+  'search_path=pg_catalog, catalog, inventory, operations, reconciliation',
   'return inspection helper has a fixed search path'
+);
+
+select ok(
+  position(
+    '''LEGACY_QUARANTINE_TRANSFER'''
+    in (
+      select pg_get_functiondef(procedure.oid)
+      from pg_proc procedure
+      join pg_namespace namespace
+        on namespace.oid = procedure.pronamespace
+      where namespace.nspname = 'reconciliation'
+        and procedure.proname =
+          'find_return_inspection_consistency_mismatches'
+        and pg_get_function_identity_arguments(procedure.oid) =
+          'p_organization_id uuid'
+    )
+  ) > 0,
+  'return inspection helper recognizes the legacy quarantine-transfer contract'
+);
+
+select ok(
+  position(
+    '''LEGACY_TRANSFER'''
+    in (
+      select pg_get_functiondef(procedure.oid)
+      from pg_proc procedure
+      join pg_namespace namespace
+        on namespace.oid = procedure.pronamespace
+      where namespace.nspname = 'reconciliation'
+        and procedure.proname =
+          'find_return_inspection_consistency_mismatches'
+        and pg_get_function_identity_arguments(procedure.oid) =
+          'p_organization_id uuid'
+    )
+  ) = 0,
+  'return inspection helper does not use an undefined legacy effect code'
 );
 
 select is(
@@ -49,7 +85,7 @@ select is(
     from information_schema.routine_privileges privilege
     where privilege.specific_schema = 'reconciliation'
       and privilege.routine_name =
-        'find_return_inspection_transfer_mismatches'
+        'find_return_inspection_consistency_mismatches'
       and privilege.grantee in (
         'PUBLIC',
         'anon',
@@ -65,7 +101,7 @@ select is(
 select is(
   (
     select count(*)
-    from reconciliation.find_return_inspection_transfer_mismatches(
+    from reconciliation.find_return_inspection_consistency_mismatches(
       '00000000-0000-4000-8000-000000000001'::uuid
     )
   ),
@@ -229,7 +265,7 @@ select is(
     where kind = 'RECEIPT'
   ),
   'RECEIVED_PENDING_INSPECTION',
-  'inspection comparison receipt enters quarantine'
+  'inspection comparison receipt stays stock-neutral pending inspection'
 );
 
 insert into return_inspection_results (kind, result)
@@ -300,18 +336,18 @@ where position.organization_id =
 select is(
   (
     select count(*)
-    from reconciliation.find_return_inspection_transfer_mismatches(
+    from reconciliation.find_return_inspection_consistency_mismatches(
       '00000000-0000-4000-8000-000000000001'::uuid
     )
   ),
   0::bigint,
-  'valid mixed inspection agrees with its paired ledger transfer'
+  'valid mixed inspection posts only the sellable inbound effect'
 );
 
 select is(
   (
     select count(*)
-    from reconciliation.find_return_inspection_transfer_mismatches(
+    from reconciliation.find_return_inspection_consistency_mismatches(
       '00000000-0000-4000-8000-000000000001'::uuid
     )
   ),
@@ -337,7 +373,7 @@ alter table operations.return_inspection_allocations
 select is(
   (
     select count(*)
-    from reconciliation.find_return_inspection_transfer_mismatches(
+    from reconciliation.find_return_inspection_consistency_mismatches(
       '00000000-0000-4000-8000-000000000001'::uuid
     )
     where inspection_ref =
@@ -379,20 +415,20 @@ select is(
         || invalid_destination_ledger_count::text
         || ':'
         || orphan_ledger_count::text
-    from reconciliation.find_return_inspection_transfer_mismatches(
+    from reconciliation.find_return_inspection_consistency_mismatches(
       '00000000-0000-4000-8000-000000000001'::uuid
     )
     where inspection_ref =
       'RECON-INSPECTION-INSPECTION-001'
   ),
-  '3:2:3:3:0:1:2:2:2:0:1:0:1:1:0',
-  'inspection mismatch reports allocation and paired ledger diagnostics'
+  '3:2:0:2:2:1:2:0:1:0:1:0:0:1:0',
+  'inspection mismatch reports allocation and sellable inbound diagnostics'
 );
 
 select is(
   (
     select issue_code
-    from reconciliation.find_return_inspection_transfer_mismatches(
+    from reconciliation.find_return_inspection_consistency_mismatches(
       '00000000-0000-4000-8000-000000000001'::uuid
     )
     where inspection_ref =
@@ -465,7 +501,7 @@ alter table operations.return_inspection_allocations
 select is(
   (
     select count(*)
-    from reconciliation.find_return_inspection_transfer_mismatches(
+    from reconciliation.find_return_inspection_consistency_mismatches(
       '00000000-0000-4000-8000-000000000001'::uuid
     )
     where inspection_ref =

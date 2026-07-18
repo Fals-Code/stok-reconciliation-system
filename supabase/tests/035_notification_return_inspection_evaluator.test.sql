@@ -335,8 +335,8 @@ select is(
       and product_id =
         '30000000-0000-4000-8000-000000000001'::uuid
   ),
-  2::bigint,
-  'received units are physically held in quarantine'
+  0::bigint,
+  'physical receipt remains stock-neutral before inspection'
 );
 
 create temporary table return_domain_before_first_eval as

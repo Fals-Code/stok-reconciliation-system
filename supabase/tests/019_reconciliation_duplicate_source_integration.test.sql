@@ -517,10 +517,10 @@ select is(
     where issue.check_code =
         'DUPLICATE_SOURCE_EFFECT'
       and evidence.detail ->> 'ruleSetVersion' =
-        'core-integrity-v7'
+        'core-integrity-v8'
   ),
   2::bigint,
-  'duplicate source evidence records the v7 rule set'
+  'duplicate source evidence records the v8 rule set'
 );
 
 select is(

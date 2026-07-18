@@ -66,8 +66,8 @@ foreach ($relativePath in $requiredFiles) {
 }
 
 $branch = (git -C $ProjectRoot branch --show-current).Trim()
-if ($branch -ne "agent/reconciliation-admin-ui") {
-  throw "Expected branch 'agent/reconciliation-admin-ui', found '$branch'."
+if ($branch -ne "agent/phase2-return-semantics") {
+  throw "Expected branch 'agent/phase2-return-semantics', found '$branch'."
 }
 
 $npmCommand = (Get-Command npm.cmd -ErrorAction Stop).Source
@@ -220,8 +220,8 @@ const checkCodes = [
   "BATCH_PRODUCT_PROJECTION",
   "RESERVATION_CONSISTENCY",
   "MARKETPLACE_ALLOCATION_CONSISTENCY",
-  "RETURN_RECEIPT_QUARANTINE",
-  "RETURN_INSPECTION_TRANSFER",
+  "RETURN_RECEIPT_CONSISTENCY",
+  "RETURN_INSPECTION_CONSISTENCY",
   "DUPLICATE_SOURCE_EFFECT",
   "IMPOSSIBLE_PROJECTION_STATE",
 ];
@@ -231,6 +231,8 @@ function detectMojibake(text) {
     String.fromCharCode(0x00c2),
     String.fromCharCode(0x00c3),
     String.fromCharCode(0x00e2),
+    String.fromCharCode(0x252c),
+    String.fromCharCode(0x2556),
     String.fromCharCode(0xfffd),
   ];
 
@@ -396,27 +398,29 @@ test("Admin reconciliation smoke flow", async ({ page }) => {
   });
 
   await test.step("Reconciliation navigation works from all Admin pages", async () => {
-    const destinations = [
-      { link: "Dashboard", pathname: "/" },
-      { link: "Marketplace", pathname: "/marketplace" },
-      { link: "Retur", pathname: "/returns" },
-    ];
+    const destinations = ["/", "/marketplace", "/returns"];
 
-    for (const destination of destinations) {
+    for (const pathname of destinations) {
       await page.goto("/reconciliation");
 
-      await page
-        .getByRole("link", { name: destination.link, exact: true })
-        .first()
-        .click();
+      const destinationLink = page
+        .locator(
+          `nav[aria-label="Navigasi utama"] a[href="${pathname}"]`
+        )
+        .first();
+
+      await expect(destinationLink).toBeVisible();
+      await destinationLink.click();
 
       await page.waitForURL(
-        (url) => url.pathname === destination.pathname,
+        (url) => url.pathname === pathname,
         { timeout: 30000 }
       );
 
       const reconciliationLink = page
-        .getByRole("link", { name: "Reconciliation", exact: true })
+        .locator(
+          'nav[aria-label="Navigasi utama"] a[href="/reconciliation"]'
+        )
         .first();
 
       await expect(reconciliationLink).toBeVisible();

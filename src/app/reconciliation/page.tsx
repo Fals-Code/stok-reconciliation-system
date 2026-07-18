@@ -44,18 +44,18 @@ const reconciliationChecks = [
       "Memastikan barang keluar marketplace memiliki alokasi batch FEFO yang lengkap.",
   },
   {
-    code: "RETURN_RECEIPT_QUARANTINE",
-    label: "Penerimaan retur",
+    code: "RETURN_RECEIPT_CONSISTENCY",
+    label: "Penerimaan fisik retur",
     category: "Retur",
     description:
-      "Memastikan barang retur yang diterima masuk ke quarantine dengan quantity yang tepat.",
+      "Memastikan penerimaan fisik tercatat lengkap tanpa transaksi, ledger, atau perubahan saldo stok.",
   },
   {
-    code: "RETURN_INSPECTION_TRANSFER",
-    label: "Hasil inspeksi retur",
+    code: "RETURN_INSPECTION_CONSISTENCY",
+    label: "Kondisi dan dampak retur",
     category: "Retur",
     description:
-      "Memastikan perpindahan quarantine ke sellable atau damaged tetap net-zero.",
+      "Memastikan hanya quantity layak jual yang menjadi inbound ke batch retur baru, sedangkan rusak tetap stock-neutral.",
   },
   {
     code: "DUPLICATE_SOURCE_EFFECT",

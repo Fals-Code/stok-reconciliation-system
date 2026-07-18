@@ -407,7 +407,7 @@ from inventory.stock_product_positions position
 where position.organization_id = '00000000-0000-4000-8000-000000000001'::uuid
   and position.product_id = '30000000-0000-4000-8000-000000000001'::uuid;
 
--- 41-49: physical receipt enters quarantine exactly once
+-- 41-49: physical receipt records arrival without changing stock
 select is(
   (select result ->> 'status' from return_test_results where kind = 'RECEIPT_MAIN'),
   'PARTIALLY_RECEIVED',
@@ -415,45 +415,48 @@ select is(
 );
 select is(
   (
-    select batch_identity_verified
-    from api.return_receipt_lines
-    where receipt_ref = 'RET-RECEIPT-001'
+    select
+      line.batch_identity_verified
+      and line.source_batch_id = allocation.batch_id
+    from api.return_receipt_lines line
+    join operations.marketplace_ship_allocations allocation
+      on allocation.id = line.marketplace_ship_allocation_id
+    where line.receipt_ref = 'RET-RECEIPT-001'
   ),
   true,
-  'receipt linked to shipment allocation has verified batch identity'
+  'receipt preserves verified outbound batch provenance'
 );
 select is(
   (select quarantine_qty from return_stock_snapshots where stage = 'POST_RECEIPT'),
-  (select quarantine_qty + 3 from return_stock_snapshots where stage = 'POST_EXPECTED'),
-  'receipt adds three units to quarantine'
+  (select quarantine_qty from return_stock_snapshots where stage = 'POST_EXPECTED'),
+  'physical receipt does not create quarantine stock'
 );
 select is(
   (select sellable_qty from return_stock_snapshots where stage = 'POST_RECEIPT'),
   (select sellable_qty from return_stock_snapshots where stage = 'POST_EXPECTED'),
-  'receipt does not restore sellable stock directly'
+  'physical receipt does not restore sellable stock'
 );
 select is(
   (
     select count(*)
     from inventory.stock_ledger_entries entry
-    join inventory.stock_transactions transaction on transaction.id = entry.transaction_id
+    join inventory.stock_transactions transaction
+      on transaction.id = entry.transaction_id
     where transaction.source_ref_snapshot = 'RET-RECEIPT-001'
-      and transaction.transaction_type_code = 'RETURN_RECEIPT'
-      and entry.bucket_code = 'QUARANTINE'
-      and entry.quantity_delta = 3
-      and entry.entry_role_code = 'EXTERNAL_IN'
   ),
-  1::bigint,
-  'receipt writes one positive quarantine ledger entry'
+  0::bigint,
+  'physical receipt writes no ledger entry'
 );
 select is(
   (
-    select transaction_type_code
-    from inventory.stock_transactions
-    where source_ref_snapshot = 'RET-RECEIPT-001'
+    select
+      receipt.stock_effect_code || ':' ||
+      (receipt.transaction_id is null)::text
+    from operations.return_receipts receipt
+    where receipt.receipt_ref = 'RET-RECEIPT-001'
   ),
-  'RETURN_RECEIPT',
-  'receipt transaction is typed as return receipt'
+  'NONE:true',
+  'physical receipt explicitly records no stock transaction'
 );
 select is(
   api.confirm_return_receipt(
@@ -468,14 +471,16 @@ select is(
         (
           select item.id::text
           from operations.return_items item
-          join operations.returns return_header on return_header.id = item.return_id
+          join operations.returns return_header
+            on return_header.id = item.return_id
           where return_header.external_return_ref = 'RET-RETURN-001'
         ),
         'marketplaceShipAllocationId',
         (
           select allocation.id::text
           from operations.marketplace_ship_allocations allocation
-          join operations.marketplace_events event on event.id = allocation.event_id
+          join operations.marketplace_events event
+            on event.id = allocation.event_id
           where event.external_event_ref = 'RET-MKT-EVT-SHIP-001'
         ),
         'quantity', 3,
@@ -498,14 +503,9 @@ select is(
   'receipt replay creates no duplicate receipt'
 );
 select is(
-  (
-    select quarantine_qty
-    from inventory.stock_product_positions
-    where organization_id = '00000000-0000-4000-8000-000000000001'::uuid
-      and product_id = '30000000-0000-4000-8000-000000000001'::uuid
-  ),
-  (select quarantine_qty from return_stock_snapshots where stage = 'POST_RECEIPT'),
-  'receipt replay creates no second quarantine effect'
+  (select ledger_count from return_stock_snapshots where stage = 'POST_RECEIPT'),
+  (select ledger_count from return_stock_snapshots where stage = 'POST_EXPECTED'),
+  'receipt replay leaves ledger count unchanged'
 );
 
 insert into return_test_results (kind, result)
@@ -548,58 +548,66 @@ from inventory.stock_product_positions position
 where position.organization_id = '00000000-0000-4000-8000-000000000001'::uuid
   and position.product_id = '30000000-0000-4000-8000-000000000001'::uuid;
 
--- 50-61: inspection transfers quarantine net-zero to sellable and damaged
+-- 50-61: inspection posts only sellable quantity into a new return batch
 select is(
   (select result ->> 'status' from return_test_results where kind = 'INSPECTION_MAIN'),
   'PARTIALLY_INSPECTED',
   'inspection with pending arrival derives partially inspected status'
 );
 select is(
-  (select (result ->> 'allocationCount')::bigint from return_test_results where kind = 'INSPECTION_MAIN'),
+  (
+    select (result ->> 'allocationCount')::bigint
+    from return_test_results
+    where kind = 'INSPECTION_MAIN'
+  ),
   2::bigint,
-  'mixed inspection creates two destination allocations'
+  'mixed inspection records sellable and damaged condition allocations'
 );
 select is(
   (
     select sum(entry.quantity_delta)
     from inventory.stock_ledger_entries entry
-    join inventory.stock_transactions transaction on transaction.id = entry.transaction_id
+    join inventory.stock_transactions transaction
+      on transaction.id = entry.transaction_id
     where transaction.source_ref_snapshot = 'RET-INSPECTION-001'
   ),
-  0::numeric,
-  'inspection ledger transfer is net zero'
+  2::numeric,
+  'inspection ledger contains only sellable inbound quantity'
 );
 select is(
   (
     select count(*)
     from inventory.stock_ledger_entries entry
-    join inventory.stock_transactions transaction on transaction.id = entry.transaction_id
+    join inventory.stock_transactions transaction
+      on transaction.id = entry.transaction_id
     where transaction.source_ref_snapshot = 'RET-INSPECTION-001'
   ),
-  4::bigint,
-  'mixed inspection writes two source and two destination ledger entries'
+  1::bigint,
+  'mixed inspection writes one sellable inbound ledger entry'
 );
 select is(
   (select quarantine_qty from return_stock_snapshots where stage = 'POST_INSPECTION'),
-  0::bigint,
-  'inspection clears received quarantine quantity'
+  (select quarantine_qty from return_stock_snapshots where stage = 'POST_RECEIPT'),
+  'inspection does not create or consume quarantine stock'
 );
 select is(
   (select sellable_qty from return_stock_snapshots where stage = 'POST_INSPECTION'),
   (select sellable_qty + 2 from return_stock_snapshots where stage = 'POST_RECEIPT'),
-  'inspection restores two units to sellable'
+  'inspection adds only sellable quantity to stock'
 );
 select is(
   (select damaged_qty from return_stock_snapshots where stage = 'POST_INSPECTION'),
-  (select damaged_qty + 1 from return_stock_snapshots where stage = 'POST_RECEIPT'),
-  'inspection moves one unit to damaged'
+  (select damaged_qty from return_stock_snapshots where stage = 'POST_RECEIPT'),
+  'damaged return remains audit data without damaged stock'
 );
 select is(
   (
     select pending_inspection_qty
     from api.return_items
     where return_id = (
-      select id from operations.returns where external_return_ref = 'RET-RETURN-001'
+      select id
+      from operations.returns
+      where external_return_ref = 'RET-RETURN-001'
     )
   ),
   0::bigint,
@@ -618,7 +626,8 @@ select is(
         (
           select line.id::text
           from operations.return_receipt_lines line
-          join operations.return_receipts receipt on receipt.id = line.receipt_id
+          join operations.return_receipts receipt
+            on receipt.id = line.receipt_id
           where receipt.receipt_ref = 'RET-RECEIPT-001'
         ),
         'sellableQuantity', 2,
@@ -645,21 +654,35 @@ select is(
   (
     select count(*)
     from inventory.stock_ledger_entries entry
-    join inventory.stock_transactions transaction on transaction.id = entry.transaction_id
+    join inventory.stock_transactions transaction
+      on transaction.id = entry.transaction_id
     where transaction.source_ref_snapshot = 'RET-INSPECTION-001'
   ),
-  4::bigint,
-  'inspection replay creates no duplicate ledger entries'
+  1::bigint,
+  'inspection replay creates no duplicate sellable ledger entry'
 );
 select is(
   (
-    select count(distinct entry.pair_no)
-    from inventory.stock_ledger_entries entry
-    join inventory.stock_transactions transaction on transaction.id = entry.transaction_id
-    where transaction.source_ref_snapshot = 'RET-INSPECTION-001'
+    select count(*)
+    from operations.return_stock_batches provenance
+    join catalog.product_batches return_batch
+      on return_batch.organization_id = provenance.organization_id
+     and return_batch.product_id = provenance.product_id
+     and return_batch.id = provenance.batch_id
+    join inventory.stock_batch_balances balance
+      on balance.organization_id = provenance.organization_id
+     and balance.batch_id = provenance.batch_id
+    where provenance.return_id = (
+      select id
+      from operations.returns
+      where external_return_ref = 'RET-RETURN-001'
+    )
+      and return_batch.batch_kind_code = 'RETURN'
+      and return_batch.id <> provenance.source_batch_id
+      and balance.sellable_qty = 2
   ),
-  2::bigint,
-  'mixed inspection ledger entries retain two balanced pairs'
+  1::bigint,
+  'sellable return uses one new return-marked batch'
 );
 
 insert into return_test_results (kind, result)
@@ -913,7 +936,7 @@ select
     '{"test": true, "fixture": "return-unidentified"}'::jsonb
   );
 
--- 77-92: unidentified batches remain blocked from sellable
+-- 77-92: unidentified receipt stays stock-neutral and cannot become sellable
 select is(
   (select result ->> 'status' from return_test_results where kind = 'RESERVE_UNKNOWN'),
   'APPLIED',
@@ -945,25 +968,23 @@ select is(
 );
 select is(
   (
-    select batch.status_code
-    from api.return_receipt_lines line
-    join catalog.product_batches batch on batch.id = line.batch_id
-    where line.receipt_ref = 'RET-RECEIPT-UNKNOWN'
+    select batch_id is null
+    from api.return_receipt_lines
+    where receipt_ref = 'RET-RECEIPT-UNKNOWN'
   ),
-  'BLOCKED',
-  'unidentified return uses a blocked placeholder batch'
+  true,
+  'unidentified receipt does not fabricate a destination batch'
 );
 select is(
   (
-    select balance.quarantine_qty
+    select
+      line.stock_effect_code || ':' ||
+      (line.ledger_entry_id is null)::text
     from api.return_receipt_lines line
-    join inventory.stock_batch_balances balance
-      on balance.organization_id = line.organization_id
-     and balance.batch_id = line.batch_id
     where line.receipt_ref = 'RET-RECEIPT-UNKNOWN'
   ),
-  1::bigint,
-  'unidentified physical return is held in quarantine'
+  'NONE:true',
+  'unidentified receipt records arrival without stock effect'
 );
 select throws_ok(
   $sql$
@@ -979,7 +1000,8 @@ select throws_ok(
           (
             select line.id::text
             from operations.return_receipt_lines line
-            join operations.return_receipts receipt on receipt.id = line.receipt_id
+            join operations.return_receipts receipt
+              on receipt.id = line.receipt_id
             where receipt.receipt_ref = 'RET-RECEIPT-UNKNOWN'
           ),
           'sellableQuantity', 1,
@@ -1007,15 +1029,18 @@ select is(
 );
 select is(
   (
-    select balance.quarantine_qty
-    from api.return_receipt_lines line
-    join inventory.stock_batch_balances balance
-      on balance.organization_id = line.organization_id
-     and balance.batch_id = line.batch_id
-    where line.receipt_ref = 'RET-RECEIPT-UNKNOWN'
+    select count(*)
+    from operations.return_stock_batches provenance
+    where provenance.receipt_line_id = (
+      select line.id
+      from operations.return_receipt_lines line
+      join operations.return_receipts receipt
+        on receipt.id = line.receipt_id
+      where receipt.receipt_ref = 'RET-RECEIPT-UNKNOWN'
+    )
   ),
-  1::bigint,
-  'failed sellable inspection leaves quarantine unchanged'
+  0::bigint,
+  'failed unidentified sellable inspection creates no return batch'
 );
 
 insert into return_test_results (kind, result)
@@ -1033,7 +1058,8 @@ select
         (
           select line.id::text
           from operations.return_receipt_lines line
-          join operations.return_receipts receipt on receipt.id = line.receipt_id
+          join operations.return_receipts receipt
+            on receipt.id = line.receipt_id
           where receipt.receipt_ref = 'RET-RECEIPT-UNKNOWN'
         ),
         'sellableQuantity', 0,
@@ -1057,42 +1083,52 @@ select is(
 );
 select is(
   (
-    select balance.quarantine_qty
-    from api.return_receipt_lines line
-    join inventory.stock_batch_balances balance
-      on balance.organization_id = line.organization_id
-     and balance.batch_id = line.batch_id
-    where line.receipt_ref = 'RET-RECEIPT-UNKNOWN'
+    select count(*)
+    from inventory.stock_transactions transaction
+    where transaction.source_ref_snapshot in (
+      'RET-RECEIPT-UNKNOWN',
+      'RET-INSPECTION-UNKNOWN-DAMAGED'
+    )
   ),
   0::bigint,
-  'damaged inspection clears unknown-batch quarantine'
+  'unknown receipt and damaged inspection create no stock transaction'
 );
 select is(
   (
-    select balance.damaged_qty
-    from api.return_receipt_lines line
-    join inventory.stock_batch_balances balance
-      on balance.organization_id = line.organization_id
-     and balance.batch_id = line.batch_id
-    where line.receipt_ref = 'RET-RECEIPT-UNKNOWN'
+    select count(*)
+    from inventory.stock_ledger_entries entry
+    join inventory.stock_transactions transaction
+      on transaction.id = entry.transaction_id
+    where transaction.source_ref_snapshot in (
+      'RET-RECEIPT-UNKNOWN',
+      'RET-INSPECTION-UNKNOWN-DAMAGED'
+    )
   ),
-  1::bigint,
-  'placeholder batch receives damaged quantity'
+  0::bigint,
+  'unknown receipt and damaged inspection create no ledger entry'
 );
 select is(
   (
-    select destination_bucket_code
-    from api.return_inspection_allocations
-    where inspection_ref = 'RET-INSPECTION-UNKNOWN-DAMAGED'
+    select
+      allocation.condition_code || ':' ||
+      allocation.stock_effect_code || ':' ||
+      (allocation.destination_bucket_code is null)::text
+    from api.return_inspection_allocations allocation
+    where allocation.inspection_ref =
+      'RET-INSPECTION-UNKNOWN-DAMAGED'
   ),
-  'DAMAGED',
-  'unknown-batch inspection allocation targets damaged'
+  'DAMAGED:NONE:true',
+  'damaged inspection remains condition data without stock destination'
 );
 select is(
   (
     select
       expected_qty =
-      pending_arrival_qty + pending_inspection_qty + sellable_qty + damaged_qty + lost_qty
+      pending_arrival_qty +
+      pending_inspection_qty +
+      sellable_qty +
+      damaged_qty +
+      lost_qty
     from api.returns
     where external_return_ref = 'RET-RETURN-UNKNOWN'
   ),

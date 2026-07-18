@@ -214,7 +214,7 @@ export default async function ReturnsPage({
 
       return {
         id: reservation.order_item_id,
-        label: `${reservation.channel_code} · ${reservation.external_order_ref} · ${reservation.product_sku_snapshot} · dapat diretur ${Math.max(remaining, 0)}`,
+        label: `${reservation.channel_code} / ${reservation.external_order_ref} / ${reservation.product_sku_snapshot} / dapat diretur ${Math.max(remaining, 0)}`,
         channelCode: reservation.channel_code,
         orderRef: reservation.external_order_ref,
         productId: reservation.product_id,
@@ -270,7 +270,7 @@ export default async function ReturnsPage({
 
         receiptSources.push({
           id: `${item.return_item_id}:${allocation.allocation_id}`,
-          label: `${item.product_sku_snapshot} · ${allocation.batch_code_snapshot} · verified · allocation tersisa ${remaining}`,
+          label: `${item.product_sku_snapshot} / ${allocation.batch_code_snapshot} / verified / allocation tersisa ${remaining}`,
           returnItemId: item.return_item_id,
           marketplaceShipAllocationId: allocation.allocation_id,
         });
@@ -278,7 +278,7 @@ export default async function ReturnsPage({
 
       receiptSources.push({
         id: `${item.return_item_id}:UNKNOWN`,
-        label: `${item.product_sku_snapshot} · batch tidak diketahui · maksimal ${item.pending_arrival_qty}`,
+        label: `${item.product_sku_snapshot} / batch tidak diketahui / maksimal ${item.pending_arrival_qty}`,
         returnItemId: item.return_item_id,
         marketplaceShipAllocationId: null,
       });
@@ -345,19 +345,19 @@ export default async function ReturnsPage({
         <section id="overview" className="scroll-mt-24">
           <p className="section-kicker">Return operations</p>
           <h1 className="mt-3 text-3xl font-semibold tracking-tight sm:text-4xl">
-            Retur diterima ke quarantine, lalu diputuskan dengan bukti.
+            Retur diterima untuk diperiksa, lalu dampak stok ditetapkan dengan bukti.
           </h1>
           <p className="mt-3 max-w-3xl text-sm leading-6 text-slate-400 sm:text-base">
-            Expected return tidak mengubah stok. Barang fisik masuk ke quarantine,
-            lalu inspeksi memindahkannya secara net-zero ke sellable atau damaged.
-            Batch yang tidak teridentifikasi tidak dapat menjadi sellable.
+            Expected return dan penerimaan fisik tidak mengubah stok. Setelah inspeksi,
+            hanya barang layak jual yang menambah stok melalui batch retur baru.
+            Barang rusak dan hilang tetap tercatat untuk audit tanpa movement kedua.
           </p>
 
           <div className="mt-7 grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
             {[
               ["Total returns", returns.length, "Seluruh lifecycle tercatat"],
               ["Pending arrival", pendingArrival, "Belum diterima secara fisik"],
-              ["Pending inspection", pendingInspection, "Masih berada di quarantine"],
+              ["Pending inspection", pendingInspection, "Sudah diterima dan menunggu keputusan kondisi"],
               ["Closed outcomes", completed, "Selesai atau dinyatakan lost"],
             ].map(([label, value, description]) => (
               <article key={label} className="metric-card">
@@ -446,9 +446,9 @@ export default async function ReturnsPage({
               <div className="flex items-start justify-between gap-4">
                 <div>
                   <p className="section-kicker">Step 2</p>
-                  <h3 className="mt-1 text-xl font-semibold">Terima ke quarantine</h3>
+                  <h3 className="mt-1 text-xl font-semibold">Catat penerimaan fisik</h3>
                 </div>
-                <Pill label="QUARANTINE +" tone="warning" />
+                <Pill label="Stok belum berubah" tone="neutral" />
               </div>
               <input
                 type="hidden"
@@ -501,9 +501,9 @@ export default async function ReturnsPage({
               <div className="flex items-start justify-between gap-4">
                 <div>
                   <p className="section-kicker">Step 3</p>
-                  <h3 className="mt-1 text-xl font-semibold">Inspeksi quarantine</h3>
+                  <h3 className="mt-1 text-xl font-semibold">Tetapkan kondisi fisik</h3>
                 </div>
-                <Pill label="Net-zero transfer" tone="success" />
+                <Pill label="Hanya layak jual masuk stok" tone="success" />
               </div>
               <input
                 type="hidden"
@@ -521,14 +521,14 @@ export default async function ReturnsPage({
                   >
                     <option value="" disabled>
                       {inspectableReceiptLines.length === 0
-                        ? "Tidak ada quarantine yang menunggu inspeksi"
+                        ? "Tidak ada penerimaan yang menunggu inspeksi"
                         : "Pilih receipt line"}
                     </option>
                     {inspectableReceiptLines.map((line) => (
                       <option key={line.receipt_line_id} value={line.receipt_line_id}>
-                        {line.product_sku_snapshot} · {line.batch_code_snapshot} ·{" "}
-                        {line.batch_identity_verified ? "verified" : "unidentified"} ·
-                        remaining {receiptRemaining(line, inspectedByReceiptLine)}
+                        {line.product_sku_snapshot} / {line.source_batch_code_snapshot ?? "batch tidak diketahui"} /{" "}
+                        {line.batch_identity_verified ? "batch asal terverifikasi" : "batch asal belum diketahui"} /
+                        sisa {receiptRemaining(line, inspectedByReceiptLine)} / stok{" "}{line.stock_effect_code === "NONE" ? "belum berubah" : "saldo karantina lama"}
                       </option>
                     ))}
                   </select>
@@ -610,7 +610,7 @@ export default async function ReturnsPage({
                     </option>
                     {lostCandidates.map((item) => (
                       <option key={item.return_item_id} value={item.return_item_id}>
-                        {item.product_sku_snapshot} · pending{" "}
+                        {item.product_sku_snapshot} / pending{" "}
                         {item.pending_arrival_qty}
                       </option>
                     ))}
@@ -712,7 +712,7 @@ export default async function ReturnsPage({
                             {returnHeader.external_return_ref}
                           </p>
                           <p className="mt-1 text-xs text-slate-500">
-                            {returnHeader.channel_code} ·{" "}
+                            {returnHeader.channel_code} /{" "}
                             {returnHeader.marketplace_order_ref}
                           </p>
                         </div>
@@ -749,8 +749,8 @@ export default async function ReturnsPage({
                         {selectedReturn.external_return_ref}
                       </h3>
                       <p className="mt-2 text-sm text-slate-400">
-                        {selectedReturn.channel_code} ·{" "}
-                        {selectedReturn.marketplace_order_ref} · expected{" "}
+                        {selectedReturn.channel_code} /{" "}
+                        {selectedReturn.marketplace_order_ref} / expected{" "}
                         {formatDate(selectedReturn.expected_at, true)} WIB
                       </p>
                     </div>
@@ -888,11 +888,11 @@ export default async function ReturnsPage({
                         />
                       </div>
                       <p className="mt-2 text-xs text-slate-400">
-                        {line.product_sku_snapshot} · {line.batch_code_snapshot}
+                        {line.product_sku_snapshot} / {line.source_batch_code_snapshot ?? "batch tidak diketahui"}
                       </p>
                       <p className="mt-2 text-xs text-slate-500">
-                        received {line.quantity_received} · quarantine remaining{" "}
-                        {receiptRemaining(line, inspectedByReceiptLine)}
+                        diterima {line.quantity_received} / menunggu inspeksi{" "}
+                        {receiptRemaining(line, inspectedByReceiptLine)} / stok{" "}{line.stock_effect_code === "NONE" ? "belum berubah" : "saldo karantina lama"}
                       </p>
                     </div>
                   ))
@@ -916,17 +916,17 @@ export default async function ReturnsPage({
                           {allocation.inspection_ref}
                         </p>
                         <Pill
-                          label={allocation.destination_bucket_code}
+                          label={allocation.condition_code}
                           tone={
-                            allocation.destination_bucket_code === "SELLABLE"
+                            allocation.condition_code === "SELLABLE"
                               ? "success"
                               : "danger"
                           }
                         />
                       </div>
                       <p className="mt-2 text-xs text-slate-400">
-                        quantity {allocation.quantity_allocated} · pair{" "}
-                        {allocation.pair_no}
+                        jumlah {allocation.quantity_allocated} / dampak stok{" "}
+                        {allocation.stock_effect_code === "SELLABLE_INBOUND" ? "masuk batch retur" : allocation.stock_effect_code === "NONE" ? "tidak ada" : "transfer karantina lama"}
                       </p>
                       <p className="mt-2 text-xs text-slate-500">
                         {formatDate(allocation.occurred_at, true)} WIB
