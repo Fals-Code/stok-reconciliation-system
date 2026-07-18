@@ -734,8 +734,15 @@ select is(
     )
       and read_state_code = 'UNREAD'
   ),
-  2::bigint,
-  'escalation resets all active Admin states to UNREAD'
+  (
+    select count(*)::bigint
+    from app.user_profiles profile
+    where profile.organization_id =
+          '00000000-0000-4000-8000-000000000001'::uuid
+      and profile.role_code = 'ADMIN'
+      and profile.is_active
+  ),
+  'escalation resets every active Admin state to UNREAD'
 );
 
 select is(
@@ -749,8 +756,15 @@ select is(
     )
       and read_at is null
   ),
-  2::bigint,
-  'escalation clears read timestamps'
+  (
+    select count(*)::bigint
+    from app.user_profiles profile
+    where profile.organization_id =
+          '00000000-0000-4000-8000-000000000001'::uuid
+      and profile.role_code = 'ADMIN'
+      and profile.is_active
+  ),
+  'escalation clears every active Admin read timestamp'
 );
 
 select is(
@@ -764,8 +778,15 @@ select is(
     )
       and archived_at is null
   ),
-  2::bigint,
-  'escalation clears archive timestamps'
+  (
+    select count(*)::bigint
+    from app.user_profiles profile
+    where profile.organization_id =
+          '00000000-0000-4000-8000-000000000001'::uuid
+      and profile.role_code = 'ADMIN'
+      and profile.is_active
+  ),
+  'escalation clears every active Admin archive timestamp'
 );
 
 select is(
@@ -1141,8 +1162,15 @@ select is(
     ),
     p_process_name => 'pgtap.notification_lifecycle'
   ),
-  2,
-  'first reset creates UNREAD state for both active Admin accounts'
+  (
+    select count(*)::integer
+    from app.user_profiles profile
+    where profile.organization_id =
+          '00000000-0000-4000-8000-000000000001'::uuid
+      and profile.role_code = 'ADMIN'
+      and profile.is_active
+  ),
+  'first reset creates UNREAD state for every active Admin account'
 );
 
 select is(
