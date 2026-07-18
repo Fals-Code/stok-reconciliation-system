@@ -645,6 +645,25 @@ set local role authenticated;
 
 insert into reversal_results (kind, result)
 select
+  'MANUAL_POST_PREVIEW',
+  api.preview_manual_outbound(
+    '00000000-0000-4000-8000-000000000001'::uuid,
+    'PGTAP-REVERSAL-MANUAL-001',
+    '2026-07-18 10:00:00+07'::timestamptz,
+    'OFFLINE_SALE',
+    jsonb_build_array(
+      jsonb_build_object(
+        'productId', '30000000-0000-4000-8000-000000000001',
+        'quantity', 8,
+        'sourceLineRef', 'LINE-1'
+      )
+    ),
+    'Manual outbound for reversal coverage.',
+    '{"fixture":"general-reversal-manual"}'::jsonb
+  );
+
+insert into reversal_results (kind, result)
+select
   'MANUAL_POST',
   api.post_manual_outbound(
     '00000000-0000-4000-8000-000000000001'::uuid,
@@ -659,6 +678,12 @@ select
         'sourceLineRef', 'LINE-1'
       )
     ),
+    (
+      select result ->> 'basisHash'
+      from reversal_results
+      where kind = 'MANUAL_POST_PREVIEW'
+    ),
+    true,
     'Manual outbound for reversal coverage.',
     '{"fixture":"general-reversal-manual"}'::jsonb
   );
@@ -853,6 +878,25 @@ select
 
 insert into reversal_results (kind, result)
 select
+  'DEPENDENT_OUTBOUND_PREVIEW',
+  api.preview_manual_outbound(
+    '00000000-0000-4000-8000-000000000001'::uuid,
+    'PGTAP-REVERSAL-DEPENDENT-OUTBOUND-001',
+    '2026-07-18 11:05:00+07'::timestamptz,
+    'OFFLINE_SALE',
+    jsonb_build_array(
+      jsonb_build_object(
+        'productId', '30000000-0000-4000-8000-000000000002',
+        'quantity', 17,
+        'sourceLineRef', 'LINE-1'
+      )
+    ),
+    'Consume stock after the receipt.',
+    '{"fixture":"dependent-outbound"}'::jsonb
+  );
+
+insert into reversal_results (kind, result)
+select
   'DEPENDENT_OUTBOUND_POST',
   api.post_manual_outbound(
     '00000000-0000-4000-8000-000000000001'::uuid,
@@ -867,6 +911,12 @@ select
         'sourceLineRef', 'LINE-1'
       )
     ),
+    (
+      select result ->> 'basisHash'
+      from reversal_results
+      where kind = 'DEPENDENT_OUTBOUND_PREVIEW'
+    ),
+    true,
     'Consume stock after the receipt.',
     '{"fixture":"dependent-outbound"}'::jsonb
   );
@@ -982,6 +1032,25 @@ select
 
 insert into reversal_results (kind, result)
 select
+  'STALE_INTERVENING_OUTBOUND_PREVIEW',
+  api.preview_manual_outbound(
+    '00000000-0000-4000-8000-000000000001'::uuid,
+    'PGTAP-REVERSAL-STALE-OUTBOUND-001',
+    '2026-07-18 12:05:00+07'::timestamptz,
+    'OFFLINE_SALE',
+    jsonb_build_array(
+      jsonb_build_object(
+        'productId', '30000000-0000-4000-8000-000000000001',
+        'quantity', 1,
+        'sourceLineRef', 'LINE-1'
+      )
+    ),
+    'Change the preview basis.',
+    '{"fixture":"stale-preview"}'::jsonb
+  );
+
+insert into reversal_results (kind, result)
+select
   'STALE_INTERVENING_OUTBOUND',
   api.post_manual_outbound(
     '00000000-0000-4000-8000-000000000001'::uuid,
@@ -996,6 +1065,12 @@ select
         'sourceLineRef', 'LINE-1'
       )
     ),
+    (
+      select result ->> 'basisHash'
+      from reversal_results
+      where kind = 'STALE_INTERVENING_OUTBOUND_PREVIEW'
+    ),
+    true,
     'Change the preview basis.',
     '{"fixture":"stale-preview"}'::jsonb
   );
