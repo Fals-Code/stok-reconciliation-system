@@ -44,6 +44,12 @@ export const APP_NAV_SECTIONS = [
         description: "Hitung fisik dan adjustment",
       },
       {
+        href: "/entry-corrections",
+        label: "Koreksi Entri",
+        shortLabel: "KE",
+        description: "Preview dan reversal transaksi",
+      },
+      {
         href: "/reconciliation",
         label: "Rekonsiliasi",
         shortLabel: "RK",

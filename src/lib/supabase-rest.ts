@@ -541,6 +541,110 @@ export type NotificationAdminOperationResponse = {
   enqueueAction?: string;
 };
 
+export type StockReversalApplication = {
+  reversal_application_id: string;
+  organization_id: string;
+  original_transaction_id: string;
+  original_transaction_no: string;
+  original_transaction_type_code: string;
+  original_source_type_code: string;
+  original_source_ref: string;
+  reversal_transaction_id: string;
+  reversal_transaction_no: string;
+  original_entry_id: string;
+  reversal_entry_id: string;
+  product_id: string;
+  batch_id: string;
+  product_sku_snapshot: string;
+  batch_code_snapshot: string;
+  expiry_date_snapshot: string;
+  bucket_code: string;
+  original_quantity_delta: number;
+  reversal_quantity_delta: number;
+  quantity_applied: number;
+  actor_user_id: string | null;
+  process_name: string | null;
+  note: string | null;
+  created_at: string;
+};
+
+export type StockReversalPreviewBlocker = {
+  code: string;
+  message: string;
+};
+
+export type StockReversalPreviewLine = {
+  originalEntryId: string;
+  lineNo: number;
+  productId: string;
+  batchId: string;
+  productSku: string;
+  batchCode: string;
+  expiryDate: string;
+  bucketCode: string;
+  originalDelta: number;
+  quantityAlreadyReversed: number;
+  quantityToReverse: number;
+  reversalDelta: number;
+  currentBatchBucketQty: number | null;
+  resultingBatchBucketQty: number | null;
+  currentProductSellableQty: number | null;
+  currentProductQuarantineQty: number | null;
+  currentProductDamagedQty: number | null;
+  currentProductReservedQty: number | null;
+  resultingProductSellableQty: number | null;
+  resultingProductQuarantineQty: number | null;
+  resultingProductDamagedQty: number | null;
+  batchBalanceVersion: number | null;
+  productPositionVersion: number | null;
+};
+
+export type StockReversalPreview = {
+  status: "PREVIEW_READY" | "BLOCKED";
+  eligible: boolean;
+  basisHash: string;
+  schemaVersion: number;
+  originalTransaction: {
+    transactionId: string;
+    transactionNo: string;
+    transactionTypeCode: string;
+    reasonCode: string;
+    channelCode: string;
+    sourceTypeCode: string;
+    sourceId: string | null;
+    sourceRef: string;
+    occurredAt: string;
+    recordedAt: string;
+    actorUserId: string | null;
+    processName: string | null;
+    note: string | null;
+  };
+  lineCount: number;
+  totalAbsoluteQuantity: number;
+  lines: StockReversalPreviewLine[];
+  blockers: StockReversalPreviewBlocker[];
+};
+
+export type StockReversalMutationResponse = {
+  status: "REVERSED";
+  originalTransactionId: string;
+  originalTransactionNo: string;
+  originalTransactionType: string;
+  reversalTransactionId: string;
+  reversalTransactionNo: string;
+  lineCount: number;
+  totalAbsoluteQuantity: number;
+  previewBasisHash: string;
+  idempotencyKey: string;
+  requestHash: string;
+  recordedAt: string;
+  actorUserId: string;
+};
+
+export type EntryCorrectionData = {
+  ledger: StockLedgerEntry[];
+  applications: StockReversalApplication[];
+};
 export type DashboardData = {
   products: ProductInventory[];
   batches: BatchInventory[];
@@ -637,6 +741,26 @@ async function apiFetch<T>(
   return (await response.json()) as T;
 }
 
+async function apiFetchAll<T>(
+  path: string,
+  pageSize = 500,
+): Promise<T[]> {
+  const rows: T[] = [];
+  const separator = path.includes("?") ? "&" : "?";
+
+  for (let offset = 0; ; offset += pageSize) {
+    const page = await apiFetch<T[]>(
+      `${path}${separator}limit=${pageSize}&offset=${offset}`,
+    );
+
+    rows.push(...page);
+
+    if (page.length < pageSize) {
+      return rows;
+    }
+  }
+}
+
 async function resolveOrganizationId(organizationId?: string) {
   if (organizationId) {
     return organizationId;
@@ -672,6 +796,107 @@ export async function getDashboardData(
   return { products, batches, ledger };
 }
 
+export async function getEntryCorrectionData(
+  organizationId?: string,
+  selectedTransactionId?: string,
+): Promise<EntryCorrectionData> {
+  const resolvedOrganizationId = await resolveOrganizationId(organizationId);
+  const encodedOrganizationId = encodeURIComponent(resolvedOrganizationId);
+  const normalizedSelectedTransactionId =
+    selectedTransactionId?.trim() ?? "";
+  const selectedTransactionIsValid =
+    /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(
+      normalizedSelectedTransactionId,
+    );
+  const encodedSelectedTransactionId = encodeURIComponent(
+    normalizedSelectedTransactionId,
+  );
+
+  const selectedLedgerPromise = selectedTransactionIsValid
+    ? apiFetchAll<StockLedgerEntry>(
+        `stock_ledger?organization_id=eq.${encodedOrganizationId}&transaction_id=eq.${encodedSelectedTransactionId}&select=*&order=line_no.asc,ledger_seq.asc`,
+      )
+    : Promise.resolve([]);
+  const selectedApplicationsPromise = selectedTransactionIsValid
+    ? apiFetchAll<StockReversalApplication>(
+        `stock_reversal_applications?organization_id=eq.${encodedOrganizationId}&or=(original_transaction_id.eq.${encodedSelectedTransactionId},reversal_transaction_id.eq.${encodedSelectedTransactionId})&select=*&order=created_at.asc`,
+      )
+    : Promise.resolve([]);
+
+  const [
+    recentLedger,
+    recentApplications,
+    selectedLedger,
+    selectedApplications,
+  ] = await Promise.all([
+    apiFetch<StockLedgerEntry[]>(
+      `stock_ledger?organization_id=eq.${encodedOrganizationId}&select=*&order=ledger_seq.desc&limit=1000`,
+    ),
+    apiFetch<StockReversalApplication[]>(
+      `stock_reversal_applications?organization_id=eq.${encodedOrganizationId}&select=*&order=created_at.desc&limit=1000`,
+    ),
+    selectedLedgerPromise,
+    selectedApplicationsPromise,
+  ]);
+
+  const ledgerById = new Map(
+    [...recentLedger, ...selectedLedger].map((entry) => [
+      entry.ledger_entry_id,
+      entry,
+    ]),
+  );
+  const applicationById = new Map(
+    [...recentApplications, ...selectedApplications].map((application) => [
+      application.reversal_application_id,
+      application,
+    ]),
+  );
+
+  return {
+    ledger: [...ledgerById.values()].filter((entry) =>
+      ["RECEIPT", "MANUAL_OUTBOUND", "REVERSAL"].includes(
+        entry.transaction_type_code,
+      ),
+    ),
+    applications: [...applicationById.values()],
+  };
+}
+
+export async function previewStockTransactionReversal(
+  originalTransactionId: string,
+  organizationId?: string,
+) {
+  const resolvedOrganizationId = await resolveOrganizationId(organizationId);
+
+  return callRpc<StockReversalPreview>("preview_stock_transaction_reversal", {
+    p_organization_id: resolvedOrganizationId,
+    p_original_transaction_id: originalTransactionId,
+  });
+}
+
+export async function reverseStockTransaction(input: {
+  originalTransactionId: string;
+  previewBasisHash: string;
+  idempotencyKey: string;
+  confirmation: boolean;
+  note: string;
+  metadata?: Record<string, unknown>;
+  organizationId?: string;
+}) {
+  const resolvedOrganizationId = await resolveOrganizationId(
+    input.organizationId,
+  );
+
+  return callRpc<StockReversalMutationResponse>("reverse_stock_transaction", {
+    p_organization_id: resolvedOrganizationId,
+    p_idempotency_key: input.idempotencyKey,
+    p_original_transaction_id: input.originalTransactionId,
+    p_preview_basis_hash: input.previewBasisHash,
+    p_confirmation: input.confirmation,
+    p_note: input.note,
+    p_metadata: input.metadata ?? {},
+  });
+}
 export async function getMarketplaceData(
   organizationId?: string,
 ): Promise<MarketplaceData> {
