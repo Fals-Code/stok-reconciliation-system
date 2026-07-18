@@ -120,7 +120,11 @@ function ConfigurationError({ message }: { message: string }) {
 export default async function Home({
   searchParams,
 }: {
-  searchParams: Promise<{ success?: string; error?: string }>;
+  searchParams: Promise<{
+    success?: string;
+    error?: string;
+    batchId?: string;
+  }>;
 }) {
   const feedback = await searchParams;
   let data;
@@ -136,6 +140,10 @@ export default async function Home({
   }
 
   const { products, batches, ledger } = data;
+  const selectedBatchId = feedback.batchId?.trim() || null;
+  const selectedBatch = selectedBatchId
+    ? batches.find((batch) => batch.batch_id === selectedBatchId) ?? null
+    : null;
   const sellable = products.reduce((sum, product) => sum + product.sellable_qty, 0);
   const reserved = products.reduce((sum, product) => sum + product.reserved_qty, 0);
   const available = products.reduce((sum, product) => sum + product.available_qty, 0);
@@ -314,6 +322,22 @@ export default async function Home({
             <h2 className="section-title">Produk dan batch aktif.</h2>
           </div>
 
+          {selectedBatchId ? (
+            <div
+              className={[
+                "mt-5 rounded-2xl border px-5 py-4 text-sm",
+                selectedBatch
+                  ? "border-emerald-400/25 bg-emerald-400/[0.07] text-emerald-100"
+                  : "border-amber-400/25 bg-amber-400/[0.07] text-amber-100",
+              ].join(" ")}
+              role="status"
+            >
+              {selectedBatch
+                ? `Batch ${selectedBatch.batch_code} dipilih dari Notification Center.`
+                : "Batch sumber notifikasi tidak ditemukan dalam organisasi aktif."}
+            </div>
+          ) : null}
+
           <div className="mt-5 overflow-hidden rounded-2xl border border-white/10 bg-white/[0.025]">
             <div className="overflow-x-auto">
               <table>
@@ -355,7 +379,16 @@ export default async function Home({
             {batches.map((batch) => {
               const status = expiryStatus(batch);
               return (
-                <article key={batch.batch_id} className="batch-card">
+                <article
+                  className={[
+                    "batch-card scroll-mt-28",
+                    selectedBatchId === batch.batch_id
+                      ? "border-emerald-400/45 bg-emerald-400/[0.08] ring-1 ring-emerald-400/20"
+                      : "",
+                  ].join(" ")}
+                  id={`batch-${batch.batch_id}`}
+                  key={batch.batch_id}
+                >
                   <div className="flex items-start justify-between gap-3">
                     <div>
                       <p className="font-mono text-xs text-emerald-300">{batch.batch_code}</p>

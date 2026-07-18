@@ -333,6 +333,206 @@ export type ReconciliationData = {
   issues: ReconciliationIssue[];
   evidence: ReconciliationIssueEvidence[];
 };
+export type NotificationListItem = {
+  notification_id: string;
+  rule_code: string;
+  notification_type_code: string;
+  category_code: string;
+  entity_type_code: string;
+  entity_id: string;
+  episode_no: number;
+  lifecycle_status_code: "OPEN" | "ACKNOWLEDGED" | "RESOLVED";
+  stage_code: string;
+  severity_code: "INFO" | "WARNING" | "HIGH" | "CRITICAL";
+  title: string;
+  message: string;
+  action_code: string;
+  action_route: string | null;
+  condition_started_at: string;
+  due_at: string | null;
+  first_seen_at: string;
+  last_seen_at: string;
+  occurrence_count: number;
+  acknowledged_at: string | null;
+  acknowledged_by: string | null;
+  acknowledgment_note: string | null;
+  resolved_at: string | null;
+  resolution_code: string | null;
+  read_state_code: "UNREAD" | "READ" | "ARCHIVED_FOR_USER";
+  read_at: string | null;
+  archived_at: string | null;
+  version_no: number;
+};
+
+export type NotificationDetail = NotificationListItem & {
+  previous_notification_id: string | null;
+  rule_id: string;
+  rule_version: string;
+  template_version: string;
+  last_reminded_at: string | null;
+  acknowledged_by_display_name: string | null;
+  resolution_snapshot: Record<string, unknown>;
+  source_snapshot: Record<string, unknown>;
+  config_snapshot: Record<string, unknown>;
+  last_seen_version_no: number | null;
+  created_at: string;
+  updated_at: string;
+};
+
+export type NotificationEventHistoryItem = {
+  event_id: string;
+  event_type_code: string;
+  from_lifecycle_status_code: string | null;
+  to_lifecycle_status_code: string | null;
+  from_stage_code: string | null;
+  to_stage_code: string | null;
+  from_severity_code: string | null;
+  to_severity_code: string | null;
+  source_snapshot: Record<string, unknown>;
+  note: string | null;
+  actor_type_code: string;
+  actor_user_id: string | null;
+  actor_display_name: string | null;
+  process_name: string | null;
+  occurred_at: string;
+  correlation_id: string;
+};
+
+export type NotificationListFilters = {
+  lifecycleStatusCode?: string | null;
+  severityCode?: string | null;
+  categoryCode?: string | null;
+  readStateCode?: string | null;
+  includeArchived?: boolean;
+  limit?: number;
+  beforeLastSeenAt?: string | null;
+  beforeId?: string | null;
+};
+
+export type NotificationReadStateCode =
+  | "UNREAD"
+  | "READ"
+  | "ARCHIVED_FOR_USER";
+
+export type NotificationReadStateMutationResponse = {
+  notificationId: string;
+  userId: string;
+  action:
+    | "SET_UNREAD"
+    | "SET_READ"
+    | "SET_ARCHIVED"
+    | "ALREADY_UNREAD"
+    | "ALREADY_READ"
+    | "ALREADY_ARCHIVED";
+  readStateCode: NotificationReadStateCode;
+  notificationVersionNo: number;
+};
+
+export type NotificationLifecycleMutationResponse = {
+  notificationId: string;
+  action:
+    | "ACKNOWLEDGED"
+    | "ALREADY_ACKNOWLEDGED"
+    | "ACKNOWLEDGMENT_REVOKED"
+    | "ALREADY_OPEN";
+  lifecycleStatusCode: "OPEN" | "ACKNOWLEDGED";
+  acknowledgedAt?: string | null;
+  acknowledgedBy?: string | null;
+  versionNo: number;
+};
+
+
+export type NotificationEvaluationFamilyCode =
+  | "EXPIRY"
+  | "RETURN_INSPECTION"
+  | "RECONCILIATION"
+  | "STOCKTAKE";
+
+export type NotificationOperationsSummary = {
+  organizationId: string;
+  userId: string;
+  generatedAt: string;
+  staleLockTimeoutSeconds: number;
+  outbox: {
+    pendingCount: number;
+    processingCount: number;
+    failedRetryableCount: number;
+    failedFinalCount: number;
+    completedCount: number;
+    actionableCount: number;
+    staleProcessingCount: number;
+    oldestActionableAt: string | null;
+  };
+  ruleRuns: {
+    startedCount: number;
+    succeededLast24Hours: number;
+    partiallyFailedLast24Hours: number;
+    failedLast24Hours: number;
+  };
+  notifications: {
+    openCount: number;
+    acknowledgedCount: number;
+    criticalActiveCount: number;
+    highActiveCount: number;
+    unreadCount: number;
+  };
+  adminOperations: {
+    retryRequestsLast24Hours: number;
+    evaluationRequestsLast24Hours: number;
+    latestRequestedAt: string | null;
+  };
+};
+
+export type NotificationOutboxActionableItem = {
+  outbox_event_id: string;
+  event_type_code: string;
+  source_event_key: string;
+  entity_type_code: string;
+  entity_id: string;
+  occurred_at: string;
+  status_code:
+    | "PENDING"
+    | "PROCESSING"
+    | "FAILED_RETRYABLE"
+    | "FAILED_FINAL";
+  attempt_count: number;
+  retry_budget_started_at_attempt: number;
+  retry_cycle_attempt_count: number;
+  available_at: string;
+  locked_at: string | null;
+  locked_by: string | null;
+  completed_at: string | null;
+  last_error_code: string | null;
+  last_error_detail: Record<string, unknown>;
+  correlation_id: string;
+  created_at: string;
+  can_retry: boolean;
+  is_stale_processing: boolean;
+};
+
+export type NotificationAdminOperationResponse = {
+  action:
+    | "EVALUATION_REQUESTED"
+    | "RETRY_REQUESTED"
+    | "REPLAYED";
+  originalAction?: string;
+  adminOperationId: string;
+  outboxEventId: string;
+  eventTypeCode: string;
+  evaluationFamilyCode?: NotificationEvaluationFamilyCode;
+  previousStatusCode?: string;
+  statusCode: string;
+  attemptCount?: number;
+  retryBudgetStartedAtAttempt?: number;
+  retryCycleAttemptCount?: number;
+  availableAt?: string;
+  requestedAt: string;
+  requestedByUserId: string;
+  reason: string;
+  correlationId: string;
+  enqueueAction?: string;
+};
+
 export type DashboardData = {
   products: ProductInventory[];
   batches: BatchInventory[];
@@ -580,6 +780,156 @@ export async function getReconciliationRunData(
 
   return { run, checks };
 }
+export async function getNotificationList(
+  filters: NotificationListFilters = {},
+) {
+  return callRpc<NotificationListItem[]>("notification_list", {
+    p_lifecycle_status_code: filters.lifecycleStatusCode ?? null,
+    p_severity_code: filters.severityCode ?? null,
+    p_category_code: filters.categoryCode ?? null,
+    p_read_state_code: filters.readStateCode ?? null,
+    p_include_archived: filters.includeArchived ?? false,
+    p_limit: filters.limit ?? 50,
+    p_before_last_seen_at: filters.beforeLastSeenAt ?? null,
+    p_before_id: filters.beforeId ?? null,
+  });
+}
+
+export async function getNotificationDetail(notificationId: string) {
+  const normalizedNotificationId = notificationId.trim();
+
+  if (!UUID_PATTERN.test(normalizedNotificationId)) {
+    return null;
+  }
+
+  const rows = await callRpc<NotificationDetail[]>("notification_detail", {
+    p_notification_id: normalizedNotificationId,
+  });
+
+  return rows[0] ?? null;
+}
+
+export async function getNotificationEventHistory(
+  notificationId: string,
+  limit = 100,
+) {
+  const normalizedNotificationId = notificationId.trim();
+
+  if (!UUID_PATTERN.test(normalizedNotificationId)) {
+    return [];
+  }
+
+  return callRpc<NotificationEventHistoryItem[]>(
+    "notification_event_history",
+    {
+      p_notification_id: normalizedNotificationId,
+      p_limit: limit,
+      p_after_occurred_at: null,
+      p_after_id: null,
+    },
+  );
+}
+
+export async function setNotificationReadState(
+  notificationId: string,
+  readStateCode: NotificationReadStateCode,
+) {
+  return callRpc<NotificationReadStateMutationResponse>(
+    "set_notification_read_state",
+    {
+      p_notification_id: notificationId,
+      p_read_state_code: readStateCode,
+    },
+  );
+}
+
+export async function acknowledgeNotification(
+  notificationId: string,
+  note: string | null = null,
+) {
+  return callRpc<NotificationLifecycleMutationResponse>(
+    "acknowledge_notification",
+    {
+      p_notification_id: notificationId,
+      p_note: note,
+    },
+  );
+}
+
+export async function revokeNotificationAcknowledgment(
+  notificationId: string,
+  note: string | null = null,
+) {
+  return callRpc<NotificationLifecycleMutationResponse>(
+    "revoke_notification_acknowledgment",
+    {
+      p_notification_id: notificationId,
+      p_note: note,
+    },
+  );
+}
+
+
+export async function getNotificationOperationsSummary() {
+  return callRpc<NotificationOperationsSummary>(
+    "get_notification_operations_summary",
+    {},
+  );
+}
+
+export async function getNotificationOutboxActionableList(
+  statusCode: string | null = null,
+  limit = 50,
+) {
+  return callRpc<NotificationOutboxActionableItem[]>(
+    "notification_outbox_actionable_list",
+    {
+      p_status_code: statusCode,
+      p_limit: limit,
+    },
+  );
+}
+
+export async function runNotificationEvaluation(
+  evaluationFamilyCode: NotificationEvaluationFamilyCode,
+  reason: string,
+  idempotencyKey: string,
+) {
+  return callRpc<NotificationAdminOperationResponse>(
+    "run_notification_evaluation",
+    {
+      p_evaluation_family_code: evaluationFamilyCode,
+      p_reason: reason,
+      p_idempotency_key: idempotencyKey,
+    },
+  );
+}
+
+export async function retryNotificationOutboxEvent(
+  outboxEventId: string,
+  reason: string,
+  idempotencyKey: string,
+) {
+  return callRpc<NotificationAdminOperationResponse>(
+    "retry_notification_outbox_event",
+    {
+      p_outbox_event_id: outboxEventId,
+      p_reason: reason,
+      p_idempotency_key: idempotencyKey,
+    },
+  );
+}
+
+export async function getNotificationUnreadCount() {
+  const value = await callRpc<number | string>(
+    "notification_unread_count",
+    {},
+  );
+  const normalized = typeof value === "number" ? value : Number(value);
+
+  return Number.isFinite(normalized) ? normalized : 0;
+}
+
 export async function callRpc<T>(name: string, body: Record<string, unknown>) {
   return apiFetch<T>(`rpc/${name}`, {
     method: "POST",

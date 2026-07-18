@@ -29,7 +29,12 @@ type AppShellProps = {
   children: ReactNode;
   profile: AppShellProfile;
   appMode: string;
+  unreadCount: number;
 };
+
+function formatUnreadCount(unreadCount: number) {
+  return unreadCount > 99 ? "99+" : unreadCount.toLocaleString("id-ID");
+}
 
 function Brand({
   onNavigate,
@@ -55,9 +60,11 @@ function Brand({
 function Navigation({
   pathname,
   onNavigate,
+  unreadCount,
 }: {
   pathname: string;
   onNavigate?: () => void;
+  unreadCount: number;
 }) {
   return (
     <nav aria-label="Navigasi utama" className="space-y-7 px-3 py-5">
@@ -96,9 +103,14 @@ function Navigation({
                     {item.shortLabel}
                   </span>
 
-                  <span className="min-w-0">
-                    <span className="block text-sm font-medium">
-                      {item.label}
+                  <span className="min-w-0 flex-1">
+                    <span className="flex items-center gap-2 text-sm font-medium">
+                      <span>{item.label}</span>
+                      {item.href === "/notifications" && unreadCount > 0 ? (
+                        <span className="inline-flex min-w-6 items-center justify-center rounded-full bg-rose-400/15 px-1.5 py-0.5 font-mono text-[0.65rem] text-rose-200">
+                          {formatUnreadCount(unreadCount)}
+                        </span>
+                      ) : null}
                     </span>
                     <span className="mt-0.5 block truncate text-xs text-slate-600 group-hover:text-slate-500">
                       {item.description}
@@ -192,6 +204,7 @@ export default function AppShell({
   children,
   profile,
   appMode,
+  unreadCount,
 }: AppShellProps) {
   const pathname = usePathname();
   const [mobileOpen, setMobileOpen] = useState(false);
@@ -227,7 +240,7 @@ export default function AppShell({
         <Brand />
 
         <div className="min-h-0 flex-1 overflow-y-auto">
-          <Navigation pathname={pathname} />
+          <Navigation pathname={pathname} unreadCount={unreadCount} />
         </div>
 
         <OrganizationSummary profile={profile} />
@@ -266,6 +279,7 @@ export default function AppShell({
               <Navigation
                 pathname={pathname}
                 onNavigate={() => setMobileOpen(false)}
+                unreadCount={unreadCount}
               />
             </div>
 
@@ -313,18 +327,25 @@ export default function AppShell({
                 </span>
               </Link>
 
-              <span
-                aria-disabled="true"
-                className="cursor-not-allowed rounded-xl border border-white/10 bg-white/[0.015] px-3 py-2 opacity-70"
-                title="Notification Center belum tersedia"
+              <Link
+                aria-label={`Buka Notification Center, ${unreadCount} belum dibaca`}
+                className="rounded-xl border border-white/10 bg-white/[0.025] px-3 py-2 transition hover:border-emerald-400/20 hover:bg-emerald-400/[0.055]"
+                href="/notifications"
               >
                 <span className="block text-xs font-medium text-slate-400">
                   Notifikasi
                 </span>
-                <span className="mt-0.5 block text-[0.65rem] text-slate-600">
-                  Belum tersedia
+                <span
+                  className={[
+                    "mt-0.5 block text-[0.65rem]",
+                    unreadCount > 0 ? "text-rose-300" : "text-slate-600",
+                  ].join(" ")}
+                >
+                  {unreadCount > 0
+                    ? `${formatUnreadCount(unreadCount)} belum dibaca`
+                    : "Tidak ada unread"}
                 </span>
-              </span>
+              </Link>
             </div>
 
             <span className="hidden rounded-lg border border-sky-400/15 bg-sky-400/[0.055] px-2.5 py-1.5 font-mono text-[0.65rem] uppercase tracking-[0.12em] text-sky-200 sm:inline-flex">

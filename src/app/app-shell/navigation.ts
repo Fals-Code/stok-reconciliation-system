@@ -51,6 +51,23 @@ export const APP_NAV_SECTIONS = [
       },
     ],
   },
+  {
+    label: "Monitoring",
+    items: [
+      {
+        href: "/notifications/operations",
+        label: "Notification Operations",
+        shortLabel: "NO",
+        description: "Evaluator dan outbox",
+      },
+      {
+        href: "/notifications",
+        label: "Notification Center",
+        shortLabel: "NT",
+        description: "Alert dan tindak lanjut",
+      },
+    ],
+  },
 ] as const satisfies readonly AppNavSection[];
 
 export function isNavItemActive(pathname: string, href: string) {

@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 
 import AppShell from "@/app/app-shell/app-shell";
 import { getAdminSession } from "@/lib/auth";
+import { getNotificationUnreadCount } from "@/lib/supabase-rest";
 
 import "./globals.css";
 
@@ -19,6 +20,9 @@ export default async function RootLayout({
   const session = await getAdminSession();
   const appMode =
     process.env.NEXT_PUBLIC_APP_MODE?.trim().toUpperCase() || "LOCAL";
+  const unreadCount = session
+    ? await getNotificationUnreadCount().catch(() => 0)
+    : 0;
 
   return (
     <html lang="id" data-scroll-behavior="smooth">
@@ -26,6 +30,7 @@ export default async function RootLayout({
         {session ? (
           <AppShell
             appMode={appMode}
+            unreadCount={unreadCount}
             profile={{
               displayName: session.profile.display_name,
               email: session.user.email ?? null,
