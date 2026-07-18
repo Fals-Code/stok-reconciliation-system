@@ -169,7 +169,6 @@ Batch berikut tidak eligible:
 - diblokir;
 - quarantine;
 - damaged;
-- unidentified return batch;
 - berada dalam safety buffer yang dikonfigurasi.
 
 ### 6. Bundle tidak mempunyai stok
@@ -208,11 +207,15 @@ Alur default:
 
 ```text
 expected return
--> physical receipt
--> QUARANTINE
+-> physical receipt stock-neutral
+-> pending inspection operasional
 -> inspection
--> SELLABLE atau DAMAGED
+   -> SELLABLE: RETURN_SELLABLE_INBOUND ke batch `RETURN` baru
+   -> DAMAGED: audit/klaim tanpa movement stok kedua
+   -> LOST: status operasional tanpa inbound
 ```
+
+Batch outbound asal disimpan sebagai provenance. Hasil `SELLABLE` ditolak bila provenance belum terverifikasi.
 
 ### 9. Klaim tidak mengubah stok
 
@@ -223,8 +226,10 @@ Keduanya tidak membuat inbound ledger.
 Default batas klaim TikTok:
 
 ```text
-40 hari kalender
+operations.returns.created_at + 40 hari kalender
 ```
+
+Status klaim tidak mengubah stok.
 
 ### 10. Dua ritme rekonsiliasi
 
@@ -987,7 +992,7 @@ cross-organization access
 direct ledger mutation
 FEFO memilih batch tidak eligible
 cancel post-shipment melakukan auto-restock
-return melewati quarantine
+sellable return diposting tanpa inspeksi atau provenance terverifikasi
 claim mengubah stok
 stocktake posting parsial
 ledger dan projection berbeda tanpa penjelasan
@@ -1029,7 +1034,8 @@ Runbook lengkap tersedia di [`15-demo-script.md`](./15-demo-script.md).
 State tambahan:
 
 ```text
-damaged = 1
+damaged stock bucket = 0
+damaged return classification = 1 (audit only)
 quarantine = 0
 reserved = 0
 one lost return
@@ -1054,9 +1060,10 @@ SER-2612-B -> 3
 ### Return Mixed Inspection
 
 ```text
-physical receipt -> QUARANTINE +3
-inspection       -> SELLABLE +2
-inspection       -> DAMAGED +1
+physical receipt             -> pending inspection +3; stock delta 0
+inspection SELLABLE 2        -> RETURN_SELLABLE_INBOUND +2
+destination                  -> batch `RETURN` baru
+inspection DAMAGED 1         -> audit classification; stock delta 0
 ```
 
 ### Demo Principles

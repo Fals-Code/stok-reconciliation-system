@@ -1,9 +1,9 @@
 ---
 title: "Product Requirements Document - Sistem Rekonsiliasi Stok"
 document_id: "02-product-requirements"
-version: "1.0.1"
-status: "Phase 1 Baseline - Role Model Superseded"
-last_updated: "2026-07-16"
+version: "1.1.0"
+status: "Phase 2 Synced - ADMIN Only"
+last_updated: "2026-07-18"
 language: "id-ID"
 timezone: "Asia/Jakarta"
 product_phase: "Phase 1 / MVP"
@@ -12,6 +12,7 @@ depends_on:
   - "01-project-brief.md"
   - "06-user-roles-and-flows.md"
 source_of_truth_order:
+  - "VibeDev Phase 2 Sync Update v2, 13 Juni 2026"
   - "Keputusan bisnis eksplisit pada stok-management-system.pdf"
   - "Klarifikasi dan guardrail pada 01-project-brief.md"
   - "Keputusan produk terdokumentasi setelah PRD ini"
@@ -181,7 +182,7 @@ Hak Admin tidak mengizinkan:
 - mengedit saldo secara langsung;
 - mengubah atau menghapus ledger entry yang telah diposting;
 - melewati FEFO pada outbound normal;
-- menjadikan unidentified return batch sebagai `SELLABLE`;
+- memposting hasil `SELLABLE` ketika provenance batch asal belum terverifikasi;
 - memakai `service_role` dari browser;
 - melewati tenant isolation, RLS, idempotency, atau validasi domain.
 
@@ -237,8 +238,8 @@ bukan berarti satu akun dan bukan pula izin untuk melewati domain contract.
 - Bundle sebagai resep produk satuan.
 - Pembatalan sebelum dan setelah barang keluar.
 - Barang keluar manual.
-- Retur layak jual, rusak, karantina, dan hilang.
-- Pengingat klaim TikTok sebelum tenggat 40 hari yang configurable.
+- Retur expected, penerimaan stock-neutral, pending inspection operasional, layak jual, rusak, dan hilang.
+- Pengingat klaim TikTok sebelum tenggat tetap 40 hari sejak `operations.returns.created_at`.
 - Notifikasi kedaluwarsa per batch.
 - Stok opname, review, persetujuan, dan koreksi.
 - Rekonsiliasi harian dan issue tracking.
@@ -884,9 +885,11 @@ Admin dapat menandai item retur telah tiba.
 
 **Acceptance criteria:**
 
-- Kuantitas diterima tidak boleh melebihi kuantitas yang diharapkan, kecuali Admin menangani exception.
-- Barang yang belum diinspeksi masuk `QUARANTINE`.
-- Movement penerimaan karantina memiliki referensi retur dan alokasi batch asal bila dapat diketahui.
+- Kuantitas diterima tidak boleh melebihi kuantitas yang diharapkan.
+- Penerimaan hanya menambah `received_qty` dan `pending_inspection_qty` secara operasional.
+- Penerimaan tidak membuat stock transaction, ledger entry, atau projection delta.
+- Penerimaan menyimpan actor, waktu fisik, bukti opsional, dan provenance outbound bila tersedia.
+- Retry identik tidak membuat penerimaan kedua; payload konflik ditolak.
 
 ### RET-003 - Inspeksi retur
 
@@ -900,21 +903,25 @@ Admin memilih hasil per item:
 
 **Acceptance criteria:**
 
-- Sellable memindahkan kuantitas dari quarantine ke sellable.
-- Damaged memindahkan kuantitas dari quarantine ke damaged.
-- Lost tidak menambah stok fisik.
-- Hasil inspeksi menyimpan actor, waktu, catatan, dan bukti opsional.
+- `SELLABLE` membuat tepat satu `RETURN_SELLABLE_INBOUND` ke batch baru dengan `batch_kind_code = RETURN`.
+- Batch `RETURN` baru bukan batch outbound asal dan menyimpan provenance retur, produk, item order, serta hasil inspeksi.
+- `DAMAGED` mencatat kondisi fisik untuk audit/klaim tanpa stock transaction, ledger entry, atau projection delta kedua.
+- `LOST` tetap terpisah dari `DAMAGED` dan tidak menambah stok fisik.
+- Mixed inspection hanya menambah stok sebesar kuantitas `SELLABLE`.
+- Hasil inspeksi menyimpan actor, waktu, catatan, bukti opsional, dan idempotency contract.
 
-### RET-004 - Batch retur
+### RET-004 - Batch retur dan provenance
 
 **Prioritas:** Must
 
-Jika batch asal dapat ditelusuri dari outbound, retur dikaitkan kembali ke batch tersebut.
+Batch outbound asal dipertahankan sebagai provenance, bukan tujuan inbound retur.
 
 **Acceptance criteria:**
 
-- Jika batch tidak dapat diverifikasi, barang tetap quarantine.
-- Penetapan batch baru atau koreksi hanya dapat dilakukan oleh Admin dan diaudit.
+- Hasil `SELLABLE` hanya boleh diposting bila provenance batch asal terverifikasi.
+- Provenance unknown tidak boleh direkayasa menjadi placeholder atau batch produksi.
+- Hasil `DAMAGED` tetap dapat dicatat tanpa movement stok ketika provenance belum diketahui.
+- Batch `RETURN` baru dibuat server-side dan diaudit.
 
 ### RET-005 - Retur parsial
 
@@ -942,13 +949,14 @@ Item yang hilang dalam ekspedisi tidak menghasilkan inbound.
 
 **Prioritas:** Must
 
-Sistem menghitung tenggat klaim dengan default 40 hari kalender dari tanggal dasar yang dikonfigurasi.
+Sistem menghitung tenggat klaim TikTok tepat 40 hari kalender sejak `operations.returns.created_at`.
 
 **Acceptance criteria:**
 
-- Nilai 40 hari dapat diubah Admin tanpa mengubah histori tenggat yang sudah dibentuk, kecuali melalui tindakan eksplisit.
+- Basis waktu selalu `operations.returns.created_at`, bukan receipt, inspection, lost, atau tanggal input manual.
 - Tanggal dasar dan tanggal jatuh tempo terlihat.
-- Perhitungan menggunakan zona waktu `Asia/Jakarta`.
+- Perhitungan kalender dan tampilan menggunakan zona waktu `Asia/Jakarta`.
+- Status klaim tidak membuat movement stok.
 
 ### CLM-002 - Status klaim
 
@@ -980,7 +988,7 @@ Modul klaim tidak menyimpan atau menghitung nilai kompensasi pada fase 1.
 |---|---|
 | `EXPECTED` | Retur dicatat tetapi barang belum tiba |
 | `PARTIALLY_RECEIVED` | Sebagian barang telah tiba |
-| `RECEIVED_PENDING_INSPECTION` | Barang tiba dan berada di quarantine |
+| `RECEIVED_PENDING_INSPECTION` | Barang tiba, tercatat operasional, dan belum memberi dampak stok |
 | `PARTIALLY_INSPECTED` | Sebagian hasil inspeksi telah ditetapkan |
 | `COMPLETED_SELLABLE` | Seluruh hasil layak jual |
 | `COMPLETED_DAMAGED` | Seluruh hasil rusak |
@@ -1067,9 +1075,7 @@ Sistem mendukung sedikitnya:
 - `RECEIPT`.
 - `OUTBOUND_MARKETPLACE`.
 - `OUTBOUND_MANUAL`.
-- `RETURN_RECEIVED_QUARANTINE`.
-- `TRANSFER_QUARANTINE_TO_SELLABLE`.
-- `TRANSFER_QUARANTINE_TO_DAMAGED`.
+- `RETURN_SELLABLE_INBOUND`.
 - `STOCKTAKE_ADJUSTMENT`.
 - `REVERSAL`.
 - `DISPOSAL_DAMAGED`.
@@ -1269,7 +1275,7 @@ Sistem memeriksa sedikitnya:
 5. Total alokasi batch sama dengan kuantitas outbound.
 6. Pesanan keluar fisik memiliki movement outbound.
 7. Pesanan sebelum keluar tidak memiliki outbound final.
-8. Retur sellable hanya bertambah setelah diterima dan diinspeksi.
+8. Receipt retur tetap stock-neutral; hanya hasil SELLABLE terinspeksi yang menambah stok melalui RETURN_SELLABLE_INBOUND ke batch RETURN baru.
 9. Movement memiliki alasan, kanal, actor/proses, dan referensi valid.
 10. Transisi status mengikuti state machine.
 11. Reserved tidak melebihi sellable.
@@ -1879,15 +1885,15 @@ Cabang:
 
 ### AT-06 - Retur layak jual
 
-**Given** retur 2 unit diharapkan.
-**When** barang diterima ke quarantine lalu diinspeksi sellable.
-**Then** quarantine kembali nol, sellable bertambah 2, dan batch asal tertaut.
+**Given** retur 2 unit diharapkan dan provenance outbound terverifikasi.
+**When** barang diterima secara stock-neutral lalu diinspeksi sellable.
+**Then** satu `RETURN_SELLABLE_INBOUND` menambah sellable 2 pada batch `RETURN` baru; batch outbound asal hanya menjadi provenance.
 
 ### AT-07 - Retur rusak
 
-**Given** retur 1 unit diterima ke quarantine.
+**Given** retur 1 unit telah diterima secara operasional.
 **When** Admin menetapkan damaged.
-**Then** damaged bertambah 1, sellable tidak bertambah, dan movement transfer tercatat.
+**Then** kondisi damaged tercatat, sellable tidak bertambah, dan tidak ada stock transaction, ledger entry, atau projection delta kedua.
 
 ### AT-08 - Retur hilang
 
@@ -2023,10 +2029,10 @@ CRUD produk memang lebih mudah dipamerkan pada hari pertama, tetapi engine stok 
 5. Stok negatif dilarang.
 6. Pengeluaran normal menggunakan FEFO otomatis.
 7. Koreksi opname memerlukan Admin.
-8. Retur tanpa batch terverifikasi tetap quarantine.
+8. Provenance batch asal yang belum terverifikasi memblokir hasil SELLABLE; DAMAGED tetap audit-only tanpa movement stok.
 9. CSV adalah format impor awal.
 10. Default ambang kedaluwarsa 90, 60, dan 30 hari.
-11. Default tenggat klaim TikTok 40 hari kalender dan dapat dikonfigurasi.
+11. Tenggat klaim TikTok adalah 40 hari kalender sejak operations.returns.created_at.
 12. Master yang sudah dipakai diarsipkan, bukan dihapus.
 13. Status marketplace pada brief diperlakukan sebagai keputusan bisnis klien, bukan hasil inferensi API.
 
@@ -2034,8 +2040,7 @@ CRUD produk memang lebih mudah dipamerkan pada hari pertama, tetapi engine stok 
 
 | ID | Pertanyaan | Dampak jika belum diputuskan | Pemilik keputusan |
 |---|---|---|---|
-| OQ-01 | Tanggal apa yang menjadi awal hitung 40 hari klaim TikTok? | Perhitungan due date | Klien/Product |
-| OQ-02 | Apakah barcode atau kode batch selalu terbaca pada retur? | Flow quarantine dan identifikasi | Operasional Gudang |
+| OQ-02 | Apakah barcode atau kode batch selalu terbaca pada retur? | Verifikasi provenance dan kelayakan hasil `SELLABLE` | Operasional Gudang |
 | OQ-03 | Apakah adjustment di atas ambang tertentu perlu dua approver? | Hak akses dan workflow | Klien/Product |
 | OQ-04 | Apakah stok rusak tetap disimpan sampai pemusnahan? | Bucket dan outbound rusak | Operasional Gudang |
 | OQ-05 | Format ekspor Shopee dan TikTok yang benar-benar tersedia? | Mapping CSV | Klien/Engineering |

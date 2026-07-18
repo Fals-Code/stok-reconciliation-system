@@ -2,6 +2,7 @@ param(
   [string]$ProjectRoot = (Get-Location).Path,
   [string]$BaseUrl = "http://127.0.0.1:3000",
   [string]$Email = "demo.admin@glowlab.invalid",
+  [string]$ExpectedBranch,
   [SecureString]$Password,
   [switch]$KeepServer,
   [switch]$SkipBrowserInstall
@@ -66,8 +67,8 @@ foreach ($relativePath in $requiredFiles) {
 }
 
 $branch = (git -C $ProjectRoot branch --show-current).Trim()
-if ($branch -ne "agent/phase2-return-semantics") {
-  throw "Expected branch 'agent/phase2-return-semantics', found '$branch'."
+if ($ExpectedBranch -and $branch -ne $ExpectedBranch) {
+  throw "Expected branch '$ExpectedBranch', found '$branch'."
 }
 
 $npmCommand = (Get-Command npm.cmd -ErrorAction Stop).Source

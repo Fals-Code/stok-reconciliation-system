@@ -1,9 +1,11 @@
 <!--
 File: 06-user-roles-and-flows.md
 Project: Sistem Rekonsiliasi Stok
-Status: Approved design baseline for Phase 1
-Version: 1.0.0
-Last updated: 2026-07-12
+Status: Phase 2 synced user-flow contract
+Version: 1.1.0
+Last updated: 2026-07-18
+Primary source: VibeDev Phase 2 Sync Update v2, 13 Juni 2026
+Baseline source: stok-management-system.pdf
 Decision update: The application has exactly one user role: ADMIN.
 -->
 
@@ -899,9 +901,9 @@ Admin tidak memilih batch. Detail FEFO ditampilkan setelah atau pada preview pem
 |---|---|
 | Batal sebelum threshold pengiriman | Lepaskan reservasi; tidak ada inbound ledger. |
 | Batal setelah threshold tetapi barang belum kembali | Tidak menambah stok; buat expected return bila relevan. |
-| Barang kembali dan diterima | Masuk `QUARANTINE`. |
-| Setelah inspeksi layak jual | Transfer ke `SELLABLE`. |
-| Setelah inspeksi rusak | Transfer ke `DAMAGED`. |
+| Barang kembali dan diterima | Catat receipt dan pending inspection secara operasional; stok tetap. |
+| Setelah inspeksi layak jual | Satu `RETURN_SELLABLE_INBOUND` ke batch `RETURN` baru. |
+| Setelah inspeksi rusak | Catat kondisi untuk audit/klaim; tidak ada movement stok kedua. |
 | Hilang di ekspedisi | Tidak menambah stok; buka/tandai klaim. |
 
 ### 20.2 Acceptance Criteria
@@ -991,20 +993,20 @@ Mencatat bahwa barang diperkirakan kembali tanpa menganggap barang sudah berada 
 2. Admin memilih `Terima Barang`.
 3. Admin memasukkan kuantitas yang benar-benar tiba.
 4. Admin mencatat waktu terima dan bukti opsional.
-5. Sistem menampilkan dampak `QUARANTINE +qty`.
+5. Sistem menampilkan `pending inspection +qty` dan `dampak stok 0`.
 6. Admin memposting penerimaan retur.
 7. Status item menjadi `RECEIVED_PENDING_INSPECTION`.
 
-### 23.2 Aturan Batch
+### 23.2 Aturan Provenance
 
-Sistem menggunakan hubungan outbound allocation untuk mengembalikan barang ke batch asal bila dapat dipastikan. Bila identitas batch fisik tidak dapat dipastikan, ikuti aturan exception yang ditetapkan pada desain ledger/schema dan tandai untuk inspeksi atau investigasi.
+Sistem menyimpan hubungan outbound allocation sebagai provenance. Receipt tidak mengembalikan barang ke batch asal dan tidak membuat placeholder batch. Bila provenance belum terverifikasi, hasil `SELLABLE` diblokir sampai verifikasi selesai.
 
 ### 23.3 Acceptance Criteria
 
-- `FLOW-RRT-001`: Barang masuk ke `QUARANTINE`, bukan langsung `SELLABLE`.
+- `FLOW-RRT-001`: Receipt hanya mengubah progres operasional dan tidak membuat stock transaction, ledger entry, atau projection delta.
 - `FLOW-RRT-002`: Received qty dapat lebih kecil dari expected qty.
 - `FLOW-RRT-003`: Selisih expected versus received terlihat.
-- `FLOW-RRT-004`: Penerimaan ganda dicegah.
+- `FLOW-RRT-004`: Penerimaan ganda dicegah secara idempoten.
 - `FLOW-RRT-005`: Audit menyimpan actor dan waktu fisik penerimaan.
 
 ---
@@ -1022,21 +1024,22 @@ Sistem menggunakan hubungan outbound allocation untuk mengembalikan barang ke ba
 
 1. Admin membuka queue `Menunggu Inspeksi`.
 2. Admin memilih retur.
-3. Sistem menampilkan jumlah pada `QUARANTINE`.
+3. Sistem menampilkan jumlah pending inspection operasional.
 4. Admin memasukkan hasil per kondisi.
 5. Sistem memastikan total hasil sama dengan jumlah yang diinspeksi.
 6. Admin menambahkan catatan/bukti bila rusak.
-7. Sistem menampilkan preview transfer bucket.
+7. Sistem menampilkan preview: sellable inbound ke batch `RETURN` baru; damaged tanpa movement stok.
 8. Admin memposting inspeksi.
-9. Ledger memindahkan unit dari `QUARANTINE` ke `SELLABLE` atau `DAMAGED`.
+9. Ledger hanya menerima `RETURN_SELLABLE_INBOUND` sebesar kuantitas `SELLABLE`.
 
 ### 24.3 Acceptance Criteria
 
 - `FLOW-INS-001`: Total hasil inspeksi tidak melebihi received qty.
-- `FLOW-INS-002`: `SELLABLE` hanya bertambah setelah inspeksi posted.
-- `FLOW-INS-003`: DAMAGED tetap on-hand sampai disposal.
-- `FLOW-INS-004`: Partial inspection didukung bila requirement domain mengizinkan.
-- `FLOW-INS-005`: Hasil posted tidak diedit; koreksi memakai reversal.
+- `FLOW-INS-002`: `SELLABLE` hanya bertambah setelah inspeksi posted ke batch `RETURN` baru.
+- `FLOW-INS-003`: `DAMAGED` adalah kondisi audit/klaim dan tidak menambah damaged stock bucket melalui retur.
+- `FLOW-INS-004`: Partial dan mixed inspection didukung per item.
+- `FLOW-INS-005`: Hasil posted tidak diedit; koreksi sellable memakai reversal inbound, sedangkan koreksi damaged tetap movement-free.
+- `FLOW-INS-006`: Provenance unknown memblokir hasil `SELLABLE`.
 
 ---
 
@@ -1044,7 +1047,7 @@ Sistem menggunakan hubungan outbound allocation untuk mengembalikan barang ke ba
 
 ### 25.1 Tujuan
 
-Mencegah klaim terlewat sebelum batas operasional 40 hari sebagaimana ditetapkan source proyek.
+Mencegah klaim TikTok terlewat sebelum 40 hari kalender sejak `operations.returns.created_at`.
 
 ### 25.2 Flow
 
@@ -1826,7 +1829,7 @@ Server memetakan error teknis menjadi error kontrak:
 ### Return
 
 - `US-040`: Sebagai Admin, saya ingin mencatat retur yang diharapkan tanpa menambah stok.
-- `US-041`: Sebagai Admin, saya ingin barang retur masuk quarantine ketika diterima.
+- `US-041`: Sebagai Admin, saya ingin receipt retur tercatat sebagai pending inspection tanpa mengubah stok.
 - `US-042`: Sebagai Admin, saya ingin menentukan kondisi retur setelah inspeksi.
 - `US-043`: Sebagai Admin, saya ingin pengingat klaim TikTok sebelum deadline.
 
@@ -1879,9 +1882,9 @@ Server memetakan error teknis menjadi error kontrak:
 
 ### E2E-007: Return Inspection
 
-**Given** retur 5 unit diterima  
+**Given** retur 5 unit diterima secara stock-neutral dan provenance terverifikasi
 **When** Admin menetapkan 4 sellable dan 1 damaged  
-**Then** quarantine berkurang 5, sellable bertambah 4, damaged bertambah 1.
+**Then** satu inbound menambah sellable 4 pada batch `RETURN` baru; damaged 1 tercatat untuk audit tanpa movement stok.
 
 ### E2E-008: Manual Bonus
 

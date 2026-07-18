@@ -1,13 +1,14 @@
 <!--
 File: 07-marketplace-simulator.md
 Project: Sistem Rekonsiliasi Stok
-Status: Approved design baseline for Phase 1
-Version: 1.0.0
-Last updated: 2026-07-12
+Status: Phase 2 synced simulator contract
+Version: 1.1.0
+Last updated: 2026-07-18
 Language: id-ID
 Timezone: Asia/Jakarta
 Role model: ADMIN only
-Primary source: stok-management-system.pdf
+Primary source: VibeDev Phase 2 Sync Update v2, 13 Juni 2026
+Baseline source: stok-management-system.pdf
 Depends on:
   - 01-project-brief.md
   - 02-product-requirements.md
@@ -130,7 +131,7 @@ Simulator membantu membuktikan alur tersebut tanpa menunggu akses API marketplac
 | `SIM-GOAL-004` | Membuktikan TikTok Shop memicu outbound pada `IN_TRANSIT`. |
 | `SIM-GOAL-005` | Membuktikan pembatalan sebelum outbound hanya melepas reservasi. |
 | `SIM-GOAL-006` | Membuktikan pembatalan setelah outbound tidak menambah stok otomatis. |
-| `SIM-GOAL-007` | Membuktikan retur baru menambah stok setelah barang diterima dan diproses sesuai kondisi. |
+| `SIM-GOAL-007` | Membuktikan receipt tetap stock-neutral dan hanya inspeksi SELLABLE menambah stok melalui batch RETURN baru. |
 | `SIM-GOAL-008` | Membuktikan event duplikat tidak menghasilkan efek ganda. |
 | `SIM-GOAL-009` | Membuktikan event out-of-order ditolak, diabaikan, atau dibuat exception sesuai state machine. |
 | `SIM-GOAL-010` | Membuktikan bundle dipecah menjadi produk satuan sebelum reservasi dan outbound. |
@@ -648,9 +649,9 @@ Mapping simulator fase 1:
 | Batal | `ORDER_CANCELLED` | `CANCELLED` | Pra-shipment: lepas reservasi. Pasca-shipment: jangan tambah stok. |
 | Retur diminta | `RETURN_REQUESTED` | `TO_RETURN` | Buat retur expected; tidak menambah stok. |
 | Retur dikirim | `RETURN_IN_TRANSIT` | `RETURN_IN_TRANSIT` | Update retur; tidak menambah stok. |
-| Retur diterima | `RETURN_RECEIVED` | `RETURN_RECEIVED` | Penerimaan fisik ke `QUARANTINE`. |
-| Retur layak jual | `RETURN_INSPECTED_SELLABLE` | `INSPECTED_SELLABLE` | Transfer `QUARANTINE` ke `SELLABLE`. |
-| Retur rusak | `RETURN_INSPECTED_DAMAGED` | `INSPECTED_DAMAGED` | Transfer `QUARANTINE` ke `DAMAGED`. |
+| Retur diterima | `RETURN_RECEIVED` | `RETURN_RECEIVED` | Catat receipt dan pending inspection; stok tetap. |
+| Retur layak jual | `RETURN_INSPECTED_SELLABLE` | `INSPECTED_SELLABLE` | Satu `RETURN_SELLABLE_INBOUND` ke batch `RETURN` baru. |
+| Retur rusak | `RETURN_INSPECTED_DAMAGED` | `INSPECTED_DAMAGED` | Catat kondisi audit/klaim tanpa movement stok kedua. |
 | Retur hilang | `RETURN_LOST` | `LOST` | Tidak menambah stok; buat exception/claim bila relevan. |
 
 Catatan implementasi:
@@ -676,27 +677,21 @@ Mapping simulator fase 1:
 | Batal | `ORDER_CANCELLED` | `CANCELLED` | Pra-outbound: lepas reservasi. Pasca-outbound: jangan tambah stok. |
 | Retur diminta | `RETURN_REQUESTED` | `RETURN_REQUESTED` | Buat retur expected. |
 | Retur berjalan | `RETURN_IN_TRANSIT` | `RETURN_IN_TRANSIT` | Update proses retur. |
-| Retur diterima | `RETURN_RECEIVED` | `RETURN_RECEIVED` | Penerimaan ke `QUARANTINE`. |
-| Retur layak jual | `RETURN_INSPECTED_SELLABLE` | `INSPECTED_SELLABLE` | Transfer ke `SELLABLE`. |
-| Retur rusak | `RETURN_INSPECTED_DAMAGED` | `INSPECTED_DAMAGED` | Transfer ke `DAMAGED`. |
+| Retur diterima | `RETURN_RECEIVED` | `RETURN_RECEIVED` | Catat receipt dan pending inspection; stok tetap. |
+| Retur layak jual | `RETURN_INSPECTED_SELLABLE` | `INSPECTED_SELLABLE` | Satu `RETURN_SELLABLE_INBOUND` ke batch `RETURN` baru. |
+| Retur rusak | `RETURN_INSPECTED_DAMAGED` | `INSPECTED_DAMAGED` | Catat kondisi audit/klaim tanpa movement stok kedua. |
 | Hilang | `RETURN_LOST` | `LOST` | Tidak menambah stok; claim workflow. |
 | Klaim diperlukan | `CLAIM_REQUIRED` | `CLAIM_REQUIRED` | Buat reminder deadline. |
 | Klaim diajukan | `CLAIM_SUBMITTED` | `CLAIM_SUBMITTED` | Update claim; tidak mengubah stok. |
 | Klaim selesai | `CLAIM_RESOLVED` | `CLAIM_RESOLVED` | Tutup claim sesuai hasil; tidak menambah stok tanpa movement fisik sah. |
 
-Batas 40 hari yang disebut source proyek harus dikelola sebagai aturan konfigurasi klaim TikTok Shop, bukan hard-code tersembunyi pada tombol UI.
-
-Contoh:
+Batas klaim TikTok Shop dihitung oleh domain dan tidak ditentukan tombol simulator.
 
 ```text
-claim_deadline_at = return_or_loss_reference_at + configured_claim_window_days
+claim_deadline_at = operations.returns.created_at + 40 hari kalender
 ```
 
-Default proyek:
-
-```text
-configured_claim_window_days = 40
-```
+Simulator hanya membuat kejadian kanonis. Ia tidak boleh mengganti basis waktu tersebut.
 
 ---
 
@@ -843,17 +838,18 @@ Step:
 
 Expected effect:
 
-- step 2–3 tidak menambah stok;
-- step 4 menambah `QUARANTINE`;
-- step 5 memindahkan quantity dari `QUARANTINE` ke `SELLABLE`;
-- histori movement lengkap.
+- step 2–4 tidak menambah stok;
+- step 4 hanya menambah pending inspection operasional;
+- step 5 membuat satu `RETURN_SELLABLE_INBOUND` ke batch `RETURN` baru;
+- histori event, receipt, inspection, transaction, dan provenance lengkap.
 
 ## 17.6 `RETURN_DAMAGED`
 
 Expected effect:
 
-- barang diterima ke `QUARANTINE`;
-- hasil inspeksi memindahkan ke `DAMAGED`;
+- receipt tetap stock-neutral;
+- hasil inspeksi mencatat `DAMAGED` untuk audit/klaim;
+- tidak ada transaction, ledger entry, atau projection delta kedua;
 - barang tidak kembali menjadi available.
 
 ## 17.7 `RETURN_LOST`
@@ -1983,9 +1979,9 @@ Simulator harus memisahkan:
 |---|---|
 | `RETURN_REQUESTED` | Tidak ada perubahan stok. |
 | `RETURN_IN_TRANSIT` | Tidak ada perubahan stok. |
-| `RETURN_RECEIVED` | Physical inbound ke `QUARANTINE`. |
-| `RETURN_INSPECTED_SELLABLE` | Transfer `QUARANTINE` ke `SELLABLE`. |
-| `RETURN_INSPECTED_DAMAGED` | Transfer `QUARANTINE` ke `DAMAGED`. |
+| `RETURN_RECEIVED` | Receipt dan pending inspection operasional; stock delta 0. |
+| `RETURN_INSPECTED_SELLABLE` | `RETURN_SELLABLE_INBOUND` ke batch `RETURN` baru. |
+| `RETURN_INSPECTED_DAMAGED` | Kondisi audit/klaim; stock delta 0. |
 | `RETURN_LOST` | Tidak ada inbound; exception/claim. |
 
 ### 32.3 Partial Return
@@ -1998,7 +1994,7 @@ Validasi:
 - tidak melebihi quantity outbound yang belum diretur;
 - item berasal dari order;
 - mapping batch menggunakan referensi outbound bila tersedia;
-- bila batch asal tidak dapat dipastikan, gunakan aturan quarantine/traceability yang disetujui pada domain.
+- bila provenance batch asal belum terverifikasi, hasil SELLABLE ditolak; DAMAGED tetap dapat dicatat tanpa movement stok.
 
 ---
 
@@ -2459,8 +2455,8 @@ Gunakan preset scenario sebagai test case.
 | `SIM-E2E-002` | TikTok happy path | Outbound pada `IN_TRANSIT`. |
 | `SIM-E2E-003` | Cancel sebelum shipment | Reservasi dilepas, ledger nol. |
 | `SIM-E2E-004` | Cancel setelah shipment | Tidak ada auto-restock. |
-| `SIM-E2E-005` | Return sellable | Quarantine lalu sellable. |
-| `SIM-E2E-006` | Return damaged | Quarantine lalu damaged. |
+| `SIM-E2E-005` | Return sellable | Receipt stock-neutral lalu inbound ke batch RETURN baru. |
+| `SIM-E2E-006` | Return damaged | Kondisi tercatat tanpa movement stok kedua. |
 | `SIM-E2E-007` | Return lost | Tidak ada inbound. |
 | `SIM-E2E-008` | Duplicate event | Satu domain effect. |
 | `SIM-E2E-009` | Payload conflict | Ditolak. |
@@ -2553,8 +2549,8 @@ Golden fixture harus dibuat melalui seed/migration fixture yang versioned.
 - `SIM-AC-022`: Bundle tidak memiliki stock sendiri.
 - `SIM-AC-023`: Cancel pre-shipment melepas reservation.
 - `SIM-AC-024`: Cancel post-shipment tidak auto-restock.
-- `SIM-AC-025`: Return received masuk quarantine.
-- `SIM-AC-026`: Inspection sellable/damaged membuat transfer yang seimbang.
+- `SIM-AC-025`: Return received hanya menambah pending inspection operasional.
+- `SIM-AC-026`: Inspection sellable membuat satu inbound ke batch RETURN baru; damaged membuat nol movement stok.
 
 ### 46.5 Idempotency
 
