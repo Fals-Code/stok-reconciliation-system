@@ -2,13 +2,14 @@
 <!--
 File: 14-testing-scenarios.md
 Project: Sistem Rekonsiliasi Stok
-Status: Approved testing baseline for Phase 1
-Version: 1.0.0
-Last updated: 2026-07-13
+Status: Phase 2 synced testing contract
+Version: 1.1.0
+Last updated: 2026-07-18
 Language: id-ID
 Timezone: Asia/Jakarta
 Application role model: ADMIN only
-Primary source: stok-management-system.pdf
+Primary source: VibeDev Phase 2 Sync Update v2, 13 Juni 2026
+Baseline source: stok-management-system.pdf
 Depends on:
   - 01-project-brief.md
   - 02-product-requirements.md
@@ -53,9 +54,9 @@ Sistem dinyatakan layak bila pengujian membuktikan bahwa:
 7. transaksi bersamaan tidak menghasilkan stok negatif atau over-allocation;
 8. event dan command yang diulang tidak menggandakan effect;
 9. bundle tidak memiliki stok tersendiri;
-10. retur hanya menambah stok setelah physical receipt;
-11. retur masuk `QUARANTINE` sebelum inspection;
-12. klaim tidak mengubah stok;
+10. expected return dan physical receipt tetap stock-neutral;
+11. hanya inspeksi `SELLABLE` yang membuat `RETURN_SELLABLE_INBOUND` ke batch `RETURN` baru; `DAMAGED` dan `LOST` tidak membuat movement stok kedua;
+12. klaim tidak mengubah stok dan tenggat TikTok dihitung 40 hari dari `operations.returns.created_at`;
 13. stok opname memperbaiki fisik-vs-ledger melalui adjustment, bukan edit saldo;
 14. rekonsiliasi menemukan drift dan sumber mismatch;
 15. notifikasi tidak menggantikan tindakan domain;
@@ -543,9 +544,9 @@ SKU-C  zero stock
 SKU-D  missing expiry
 SKU-E  blocked batch
 SKU-F  expired batch
-SKU-G  quarantine return
+SKU-G  return receipt pending inspection, stock-neutral
 SKU-H  damaged stock
-SKU-I  controlled unidentified return batch
+SKU-I  sellable return with unverified provenance
 SKU-J  high-contention product
 ```
 
@@ -559,7 +560,7 @@ A4 expired, sellable 10
 A5 blocked, sellable 10
 A6 quarantine 7
 A7 damaged 3
-A8 unidentified return quarantine 2
+A8 return batch, batch_kind_code = RETURN, sellable 2
 ```
 
 ### 12.5 Listing Golden Set
@@ -935,13 +936,14 @@ live demo script
 | `INV-011` | Batch FEFO yang dipilih eligible pada operational date. |
 | `INV-012` | Bundle tidak memiliki stock. |
 | `INV-013` | Return expected tidak menambah stock. |
-| `INV-014` | Return received masuk quarantine. |
-| `INV-015` | Inspection memindahkan quarantine ke sellable/damaged. |
+| `INV-014` | Return receipt hanya menambah progres operasional; transaction, ledger, dan projection delta tetap nol. |
+| `INV-015` | Hanya inspeksi `SELLABLE` membuat `RETURN_SELLABLE_INBOUND` ke batch baru dengan `batch_kind_code = RETURN`; `DAMAGED` tidak membuat movement kedua. |
 | `INV-016` | Lost/claim tidak menambah stock. |
 | `INV-017` | Stocktake adjustment = approved physical - expected. |
 | `INV-018` | Data organisasi tidak bocor lintas scope. |
 | `INV-019` | Actor dan organization berasal dari trusted context. |
 | `INV-020` | Sistem tidak menyimpan harga/nilai uang fase 1. |
+| `INV-021` | Provenance batch asal wajib terverifikasi sebelum hasil `SELLABLE`; batch asal tidak dipakai sebagai tujuan inbound. |
 
 ---
 
@@ -952,7 +954,7 @@ Untuk setiap product/batch/bucket:
 ```text
 opening
 + inbound
-+ return receipt
++ return sellable inbound
 + bucket transfer in
 + positive adjustment
 + reversal in
@@ -994,8 +996,8 @@ P0 smoke pack wajib selesai cepat dan membuktikan jalur inti:
 | 7 | Cancel setelah shipment |
 | 8 | Manual bonus |
 | 9 | Bundle normalization |
-| 10 | Return receipt quarantine |
-| 11 | Return inspection sellable/damaged |
+| 10 | Return receipt stock-neutral |
+| 11 | Return inspection: sellable inbound ke batch `RETURN` baru; damaged tanpa movement |
 | 12 | Return lost + claim no stock |
 | 13 | Duplicate event |
 | 14 | Insufficient stock rollback |
@@ -1212,18 +1214,39 @@ Flow:
 ```text
 RETURN_EXPECTED
 RETURN_IN_TRANSIT
-PHYSICAL_RECEIPT
-INSPECT_SELLABLE
+api.confirm_return_receipt
+api.inspect_return
 ```
 
-Expected ledger:
+Expected receipt:
 
 ```text
-receipt: QUARANTINE +qty
-inspection: QUARANTINE -qty, SELLABLE +qty
+received_qty += qty
+pending inspection += qty
+stock transaction = none
+ledger entry = none
+projection delta = 0
+stock effect = NONE
 ```
 
-Expected/source events before physical receipt create no movement.
+Expected sellable inspection:
+
+```text
+transaction type = RETURN_SELLABLE_INBOUND
+destination batch_kind_code = RETURN
+destination batch is new
+source outbound batch = provenance only
+SELLABLE +qty
+```
+
+Reconciliation:
+
+```text
+RETURN_RECEIPT_CONSISTENCY = clean
+RETURN_INSPECTION_CONSISTENCY = clean
+```
+
+Expected/source events sebelum receipt tetap tanpa movement.
 
 ---
 
@@ -1232,10 +1255,15 @@ Expected/source events before physical receipt create no movement.
 Expected:
 
 ```text
-receipt -> QUARANTINE
-inspection -> DAMAGED
-available unchanged by damaged
+receipt stock effect = NONE
+inspection condition = DAMAGED
+stock transaction = none
+ledger entry = none
+projection delta = 0
+available unchanged
 ```
+
+Pada mixed inspection, hanya kuantitas `SELLABLE` yang masuk ledger; bagian `DAMAGED` tetap audit-only.
 
 ---
 
@@ -1246,7 +1274,7 @@ Expected:
 ```text
 lost quantity recorded
 no inbound ledger
-claim deadline snapshot stored
+claim deadline = operations.returns.created_at + 40 calendar days
 claim status changes create no ledger
 notification uses claim.deadline_at
 ```
@@ -1533,7 +1561,7 @@ security log where appropriate
 | TST-FEFO-003 | P0 | DB/API | Tiga batch, satu expired paling dekat. | Expired dilewati. |
 | TST-FEFO-004 | P0 | DB/API | Batch terdekat blocked. | Blocked dilewati. |
 | TST-FEFO-005 | P0 | DB/API | Batch quarantine atau damaged. | Tidak eligible. |
-| TST-FEFO-006 | P0 | DB/API | Controlled unidentified return batch. | Tidak eligible. |
+| TST-FEFO-006 | P0 | DB/API | Hasil retur `SELLABLE` tanpa provenance terverifikasi. | Ditolak sebelum batch `RETURN` dibuat. |
 | TST-FEFO-007 | P0 | DB/API | Expiry sama, waktu receipt berbeda. | Receipt lebih awal dipilih. |
 | TST-FEFO-008 | P0 | DB/API | Expiry dan receipt time sama. | Batch code/ID memberi hasil deterministik. |
 | TST-FEFO-009 | P0 | DB/API | Safety buffer menutup batch. | Batch excluded sesuai snapshot config. |
@@ -1571,29 +1599,33 @@ security log where appropriate
 | ID | Priority | Layer | Scenario | Expected |
 |---|---|---|---|---|
 | TST-RET-001 | P0 | API/DB | Expected return dibuat. | Tidak ada stock movement. |
-| TST-RET-002 | P0 | API/DB | Physical receipt retur. | `QUARANTINE +qty`. |
-| TST-RET-003 | P0 | API/DB | Source marketplace berkata received tanpa konfirmasi fisik. | Tidak ada ledger receipt otomatis. |
-| TST-RET-004 | P0 | API/DB | Inspection sellable. | Transfer quarantine ke sellable net zero. |
-| TST-RET-005 | P0 | API/DB | Inspection damaged. | Transfer quarantine ke damaged net zero. |
-| TST-RET-006 | P0 | API/DB | Mixed inspection. | Quantity split dan status mixed benar. |
-| TST-RET-007 | P0 | API/DB | Partial receipt beberapa kali. | Agregat benar; setiap receipt immutable. |
-| TST-RET-008 | P0 | API/DB | Receipt melebihi pending return. | Ditolak. |
-| TST-RET-009 | P0 | API/DB | Inspection melebihi received uninspected. | Ditolak. |
+| TST-RET-002 | P0 | API/DB | `api.confirm_return_receipt` memproses physical receipt. | `received_qty` bertambah; transaction, ledger, dan projection delta tetap nol. |
+| TST-RET-003 | P0 | API/DB | Source marketplace berkata received tanpa konfirmasi fisik. | Tidak ada receipt operasional atau ledger otomatis. |
+| TST-RET-004 | P0 | API/DB | `api.inspect_return` memproses sellable. | Satu `RETURN_SELLABLE_INBOUND` ke batch baru dengan `batch_kind_code = RETURN`; source batch provenance only. |
+| TST-RET-005 | P0 | API/DB | Inspection damaged. | Kondisi `DAMAGED` tercatat; transaction, ledger, dan projection delta tetap nol. |
+| TST-RET-006 | P0 | API/DB | Mixed inspection. | Status mixed benar dan ledger hanya sebesar kuantitas `SELLABLE`. |
+| TST-RET-007 | P0 | API/DB | Partial receipt beberapa kali. | Agregat benar; setiap receipt immutable dan stock-neutral. |
+| TST-RET-008 | P0 | API/DB | Receipt melebihi pending return. | Ditolak atomik. |
+| TST-RET-009 | P0 | API/DB | Inspection melebihi received uninspected. | Ditolak atomik. |
 | TST-RET-010 | P0 | API/DB | Mark lost pada pending arrival. | No ledger; lost quantity bertambah. |
 | TST-RET-011 | P0 | API/DB | Mark lost pada quantity sudah received. | Ditolak. |
-| TST-RET-012 | P0 | API/DB | Late arrival setelah lost. | Exception + physical receipt; histori lost tetap. |
+| TST-RET-012 | P0 | API/DB | Late arrival setelah lost. | Exception + receipt stock-neutral; histori lost tetap. |
 | TST-RET-013 | P0 | API/DB | Return quantity melebihi physical outbound. | Ditolak. |
-| TST-RET-014 | P0 | DB/API | Unknown batch return. | Masuk controlled quarantine; tidak sellable/FEFO. |
-| TST-RET-015 | P0 | DB/API | Batch kemudian teridentifikasi. | Quarantine reclassification net zero. |
+| TST-RET-014 | P0 | DB/API | Sellable inspection dengan provenance unknown. | Ditolak `RETURN_BATCH_IDENTITY_REQUIRED_FOR_SELLABLE`; tidak ada placeholder batch. |
+| TST-RET-015 | P0 | DB/API | Provenance kemudian terverifikasi. | Sellable dapat diposting ke batch `RETURN` baru, bukan batch outbound asal. |
 | TST-RET-016 | P0 | DB/API | Duplicate return event. | Satu return/effect. |
-| TST-RET-017 | P0 | DB/API | Receipt double-click. | Satu receipt/ledger. |
-| TST-RET-018 | P0 | DB/API | Correction receipt/inspection. | Reversal; original immutable. |
-| TST-RET-019 | P0 | API/DB | Klaim eligible dibuat. | Deadline snapshot; no stock effect. |
-| TST-RET-020 | P0 | API/DB | Klaim tanpa basis deadline. | Status exception; no guessed date. |
+| TST-RET-017 | P0 | DB/API | Receipt double-click. | Satu receipt operasional; ledger count tetap nol. |
+| TST-RET-018 | P0 | DB/API | Correction receipt/inspection. | Original immutable; sellable dikoreksi melalui reversal terhubung, damaged melalui audit correction tanpa movement. |
+| TST-RET-019 | P0 | API/DB | Klaim TikTok eligible dibuat. | Deadline tepat `operations.returns.created_at + 40 days`; no stock effect. |
+| TST-RET-020 | P0 | API/DB | Claim status berubah. | Histori status bertambah; stock tetap. |
 | TST-RET-021 | P0 | API/DB | Klaim disubmit/diselesaikan. | Status berubah; stock tetap. |
-| TST-RET-022 | P0 | Scheduler | Deadline 14/7/3/1/due/overdue. | Stage notification tepat, deduplicated. |
-| TST-RET-023 | P1 | E2E | Return detail drill-down. | Order, receipt, inspection, claim, ledger terhubung. |
+| TST-RET-022 | P0 | Scheduler | Deadline 14/7/3/1/due/overdue. | Stage notification tepat, deduplicated, dan tidak mengubah stock. |
+| TST-RET-023 | P1 | E2E | Return detail drill-down. | Order, receipt, inspection, provenance, return batch, claim, dan ledger terhubung. |
 | TST-RET-024 | P0 | Reconciliation | Quantity return tidak balance. | Issue dibuat dengan evidence. |
+| TST-RET-025 | P0 | Reconciliation | Receipt memiliki transaction/ledger/projection effect. | `RETURN_RECEIPT_CONSISTENCY` membuat issue. |
+| TST-RET-026 | P0 | Reconciliation | Damaged membuat ledger atau sellable inbound memakai batch salah. | `RETURN_INSPECTION_CONSISTENCY` membuat issue. |
+| TST-RET-027 | P0 | API/DB | Retry identik receipt/inspection. | Existing response dikembalikan; tidak ada effect kedua. |
+| TST-RET-028 | P0 | API/DB | Idempotency key sama dengan payload berbeda. | Ditolak tanpa effect baru. |
 
 ## Stok Opname
 
@@ -2364,7 +2396,7 @@ severity
 | Menerima barang maklon | Dapat post dan melihat stock bertambah per batch. |
 | Memproses pesanan simulator | Dapat membedakan reservation dan physical outbound. |
 | Mencatat bonus | Alasan bonus terlihat dan dapat ditelusuri. |
-| Memproses retur | Barang masuk quarantine lalu diputuskan kondisinya. |
+| Memproses retur | Receipt tercatat stock-neutral; sellable masuk batch `RETURN` baru; damaged tetap audit-only. |
 | Menangani klaim | Deadline terlihat tanpa mengubah stock. |
 | Menjalankan stocktake | Count, variance, review, posting dapat dipahami. |
 | Membuka issue rekonsiliasi | Dapat melihat sumber movement pembentuk mismatch. |
@@ -2394,7 +2426,7 @@ severity
 7. cancel after shipment;
 8. manual bonus;
 9. bundle order;
-10. return receipt quarantine;
+10. return receipt stock-neutral;
 11. inspection mixed;
 12. lost return + claim;
 13. duplicate event;
@@ -2506,7 +2538,7 @@ cross-organization access
 direct ledger mutation
 FEFO selects ineligible batch
 cancel post-shipment auto-restocks
-return bypasses quarantine
+return receipt changes stock or sellable posts without inspection/provenance
 claim changes stock
 stocktake partial posting
 service-role in client
@@ -2744,7 +2776,7 @@ negative stock
 duplicate movement
 cross-org access
 FEFO salah
-return bypass quarantine
+return receipt changes stock or sellable posts without inspection/provenance
 stocktake partial post
 ledger mutable
 ```

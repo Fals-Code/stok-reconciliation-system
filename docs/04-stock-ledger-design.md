@@ -1,12 +1,13 @@
 ---
 title: "Stock Ledger Design - Sistem Rekonsiliasi Stok"
 document_id: "04-stock-ledger-design"
-version: "1.0.0"
-status: "Draft for Technical Implementation"
-last_updated: "2026-07-12"
+version: "1.1.0"
+status: "Phase 2 Synced Technical Design"
+last_updated: "2026-07-18"
 language: "id-ID"
 timezone: "Asia/Jakarta"
 source_of_truth:
+  - "VibeDev Phase 2 Sync Update v2, 13 Juni 2026"
   - "stok-management-system.pdf"
   - "01-project-brief.md"
   - "02-product-requirements.md"
@@ -66,8 +67,9 @@ Dokumen ini berada satu tingkat di bawah `03-business-rules.md` dan satu tingkat
 - penerimaan barang dari maklon;
 - outbound marketplace;
 - outbound manual;
-- retur masuk ke quarantine;
-- hasil inspeksi retur;
+- penerimaan retur stock-neutral;
+- hasil inspeksi sellable sebagai inbound ke batch RETURN baru;
+- hasil damaged/lost sebagai audit tanpa movement kedua;
 - disposal rusak dan kedaluwarsa;
 - koreksi stok opname;
 - reversal;
@@ -152,12 +154,13 @@ Contoh penerimaan 100 unit ke `SELLABLE`:
 |---|---|---|---|---:|
 | RCV-001 | Serum A | A-2407 | `SELLABLE` | +100 |
 
-Contoh transfer retur 3 unit dari `QUARANTINE` ke `SELLABLE`:
+Contoh inspeksi retur layak jual 3 unit:
 
 | Transaction | Product | Batch | Bucket | Delta |
 |---|---|---|---|---:|
-| RET-INS-001 | Serum A | A-2407 | `QUARANTINE` | -3 |
-| RET-INS-001 | Serum A | A-2407 | `SELLABLE` | +3 |
+| RET-SELL-001 | Serum A | RETURN-RET-001 | `SELLABLE` | +3 |
+
+Penerimaan fisik sebelumnya tidak membuat entry. `RETURN-RET-001` adalah batch baru bertanda `RETURN`; batch outbound asal hanya disimpan sebagai provenance. Hasil `DAMAGED` dan `LOST` tidak membuat entry kedua.
 
 Contoh outbound 5 unit:
 
@@ -461,9 +464,7 @@ Perilaku:
 | `RECEIPT` | entry positif ke `SELLABLE`/`QUARANTINE` | Naik |
 | `OUTBOUND_MARKETPLACE` | entry negatif dari `SELLABLE` per batch | Turun |
 | `OUTBOUND_MANUAL` | entry negatif dari bucket sumber resmi | Turun |
-| `RETURN_RECEIVED_QUARANTINE` | entry positif ke `QUARANTINE` | Naik |
-| `TRANSFER_QUARANTINE_TO_SELLABLE` | `-QUARANTINE`, `+SELLABLE` | Tetap |
-| `TRANSFER_QUARANTINE_TO_DAMAGED` | `-QUARANTINE`, `+DAMAGED` | Tetap |
+| `RETURN_SELLABLE_INBOUND` | entry positif ke `SELLABLE` pada batch baru bertanda `RETURN` | Naik |
 | `STOCKTAKE_ADJUSTMENT` | entry positif/negatif pada bucket | Sesuai selisih |
 | `DISPOSAL_DAMAGED` | entry negatif dari `DAMAGED` | Turun |
 | `DISPOSAL_EXPIRED` | entry negatif dari bucket fisik | Turun |
@@ -591,17 +592,23 @@ Order: READY -> PHYSICALLY_OUT
 Saat fisik tiba:
 
 ```text
-Transaction RET-RCV-001
-Entry: Batch A2 / QUARANTINE / +2
+return receipt recorded
+pending inspection +2
+stock transaction = none
+ledger entry = none
+projection delta = 0
 ```
 
 Setelah inspeksi:
 
 ```text
-Transaction RET-INS-001
-Entry 1: Batch A2 / QUARANTINE / -2
-Entry 2: Batch A2 / SELLABLE / +2
+Transaction RET-SELL-001
+Type: RETURN_SELLABLE_INBOUND
+Entry: RETURN-RET-001 / SELLABLE / +2
+Original outbound batch: provenance only
 ```
+
+Hasil `DAMAGED` atau `LOST` hanya memperbarui histori operasional/audit dan tidak membuat movement stok kedua.
 
 ### 12.5 Reversal Penerimaan
 
@@ -707,8 +714,8 @@ UI dan server sebaiknya memanggil fungsi domain khusus, bukan fungsi generik sec
 | `inventory.release_order_reservation(...)` | Melepas reservasi. |
 | `inventory.post_marketplace_outbound(...)` | FEFO, allocation, ledger, consume reservation, status order. |
 | `inventory.post_manual_outbound(...)` | Outbound manual dengan reason. |
-| `inventory.receive_return(...)` | Inbound retur ke quarantine. |
-| `inventory.inspect_return(...)` | Transfer quarantine ke sellable/damaged. |
+| `api.confirm_return_receipt(...)` | Catat penerimaan operasional tanpa stock transaction atau ledger. |
+| `api.inspect_return(...)` | Posting `RETURN_SELLABLE_INBOUND` ke batch `RETURN` baru untuk sellable; damaged/lost tetap movement-free. |
 | `inventory.post_disposal(...)` | Disposal rusak/expired. |
 | `inventory.post_stocktake(...)` | Posting seluruh adjustment opname. |
 | `inventory.reverse_stock_transaction(...)` | Reversal terkontrol. |
@@ -1159,7 +1166,8 @@ variance = physical_count - expected
 | `REC_LEDGER_WITHOUT_SOURCE` | Setiap transaction punya sumber valid. |
 | `REC_DUPLICATE_IDEMPOTENCY_EFFECT` | Satu key tidak menghasilkan lebih dari satu transaksi. |
 | `REC_OVER_REVERSAL` | Reversal tidak melebihi original. |
-| `REC_RETURN_QUARANTINE` | Retur diterima cocok dengan quarantine. |
+| `RETURN_RECEIPT_CONSISTENCY` | Receipt operasional tidak menghasilkan transaction, ledger, atau projection delta. |
+| `RETURN_INSPECTION_CONSISTENCY` | Hanya sellable menghasilkan satu inbound ke batch RETURN baru; damaged/lost tidak menghasilkan movement kedua. |
 | `REC_EXPIRED_ALLOCATION` | Tidak ada batch expired pada allocation penjualan. |
 
 ### 23.2 Evidence
@@ -1519,7 +1527,8 @@ Jangan log:
 | SLD-TST-008 | Dua outbound konkuren tidak overallocate. |
 | SLD-TST-009 | Duplicate idempotency key dengan hash sama mengembalikan hasil lama. |
 | SLD-TST-010 | Duplicate key dengan hash berbeda ditolak. |
-| SLD-TST-011 | Transfer quarantine ke sellable neto nol. |
+| SLD-TST-011 | Sellable return membuat tepat satu RETURN_SELLABLE_INBOUND ke batch RETURN baru. |
+| SLD-TST-011A | Receipt, damaged, dan lost tidak membuat movement stok. |
 | SLD-TST-012 | Retur lost tidak membuat ledger. |
 | SLD-TST-013 | Reversal mempertahankan original. |
 | SLD-TST-014 | Over-reversal ditolak. |
@@ -1639,7 +1648,7 @@ setiap baris punya actor dan source
 | SLD-OPEN-003 | Full reversal saja pada UI fase 1 | Ya. |
 | SLD-OPEN-004 | Batas lock timeout | Mulai 3-5 detik, tuning dari observability. |
 | SLD-OPEN-005 | Mode default stocktake | `FROZEN_OPERATIONS` untuk demo; support continuous. |
-| SLD-OPEN-006 | Retur tanpa batch teridentifikasi | Batch exception khusus per product dalam quarantine, dengan workflow resolusi. |
+| SLD-OPEN-006 | Retur tanpa provenance batch terverifikasi | Hasil SELLABLE diblokir; provenance tidak direkayasa; DAMAGED tetap audit-only tanpa movement. |
 | SLD-OPEN-007 | Expiry pada hari yang sama masih sellable | Tidak expired sampai tanggal lokal berakhir, tetapi kebijakan operasional dapat memblokir lebih awal. |
 | SLD-OPEN-008 | Retention payload mentah marketplace | Tetapkan pada security/data policy berikutnya. |
 | SLD-OPEN-009 | Penggunaan deferred constraint trigger | Gunakan hanya untuk invariant lintas entry yang memberi nilai tambah setelah profiling. |

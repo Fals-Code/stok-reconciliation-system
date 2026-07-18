@@ -1,13 +1,14 @@
 <!--
 File: 10-fefo-batch-allocation.md
 Project: Sistem Rekonsiliasi Stok
-Status: Approved design baseline for Phase 1
-Version: 1.0.0
-Last updated: 2026-07-12
+Status: Phase 2 synced FEFO contract
+Version: 1.1.0
+Last updated: 2026-07-18
 Language: id-ID
 Timezone: Asia/Jakarta
 Role model: ADMIN only
-Primary source: stok-management-system.pdf
+Primary source: VibeDev Phase 2 Sync Update v2, 13 Juni 2026
+Baseline source: stok-management-system.pdf
 Depends on:
   - 01-project-brief.md
   - 02-product-requirements.md
@@ -177,7 +178,7 @@ Jika barcode GS1 digunakan kelak, informasi batch/lot dan expiry dapat dibaca da
 | ID | Sasaran |
 |---|---|
 | `FEFO-GOAL-001` | Batch eligible dengan expiry paling dekat dipakai lebih dahulu. |
-| `FEFO-GOAL-002` | Batch expired, blocked, archived, quarantine, damaged, dan unidentified tidak dialokasikan untuk penjualan. |
+| `FEFO-GOAL-002` | Batch expired, blocked, archived, quarantine, dan damaged tidak dialokasikan untuk penjualan. |
 | `FEFO-GOAL-003` | Satu kebutuhan dapat dibagi ke beberapa batch secara deterministik. |
 | `FEFO-GOAL-004` | Total allocation selalu sama dengan quantity outbound. |
 | `FEFO-GOAL-005` | Stok tidak cukup menghasilkan kegagalan atomik tanpa movement parsial. |
@@ -211,7 +212,7 @@ Fase 1 tidak:
 - mengunci batch selama pesanan masih reservasi;
 - menerapkan `SKIP LOCKED` agar transaksi terlihat cepat tetapi diam-diam melanggar FEFO;
 - mengalokasikan stok bundle;
-- memakai batch retur yang belum terverifikasi;
+- memposting hasil retur SELLABLE ketika provenance belum terverifikasi;
 - mengedit allocation historis;
 - menghapus ledger karena batch salah;
 - memproses negative stock;
@@ -240,7 +241,6 @@ Fase 1 tidak:
 | Allocation snapshot | Bukti kondisi yang dipakai saat keputusan final. |
 | Allocation group | Semua allocation line dalam satu source command. |
 | Hard hold | Pemblokiran mutation karena stocktake atau integrity issue. |
-| Unidentified return batch | Placeholder quarantine yang tidak eligible FEFO. |
 | Source line | Order item atau line outbound manual. |
 | All-or-nothing | Tidak ada movement parsial jika seluruh kebutuhan command tidak terpenuhi. |
 
@@ -270,7 +270,7 @@ FEFO penjualan tidak digunakan untuk:
 DISPOSAL_EXPIRED
 DISPOSAL_DAMAGED
 RETURN_RECEIPT
-RETURN_INSPECTION_TRANSFER
+RETURN_SELLABLE_INBOUND
 STOCKTAKE_ADJUSTMENT
 REVERSAL
 INTERNAL_BUCKET_TRANSFER
@@ -606,7 +606,7 @@ Batch eligible bila seluruh kondisi berikut benar.
 | `FEFO-ELG-008` | Batch status `ACTIVE`. |
 | `FEFO-ELG-009` | Batch tidak blocked. |
 | `FEFO-ELG-010` | Batch tidak archived. |
-| `FEFO-ELG-011` | Batch bukan controlled unidentified return batch. |
+| `FEFO-ELG-011` | Batch RETURN hanya ada setelah provenance dan inspeksi SELLABLE tervalidasi. |
 | `FEFO-ELG-012` | Sellable balance lebih dari nol. |
 | `FEFO-ELG-013` | Quarantine tidak dianggap sellable. |
 | `FEFO-ELG-014` | Damaged tidak dianggap sellable. |
@@ -655,7 +655,6 @@ MISSING_EXPIRY_DATE
 BATCH_BLOCKED
 BATCH_EXPIRED_STATUS
 BATCH_ARCHIVED
-UNIDENTIFIED_RETURN_BATCH
 NO_SELLABLE_BALANCE
 EXPIRY_DATE_PASSED
 SAFETY_BUFFER_REACHED
@@ -1296,37 +1295,42 @@ Ia menargetkan line product/batch/bucket yang dihitung.
 
 ### 38.1 Return Receipt
 
-Receipt masuk:
+Receipt dicatat secara operasional:
 
 ```text
-QUARANTINE
+received_qty += qty
+pending_inspection_qty += qty
+stock transaction = none
+ledger entry = none
+projection delta = 0
 ```
 
-Tidak eligible FEFO.
+Receipt tidak membuat batch dan tidak masuk kandidat FEFO. Batch `RETURN` baru hanya dibuat setelah inspeksi `SELLABLE` dengan provenance terverifikasi.
 
 ### 38.2 Return Inspected Sellable
 
-Setelah transfer ke sellable:
+Setelah `RETURN_SELLABLE_INBOUND`:
 
-- batch actual terverifikasi;
-- balance sellable bertambah;
-- batch dapat menjadi kandidat FEFO pada allocation berikutnya.
+- provenance batch outbound terverifikasi;
+- server membuat batch baru dengan `batch_kind_code = RETURN`;
+- balance `SELLABLE` batch baru bertambah;
+- batch baru dapat menjadi kandidat FEFO pada allocation berikutnya bila status, expiry, dan saldo memenuhi seluruh aturan.
 
-### 38.3 Unidentified Return Batch
+### 38.3 Provenance Belum Terverifikasi
 
-Tidak eligible.
+Tidak ada placeholder batch. Hasil `SELLABLE` ditolak sampai provenance terverifikasi.
 
 ### 38.4 Damaged Return
 
-Tidak eligible.
+Tidak eligible karena klasifikasi `DAMAGED` retur tidak menambah stock bucket atau membuat movement kedua.
 
-### 38.5 Return pada Batch Expired
+### 38.5 Return dengan Source Batch Expired
 
-Jika batch actual expired:
+Jika source batch outbound telah expired:
 
-- tidak menjadi kandidat sellable sales;
-- hasil inspeksi seharusnya damaged/quarantine sesuai policy;
-- reconciliation issue bila dipindahkan ke sellable.
+- hasil `SELLABLE` ditolak;
+- hasil `DAMAGED` dapat dicatat untuk audit/klaim tanpa movement stok;
+- reconciliation menjelaskan alasan penolakan.
 
 ---
 
@@ -2209,7 +2213,6 @@ Tidak diperlukan untuk fase 1 tanpa evidence.
 | `FEFO_BATCH_BLOCKED` | Candidate blocked |
 | `FEFO_BATCH_EXPIRED` | Candidate expired |
 | `FEFO_BATCH_ARCHIVED` | Candidate archived |
-| `FEFO_UNIDENTIFIED_RETURN_BATCH` | Placeholder return excluded |
 | `FEFO_INTEGRITY_HOLD_ACTIVE` | Hold active |
 | `FEFO_STOCKTAKE_HOLD_ACTIVE` | Frozen stocktake |
 | `FEFO_RESERVATION_MISSING` | Reservation missing |
@@ -2435,7 +2438,7 @@ REC_PRE_SHIPMENT_WITH_OUTBOUND
 REC_CHANNEL_THRESHOLD
 REC_PHYSICALLY_OUT_RESERVATION
 REC_BUNDLE_SNAPSHOT_TOTAL
-REC_RETURN_BATCH_PLACEHOLDER_RELEASE
+RETURN_INSPECTION_CONSISTENCY
 ```
 
 Tambahan:
@@ -2531,7 +2534,7 @@ Test:
 | `FEFO-DB-006` | Archived excluded |
 | `FEFO-DB-007` | Quarantine excluded |
 | `FEFO-DB-008` | Damaged excluded |
-| `FEFO-DB-009` | Unidentified return excluded |
+| `FEFO-DB-009` | Return sellable tanpa provenance ditolak sebelum batch dibuat |
 | `FEFO-DB-010` | Safety buffer works |
 | `FEFO-DB-011` | Split exact |
 | `FEFO-DB-012` | Insufficient rolls back |
@@ -2638,7 +2641,7 @@ Expected:
 | `FEFO-E2E-012` | Bundle expansion |
 | `FEFO-E2E-013` | New earlier batch after reservation |
 | `FEFO-E2E-014` | Return sellable becomes candidate |
-| `FEFO-E2E-015` | Unidentified return excluded |
+| `FEFO-E2E-015` | Unknown-provenance sellable return rejected |
 | `FEFO-E2E-016` | Concurrent last unit |
 | `FEFO-E2E-017` | Preview changes before commit |
 | `FEFO-E2E-018` | Frozen stocktake |
@@ -2685,7 +2688,7 @@ SKU-B bundle component
 SKU-C no eligible stock
 SKU-D missing expiry
 SKU-E blocked
-SKU-F unidentified return
+SKU-F return provenance unknown
 ```
 
 Batches:
@@ -2713,7 +2716,7 @@ Expected cases versioned in repo.
 - `FEFO-AC-003`: Expired excluded.
 - `FEFO-AC-004`: Blocked/archived excluded.
 - `FEFO-AC-005`: Quarantine/damaged excluded.
-- `FEFO-AC-006`: Unidentified return excluded.
+- `FEFO-AC-006`: Sellable return tanpa provenance ditolak sebelum batch RETURN dibuat.
 - `FEFO-AC-007`: Holds enforced.
 
 ### Ordering
@@ -2775,7 +2778,7 @@ Do not release if:
 
 - Admin can choose batch normal outbound;
 - expired batch can be allocated;
-- unidentified return can be sold;
+- sellable return tanpa provenance dapat diposting;
 - allocation and ledger can diverge;
 - insufficient stock leaves partial movement;
 - two requests can over-allocate;
@@ -2891,7 +2894,7 @@ Gunakan decision snapshot untuk `REC_FEFO_ORDER`.
 
 ### `09-return-and-claim-flow.md`
 
-Pastikan unidentified return batch tidak eligible FEFO.
+Pastikan hasil SELLABLE tanpa provenance ditolak sebelum batch RETURN dibuat.
 
 ---
 
@@ -2988,7 +2991,6 @@ blocked
 archived
 quarantine
 damaged
-unidentified return
 missing expiry
 held
 zero sellable
