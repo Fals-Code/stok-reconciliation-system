@@ -25,7 +25,7 @@ select
     '00000000-0000-4000-8000-000000000001'::uuid,
     'PGTAP-RECON-INSPECTION-INTEGRATION-CLEAN-001',
     array[
-      'RETURN_INSPECTION_TRANSFER'
+      'RETURN_INSPECTION_CONSISTENCY'
     ]::text[],
     '{}'::jsonb,
     '{"test": true, "fixture": "inspection-integration-empty"}'::jsonb
@@ -56,7 +56,7 @@ select is(
       where kind = 'CLEAN_EMPTY'
     )
       and run_check.check_code =
-        'RETURN_INSPECTION_TRANSFER'
+        'RETURN_INSPECTION_CONSISTENCY'
   ),
   'PASSED:0:0',
   'empty return inspection check persists a clean result'
@@ -293,7 +293,7 @@ select
     '00000000-0000-4000-8000-000000000001'::uuid,
     'PGTAP-RECON-INSPECTION-INTEGRATION-VALID-001',
     array[
-      'RETURN_INSPECTION_TRANSFER'
+      'RETURN_INSPECTION_CONSISTENCY'
     ]::text[],
     '{}'::jsonb,
     '{"test": true, "fixture": "inspection-integration-valid"}'::jsonb
@@ -324,7 +324,7 @@ select is(
       where kind = 'INSPECTION_CLEAN'
     )
       and run_check.check_code =
-        'RETURN_INSPECTION_TRANSFER'
+        'RETURN_INSPECTION_CONSISTENCY'
   ),
   'PASSED:1:0',
   'valid return inspection check covers one inspection'
@@ -355,7 +355,7 @@ select
     '00000000-0000-4000-8000-000000000001'::uuid,
     'PGTAP-RECON-INSPECTION-INTEGRATION-DRIFT-001',
     array[
-      'RETURN_INSPECTION_TRANSFER'
+      'RETURN_INSPECTION_CONSISTENCY'
     ]::text[],
     '{}'::jsonb,
     '{"test": true, "fixture": "inspection-integration-drift"}'::jsonb
@@ -376,7 +376,7 @@ select is(
     select count(*)
     from reconciliation.issues issue
     where issue.check_code =
-        'RETURN_INSPECTION_TRANSFER'
+        'RETURN_INSPECTION_CONSISTENCY'
       and issue.status_code = 'OPEN'
       and issue.source_ref =
         'RECON-INSPECTION-INTEGRATION-INSPECTION-001'
@@ -395,7 +395,7 @@ select is(
         || coalesce(issue.source_type_code, '')
     from reconciliation.issues issue
     where issue.check_code =
-        'RETURN_INSPECTION_TRANSFER'
+        'RETURN_INSPECTION_CONSISTENCY'
       and issue.source_ref =
         'RECON-INSPECTION-INTEGRATION-INSPECTION-001'
   ),
@@ -472,12 +472,12 @@ select is(
         || (issue.difference_value ->> 'netQuantity')
     from reconciliation.issues issue
     where issue.check_code =
-        'RETURN_INSPECTION_TRANSFER'
+        'RETURN_INSPECTION_CONSISTENCY'
       and issue.source_ref =
         'RECON-INSPECTION-INTEGRATION-INSPECTION-001'
   ),
-  '3:2:3:3:0:1:2:2:2:0:1:0:1:1:0:-1:0:0:0',
-  'return inspection issue explains allocation and paired ledger drift'
+  '3:2:0:2:2:1:2:0:1:0:1:0:0:1:0:-1:0:1:1',
+  'return inspection issue explains sellable inbound allocation drift'
 );
 
 select is(
@@ -488,7 +488,7 @@ select is(
       on issue.organization_id = evidence.organization_id
      and issue.id = evidence.issue_id
     where issue.check_code =
-        'RETURN_INSPECTION_TRANSFER'
+        'RETURN_INSPECTION_CONSISTENCY'
       and issue.source_ref =
         'RECON-INSPECTION-INTEGRATION-INSPECTION-001'
   ),
@@ -504,12 +504,12 @@ select is(
       on issue.organization_id = evidence.organization_id
      and issue.id = evidence.issue_id
     where issue.check_code =
-        'RETURN_INSPECTION_TRANSFER'
+        'RETURN_INSPECTION_CONSISTENCY'
       and issue.source_ref =
         'RECON-INSPECTION-INTEGRATION-INSPECTION-001'
   ),
-  'core-integrity-v7',
-  'return inspection evidence records the v7 rule set'
+  'core-integrity-v8',
+  'return inspection evidence records the v8 rule set'
 );
 
 select is(
@@ -527,7 +527,7 @@ select is(
       where kind = 'INSPECTION_DRIFT'
     )
       and run_check.check_code =
-        'RETURN_INSPECTION_TRANSFER'
+        'RETURN_INSPECTION_CONSISTENCY'
   ),
   'FAILED:1:1',
   'return inspection check fails with one issue'
@@ -538,7 +538,7 @@ select is(
     '00000000-0000-4000-8000-000000000001'::uuid,
     'PGTAP-RECON-INSPECTION-INTEGRATION-DRIFT-001',
     array[
-      'RETURN_INSPECTION_TRANSFER'
+      'RETURN_INSPECTION_CONSISTENCY'
     ]::text[],
     '{}'::jsonb,
     '{"test": true, "fixture": "inspection-integration-drift"}'::jsonb
@@ -579,7 +579,7 @@ select
     '00000000-0000-4000-8000-000000000001'::uuid,
     'PGTAP-RECON-INSPECTION-INTEGRATION-DRIFT-002',
     array[
-      'RETURN_INSPECTION_TRANSFER'
+      'RETURN_INSPECTION_CONSISTENCY'
     ]::text[],
     '{}'::jsonb,
     '{"test": true, "fixture": "inspection-integration-drift-repeat"}'::jsonb
@@ -600,7 +600,7 @@ select is(
     select count(*)
     from reconciliation.issues issue
     where issue.check_code =
-        'RETURN_INSPECTION_TRANSFER'
+        'RETURN_INSPECTION_CONSISTENCY'
       and issue.source_ref =
         'RECON-INSPECTION-INTEGRATION-INSPECTION-001'
   ),
@@ -613,7 +613,7 @@ select is(
     select issue.recurrence_count
     from reconciliation.issues issue
     where issue.check_code =
-        'RETURN_INSPECTION_TRANSFER'
+        'RETURN_INSPECTION_CONSISTENCY'
       and issue.source_ref =
         'RECON-INSPECTION-INTEGRATION-INSPECTION-001'
   ),
@@ -629,7 +629,7 @@ select is(
       on issue.organization_id = evidence.organization_id
      and issue.id = evidence.issue_id
     where issue.check_code =
-        'RETURN_INSPECTION_TRANSFER'
+        'RETURN_INSPECTION_CONSISTENCY'
       and issue.source_ref =
         'RECON-INSPECTION-INTEGRATION-INSPECTION-001'
   ),
@@ -662,7 +662,7 @@ select
     '00000000-0000-4000-8000-000000000001'::uuid,
     'PGTAP-RECON-INSPECTION-INTEGRATION-RESTORED-001',
     array[
-      'RETURN_INSPECTION_TRANSFER'
+      'RETURN_INSPECTION_CONSISTENCY'
     ]::text[],
     '{}'::jsonb,
     '{"test": true, "fixture": "inspection-integration-restored"}'::jsonb
@@ -683,7 +683,7 @@ select is(
     select issue.status_code
     from reconciliation.issues issue
     where issue.check_code =
-        'RETURN_INSPECTION_TRANSFER'
+        'RETURN_INSPECTION_CONSISTENCY'
       and issue.source_ref =
         'RECON-INSPECTION-INTEGRATION-INSPECTION-001'
   ),

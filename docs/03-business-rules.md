@@ -165,9 +165,7 @@ available = sellable - reserved
 | `RECEIPT` | eksternal | `SELLABLE` atau `QUARANTINE` | bertambah |
 | `OUTBOUND_MARKETPLACE` | `SELLABLE` | eksternal | berkurang |
 | `OUTBOUND_MANUAL` | `SELLABLE` | eksternal | berkurang |
-| `RETURN_RECEIVED_QUARANTINE` | eksternal | `QUARANTINE` | bertambah |
-| `TRANSFER_QUARANTINE_TO_SELLABLE` | `QUARANTINE` | `SELLABLE` | tetap |
-| `TRANSFER_QUARANTINE_TO_DAMAGED` | `QUARANTINE` | `DAMAGED` | tetap |
+| `RETURN_SELLABLE_INBOUND` | eksternal | batch `RETURN` / `SELLABLE` | bertambah |
 | `DISPOSAL_DAMAGED` | `DAMAGED` | eksternal | berkurang |
 | `DISPOSAL_EXPIRED` | bucket fisik yang dipilih | eksternal | berkurang |
 | `STOCKTAKE_ADJUSTMENT` | bergantung tanda | bucket terkait/eksternal | berubah sesuai selisih |
@@ -433,14 +431,14 @@ Marketplace hanya memberi informasi bahwa retur terjadi. Kondisi fisik ditentuka
 | BR-RET-001 | Membuat retur expected MUST NOT menambah stok. | `EXPECTED_RETURN_RESTOCKED` |
 | BR-RET-002 | Retur MUST mereferensikan pesanan dan item outbound asal bila tersedia. | `RETURN_SOURCE_REFERENCE_REQUIRED` |
 | BR-RET-003 | Total kuantitas retur aktif/completed MUST NOT melebihi kuantitas outbound yang dapat diretur. | `RETURN_EXCEEDS_OUTBOUND` |
-| BR-RET-004 | Penerimaan fisik retur MUST menambah `QUARANTINE`, bukan langsung `SELLABLE`. | `RETURN_BYPASSED_QUARANTINE` |
+| BR-RET-004 | Penerimaan fisik retur MUST hanya mencatat receipt operasional dan MUST NOT membuat transaction, ledger entry, atau perubahan projection stok. | `RETURN_RECEIPT_CREATED_STOCK` |
 | BR-RET-005 | Kuantitas received MUST NOT melebihi expected, kecuali exception Admin yang diaudit. | `RETURN_RECEIVED_EXCEEDS_EXPECTED` |
 | BR-RET-006 | Inspeksi hanya boleh dilakukan terhadap unit yang telah diterima dan masih pending inspection. | `INSPECTION_WITHOUT_RECEIPT` |
-| BR-RET-007 | Hasil `SELLABLE` MUST memindahkan unit dari `QUARANTINE` ke `SELLABLE`. | `SELLABLE_RETURN_TRANSFER_INVALID` |
-| BR-RET-008 | Hasil `DAMAGED` MUST memindahkan unit dari `QUARANTINE` ke `DAMAGED`. | `DAMAGED_RETURN_TRANSFER_INVALID` |
+| BR-RET-007 | Hasil `SELLABLE` MUST membuat tepat satu inbound ke `SELLABLE` pada batch baru bertanda `RETURN`; retry identik MUST NOT menggandakan efek. | `SELLABLE_RETURN_INBOUND_INVALID` |
+| BR-RET-008 | Hasil `DAMAGED` MUST dicatat untuk audit/klaim dan MUST NOT membuat transaction, ledger entry, atau perubahan projection stok kedua. | `DAMAGED_RETURN_CREATED_STOCK` |
 | BR-RET-009 | Hasil `LOST` hanya boleh untuk barang yang tidak pernah diterima dan MUST NOT membuat inbound. | `LOST_RETURN_CREATED_STOCK` |
-| BR-RET-010 | Jika batch asal dapat ditelusuri, retur MUST dikaitkan ke batch asal. | `RETURN_ORIGINAL_BATCH_NOT_USED` |
-| BR-RET-011 | Jika batch tidak dapat diverifikasi, unit MUST tetap quarantine sampai penetapan Admin yang diaudit. | `UNKNOWN_RETURN_BATCH_RELEASED` |
+| BR-RET-010 | Batch outbound asal MUST disimpan sebagai provenance bila tersedia dan MUST NOT dipakai sebagai batch tujuan inbound retur. | `RETURN_PROVENANCE_MISSING` |
+| BR-RET-011 | Jika batch asal tidak dapat diverifikasi, status provenance MUST dicatat sebagai unknown, MUST NOT direkayasa menjadi identitas batch produksi, dan hasil `SELLABLE` MUST ditolak sampai provenance terverifikasi; hasil `DAMAGED` tetap boleh dicatat tanpa movement stok. | `RETURN_PROVENANCE_FABRICATED` |
 | BR-RET-012 | Total `received + lost + pending` MUST konsisten dengan kuantitas retur expected. | `RETURN_QUANTITY_RECONCILIATION_FAILED` |
 | BR-RET-013 | Retur parsial MUST mempertahankan status progres, bukan langsung closed. | `PARTIAL_RETURN_CLOSED` |
 | BR-RET-014 | Bukti inspeksi MAY opsional, tetapi actor, waktu, hasil, dan catatan MUST disimpan. | `RETURN_INSPECTION_AUDIT_MISSING` |
@@ -451,19 +449,19 @@ Marketplace hanya memberi informasi bahwa retur terjadi. Kondisi fisik ditentuka
 | Kondisi | Aksi operator | Movement | Status hasil |
 |---|---|---|---|
 | Retur baru dilaporkan, barang belum tiba | buat expected return | tidak ada | `EXPECTED` |
-| Sebagian barang tiba | terima kuantitas aktual | inbound ke `QUARANTINE` | `PARTIALLY_RECEIVED` |
-| Seluruh barang tiba, belum diperiksa | terima fisik | inbound ke `QUARANTINE` | `RECEIVED_PENDING_INSPECTION` |
-| Barang diperiksa layak jual | pilih `SELLABLE` | transfer `QUARANTINE -> SELLABLE` | completed/partial sesuai sisa |
-| Barang diperiksa rusak | pilih `DAMAGED` | transfer `QUARANTINE -> DAMAGED` | completed/partial sesuai sisa |
+| Sebagian barang tiba | terima kuantitas aktual | tidak ada; receipt operasional | `PARTIALLY_RECEIVED` |
+| Seluruh barang tiba, belum diperiksa | terima fisik | tidak ada; pending inspection operasional | `RECEIVED_PENDING_INSPECTION` |
+| Barang diperiksa layak jual | pilih `SELLABLE` | inbound ke batch `RETURN` baru / `SELLABLE` | completed/partial sesuai sisa |
+| Barang diperiksa rusak | pilih `DAMAGED` | tidak ada; audit kondisi fisik | completed/partial sesuai sisa |
 | Barang tidak pernah tiba | tetapkan `LOST` | tidak ada inbound | `LOST` dan kandidat klaim |
-| Batch tidak terbaca | terima dan tahan | inbound ke `QUARANTINE` | `EXCEPTION` atau pending identification |
+| Batch asal tidak terbaca | catat provenance unknown | tidak ada saat receipt; sellable ditolak sampai provenance terverifikasi, damaged tetap stock-neutral | `EXCEPTION` atau pending provenance review |
 
 ## 21. Klaim Retur Hilang
 
 | ID | Aturan | Kode pelanggaran |
 |---|---|---|
 | BR-CLM-001 | Klaim hanya dibuat untuk kasus yang memenuhi kondisi lost/exception sesuai aturan sumber. | `CLAIM_WITHOUT_ELIGIBLE_CASE` |
-| BR-CLM-002 | Default tenggat TikTok Shop adalah 40 hari kalender dari `claim_basis_at` yang dikonfigurasi. | `CLAIM_DUE_DATE_INVALID` |
+| BR-CLM-002 | Tenggat TikTok Shop MUST dihitung 40 hari kalender dari `operations.returns.created_at` milik retur terkait. | `CLAIM_DUE_DATE_INVALID` |
 | BR-CLM-003 | Sistem MUST menyimpan tanggal dasar, konfigurasi hari yang dipakai, dan due date hasil perhitungan. | `CLAIM_DUE_DATE_AUDIT_MISSING` |
 | BR-CLM-004 | Perubahan konfigurasi jumlah hari MUST NOT mengubah due date klaim existing secara otomatis. | `HISTORICAL_DUE_DATE_MUTATED` |
 | BR-CLM-005 | Jika tanggal dasar belum tersedia, klaim MUST berstatus exception dan due date tidak boleh ditebak. | `CLAIM_BASIS_DATE_MISSING` |
@@ -739,9 +737,9 @@ RESOLVED -> OPEN  (jika rule gagal kembali)
 | TikTok `IN_TRANSIT` | Ya, dikonsumsi | Ya, berkurang | Ya |
 | Batal setelah keluar | Tidak | Tidak | Tidak |
 | Retur expected | Tidak | Tidak | Tidak |
-| Retur tiba | Tidak | Ya, quarantine bertambah | Ya |
-| Retur sellable setelah inspeksi | Tidak | Total tetap | Transfer bucket |
-| Retur damaged setelah inspeksi | Tidak | Total tetap | Transfer bucket |
+| Retur tiba | Tidak | Tidak | Tidak; receipt operasional |
+| Retur sellable setelah inspeksi | Tidak | Ya, bertambah | Inbound ke batch `RETURN` baru |
+| Retur damaged setelah inspeksi | Tidak | Tidak | Tidak; audit kondisi |
 | Retur lost | Tidak | Tidak | Tidak |
 | Bonus/promo/sampel | Tidak | Ya, berkurang | Ya |
 | Hitung fisik draft | Tidak | Tidak | Tidak |
@@ -810,9 +808,9 @@ Aturan kritis tidak boleh hanya berada di UI. Operasi stok sebaiknya dieksekusi 
 | BR-TST-007 | BR-EVT-002 | Event sama dua kali: efek domain hanya sekali. |
 | BR-TST-008 | BR-ORD-010 | Batal sebelum keluar hanya melepas reservasi. |
 | BR-TST-009 | BR-ORD-011 | Batal setelah keluar tidak menambah stok. |
-| BR-TST-010 | BR-RET-004 | Retur tiba masuk quarantine. |
-| BR-TST-011 | BR-RET-007 | Inspeksi sellable memindahkan quarantine ke sellable. |
-| BR-TST-012 | BR-RET-009 | Lost tidak membuat inbound. |
+| BR-TST-010 | BR-RET-004 | Retur tiba menambah received/pending inspection tanpa movement stok. |
+| BR-TST-011 | BR-RET-007 | Inspeksi sellable membuat satu inbound ke batch `RETURN` baru dan retry identik tidak menggandakan efek. |
+| BR-TST-012 | BR-RET-008/009 | Damaged dan lost tidak membuat movement stok kedua. |
 | BR-TST-013 | BR-BND-006 | Perubahan resep tidak mengubah pesanan lama. |
 | BR-TST-014 | BR-STK-011 | Selisih opname membuat adjustment dan tidak mengedit ledger lama. |
 | BR-TST-015 | BR-REV-003 | Reversal mempertahankan movement asal. |
@@ -846,14 +844,19 @@ Aturan kritis tidak boleh hanya berada di UI. Operasi stok sebaiknya dieksekusi 
 
 ## 38. Keputusan yang Masih Terbuka
 
-Aturan berikut belum boleh di-hardcode sebagai keputusan final tanpa konfirmasi:
+Keputusan retur berikut sudah final berdasarkan Phase 2:
+
+- deadline klaim TikTok dihitung 40 hari kalender dari `operations.returns.created_at`;
+- receipt fisik stock-neutral;
+- sellable membuat inbound ke batch baru bertanda `RETURN`;
+- damaged dan lost tidak membuat movement stok kedua;
+- batch outbound asal adalah provenance, bukan batch tujuan.
+
+Aturan berikut masih terbuka:
 
 | ID | Keputusan terbuka | Aturan aman sementara |
 |---|---|---|
-| OQ-01 | Tanggal dasar hitung 40 hari klaim TikTok | simpan `claim_basis_at` eksplisit; jangan menebak due date |
-| OQ-02 | Konsistensi keterbacaan batch pada retur | batch tidak terverifikasi tetap quarantine |
 | OQ-03 | Batas adjustment yang perlu dua approver | minimal satu Admin; workflow dua approver dibuat configurable |
-| OQ-04 | Apakah damaged ditahan sampai pemusnahan | default: tetap di bucket damaged sampai disposal posted |
 | OQ-05 | Format CSV nyata Shopee/TikTok | gunakan adapter mapping per versi template |
 | OQ-06 | Apakah operasi berhenti saat opname | sesi wajib memilih `FROZEN_OPERATIONS` atau `CONTINUOUS_OPERATIONS` |
 | OQ-07 | Batas ukuran file impor | konfigurasi environment; tolak sebelum parsing bila melewati batas |

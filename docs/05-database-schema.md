@@ -705,8 +705,7 @@ Transaction type minimum:
 - `RECEIPT`;
 - `MARKETPLACE_OUTBOUND`;
 - `MANUAL_OUTBOUND`;
-- `RETURN_RECEIPT`;
-- `RETURN_INSPECTION_TRANSFER`;
+- `RETURN_SELLABLE_INBOUND`;
 - `DISPOSAL`;
 - `STOCKTAKE_ADJUSTMENT`;
 - `REVERSAL`.
@@ -1026,10 +1025,10 @@ Batch allocation dibuat otomatis di `inventory.stock_allocations` ketika posted.
 | `external_return_id` | `text` | ID marketplace. |
 | `status_code` | `text` | `EXPECTED`, `RECEIVED`, `INSPECTED`, `LOST`, `CLOSED`. |
 | `requested_at` | `timestamptz` | Waktu request. |
-| `received_at` | `timestamptz` | Fisik tiba. |
+| `received_at` | `timestamptz` | Fisik tiba secara operasional; tidak memposting stok. |
 | `closed_at` | `timestamptz` | Selesai. |
-| `return_receipt_transaction_id` | `uuid` | Posting ke quarantine. |
-| `created_at` | `timestamptz` | Audit. |
+| `return_receipt_transaction_id` | `uuid` | Nullable untuk kompatibilitas legacy; receipt Phase 2 tidak membuat transaction. |
+| `created_at` | `timestamptz` | Audit dan dasar deadline klaim TikTok 40 hari. |
 | `updated_at` | `timestamptz` | Audit. |
 
 Unique:
@@ -1051,8 +1050,8 @@ where external_return_id is not null;
 | `expected_qty` | `bigint` | Diharapkan. |
 | `received_qty` | `bigint` | Tiba fisik. |
 | `lost_qty` | `bigint` | Tidak kembali. |
-| `batch_id` | `uuid` | Batch teridentifikasi. |
-| `batch_identification_status_code` | `text` | `KNOWN`, `INFERRED`, `UNKNOWN`. |
+| `batch_id` | `uuid` | Batch outbound asal sebagai provenance bila tersedia; bukan batch tujuan inbound retur. |
+| `batch_identification_status_code` | `text` | Kualitas provenance: `KNOWN`, `INFERRED`, `UNKNOWN`. |
 
 Constraint:
 
@@ -1063,7 +1062,7 @@ check (lost_qty >= 0),
 check (received_qty + lost_qty <= expected_qty)
 ```
 
-Barang dengan batch belum jelas menggunakan batch khusus terkontrol atau tetap dalam quarantine dengan mekanisme identifikasi yang didokumentasikan. Jangan membuat batch palsu per klik tanpa tata kelola, karena itu hanya memindahkan kekacauan ke tabel lain.
+Receipt tidak membuat saldo batch. Jika provenance batch asal belum jelas, simpan status `UNKNOWN` tanpa membuat batch produksi palsu. Batch tujuan baru hanya dibuat oleh command inspeksi `SELLABLE` dan harus bertanda jenis `RETURN`.
 
 ### 14.3 `returns.return_inspections`
 
@@ -1078,7 +1077,7 @@ Append-only hasil inspeksi per item dan kuantitas.
 | `inspected_qty` | `bigint` | Jumlah. |
 | `inspected_at` | `timestamptz` | Waktu. |
 | `inspected_by` | `uuid` | Operator. |
-| `transaction_id` | `uuid` | Transfer bucket. |
+| `transaction_id` | `uuid` | Nullable; hanya hasil `SELLABLE` menunjuk transaction `RETURN_SELLABLE_INBOUND`, sedangkan `DAMAGED` tidak membuat transaction. |
 | `note` | `text` | Catatan. |
 | `evidence_metadata` | `jsonb` | Referensi bukti. |
 
@@ -1090,6 +1089,8 @@ check (inspection_no > 0),
 check (inspected_qty > 0),
 check (condition_code in ('SELLABLE','DAMAGED'))
 ```
+
+Untuk hasil `SELLABLE`, database membuat batch baru bertanda `RETURN`, menyimpan provenance batch outbound asal bila tersedia, lalu memposting tepat satu inbound ke `SELLABLE`. Hasil `DAMAGED` hanya menyimpan audit kondisi fisik dan tidak membuat ledger entry atau projection delta.
 
 ### 14.4 `returns.claims`
 
@@ -1109,7 +1110,7 @@ check (condition_code in ('SELLABLE','DAMAGED'))
 | `created_at` | `timestamptz` | Audit. |
 | `updated_at` | `timestamptz` | Audit. |
 
-Untuk TikTok, deadline awal dihitung 40 hari dari anchor event yang disepakati. Anchor tersebut harus eksplisit di kolom/config, bukan terselip dalam fungsi tanpa nama.
+Untuk TikTok, `deadline_at` dihitung 40 hari kalender dari `operations.returns.created_at`. Nilai dasar, policy version, timezone, dan window snapshot tetap disimpan agar hasil historis dapat diaudit.
 
 ## 15. Stok Opname
 
@@ -2154,9 +2155,9 @@ pgTAP harus memverifikasi:
 | DBS-TST-010 | Key sama dengan hash berbeda ditolak. |
 | DBS-TST-011 | Pembatalan sebelum outbound melepas reservasi. |
 | DBS-TST-012 | Pembatalan setelah outbound tidak mengedit ledger. |
-| DBS-TST-013 | Return receipt masuk quarantine. |
-| DBS-TST-014 | Inspection sellable memindah quarantine ke sellable net zero. |
-| DBS-TST-015 | Inspection damaged memindah quarantine ke damaged net zero. |
+| DBS-TST-013 | Return receipt mencatat received/pending inspection tanpa transaction, ledger, atau projection delta. |
+| DBS-TST-014 | Inspection sellable membuat satu inbound idempoten ke batch `RETURN` baru dengan provenance batch asal. |
+| DBS-TST-015 | Inspection damaged dan lost tidak membuat movement stok kedua. |
 | DBS-TST-016 | Stocktake gain/loss menghasilkan adjustment signed. |
 | DBS-TST-017 | Reversal menghasilkan delta kebalikan dan mapping. |
 | DBS-TST-018 | Partial reversal tidak melebihi sisa. |

@@ -35,6 +35,7 @@ export type BatchInventory = {
   damaged_qty: number;
   last_ledger_seq: number;
   stock_updated_at: string | null;
+  batch_kind_code: "STANDARD" | "RETURN" | "UNIDENTIFIED_RETURN";
 };
 
 export type StockLedgerEntry = {
@@ -213,16 +214,20 @@ export type ReturnReceiptLine = {
   marketplace_ship_allocation_id: string | null;
   line_no: number;
   product_id: string;
-  batch_id: string;
+  batch_id: string | null;
   quantity_received: number;
   batch_identity_verified: boolean;
   product_sku_snapshot: string;
-  batch_code_snapshot: string;
-  expiry_date_snapshot: string;
+  batch_code_snapshot: string | null;
+  expiry_date_snapshot: string | null;
   source_line_ref: string;
-  ledger_entry_id: string;
+  ledger_entry_id: string | null;
   occurred_at: string;
   created_at: string;
+  stock_effect_code: "NONE" | "LEGACY_QUARANTINE_INBOUND";
+  source_batch_id: string | null;
+  source_batch_code_snapshot: string | null;
+  source_expiry_date_snapshot: string | null;
 };
 
 export type ReturnInspectionAllocation = {
@@ -233,13 +238,16 @@ export type ReturnInspectionAllocation = {
   inspection_ref: string;
   receipt_line_id: string;
   allocation_no: number;
-  destination_bucket_code: "SELLABLE" | "DAMAGED";
+  destination_bucket_code: "SELLABLE" | "DAMAGED" | null;
   quantity_allocated: number;
-  pair_no: number;
-  source_ledger_entry_id: string;
-  destination_ledger_entry_id: string;
+  pair_no: number | null;
+  source_ledger_entry_id: string | null;
+  destination_ledger_entry_id: string | null;
   occurred_at: string;
   created_at: string;
+  condition_code: "SELLABLE" | "DAMAGED";
+  stock_effect_code: "NONE" | "SELLABLE_INBOUND" | "LEGACY_TRANSFER";
+  return_batch_id: string | null;
 };
 export type ReconciliationRun = {
   run_id: string;

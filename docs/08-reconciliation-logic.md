@@ -1399,9 +1399,9 @@ Severity:
 CRITICAL
 ```
 
-## 16.32 `REC_RETURN_RECEIVED_QUARANTINE`
+## 16.32 `RETURN_RECEIPT_CONSISTENCY`
 
-Quantity return received harus sama dengan inbound ke `QUARANTINE`.
+Quantity receipt operasional harus sama dengan akumulasi receipt line, tidak melebihi expected, dan tidak boleh memiliki transaction, ledger entry, atau projection delta pada kontrak Phase 2.
 
 Severity:
 
@@ -1409,9 +1409,9 @@ Severity:
 HIGH
 ```
 
-## 16.33 `REC_RETURN_INSPECTION_TRANSFER`
+## 16.33 `RETURN_INSPECTION_CONSISTENCY`
 
-Quantity inspection sellable/damaged harus memiliki transfer dari quarantine.
+Quantity inspeksi `SELLABLE` harus sama dengan inbound ke batch baru bertanda `RETURN`. Quantity `DAMAGED` harus tersimpan sebagai audit kondisi tanpa transaction atau movement stok kedua. Pada inspeksi campuran, hanya bagian `SELLABLE` yang boleh mengubah stok.
 
 Severity:
 
@@ -1457,11 +1457,11 @@ Severity:
 CRITICAL
 ```
 
-## 16.37 `REC_QUARANTINE_PENDING_INSPECTION`
+## 16.37 Pending Inspection Operasional
 
-Saldo quarantine dari retur harus dapat dijelaskan oleh received quantity yang belum selesai diinspeksi.
+Pending inspection dihitung dari quantity receipt operasional dikurangi quantity inspection. Nilai ini bukan saldo `QUARANTINE`, bukan projection stok, dan digunakan untuk antrean kerja serta notifikasi.
 
-Severity:
+Severity bila quantity operasional tidak konsisten:
 
 ```text
 HIGH
@@ -2194,17 +2194,17 @@ Kondisi:
 
 Kondisi:
 
-- quarantine ada;
-- return received;
+- quantity receipt operasional lebih besar dari quantity yang telah diinspeksi;
+- tidak ada kebutuhan saldo quarantine;
 - inspection belum lengkap.
 
 ## 25.2.6 `HINT_WRONG_RETURN_CONDITION`
 
 Kondisi:
 
-- sellable variance dan damaged variance berlawanan;
-- return inspection baru terjadi;
-- transfer bucket tidak cocok.
+- quantity `SELLABLE` tidak cocok dengan inbound batch `RETURN`;
+- hasil `DAMAGED` memiliki transaction atau ledger effect yang seharusnya tidak ada;
+- provenance atau destination return batch tidak konsisten.
 
 ## 25.2.7 `HINT_BATCH_MISIDENTIFICATION`
 

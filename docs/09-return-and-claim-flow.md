@@ -138,10 +138,10 @@ Dalam sistem baru, satu retur dapat memiliki perjalanan berbeda:
 ```text
 Retur dilaporkan
 -> barang belum tiba
--> sebagian barang tiba
--> barang masuk quarantine
--> sebagian layak jual
--> sebagian rusak
+-> sebagian barang tiba dan dicatat stock-neutral
+-> inspeksi memisahkan layak jual dan rusak
+-> bagian layak jual masuk ke batch `RETURN` baru
+-> bagian rusak tetap audit-only
 -> sebagian tidak pernah tiba
 -> klaim dibuat
 -> proses selesai
@@ -156,13 +156,14 @@ Sistem harus dapat menjawab:
 - quantity berapa yang masih dapat diretur;
 - batch apa yang keluar;
 - barang sudah tiba atau belum;
-- quantity mana yang berada di quarantine;
-- quantity mana yang kembali sellable;
-- quantity mana yang damaged;
+- quantity mana yang masih pending inspection secara operasional;
+- quantity mana yang kembali sellable dan masuk ke batch `RETURN` baru;
+- quantity mana yang damaged tanpa movement stok kedua;
 - quantity mana yang hilang;
-- kapan klaim harus diajukan;
+- provenance batch outbound asal;
+- kapan klaim harus diajukan dari `return.created_at`;
 - event apa yang membentuk perubahan;
-- ledger transaction apa yang dihasilkan.
+- ledger transaction apa yang dihasilkan hanya untuk bagian sellable.
 
 ---
 
@@ -171,18 +172,18 @@ Sistem harus dapat menjawab:
 | ID | Sasaran |
 |---|---|
 | `RET-GOAL-001` | Retur expected tidak mengubah stok fisik. |
-| `RET-GOAL-002` | Penerimaan fisik selalu masuk `QUARANTINE`. |
+| `RET-GOAL-002` | Penerimaan fisik hanya mencatat receipt operasional dan tidak menulis movement stok. |
 | `RET-GOAL-003` | `SELLABLE` dan `DAMAGED` hanya ditetapkan melalui inspeksi. |
-| `RET-GOAL-004` | Barang hilang tidak menghasilkan inbound. |
+| `RET-GOAL-004` | Barang hilang dan rusak tidak menghasilkan inbound atau movement stok kedua. |
 | `RET-GOAL-005` | Total quantity retur tidak melebihi outbound yang dapat diretur. |
-| `RET-GOAL-006` | Retur parsial tetap dapat dilacak per item dan batch. |
-| `RET-GOAL-007` | Batch asal digunakan jika dapat ditelusuri. |
-| `RET-GOAL-008` | Batch tidak terverifikasi tidak dapat menjadi sellable. |
+| `RET-GOAL-006` | Retur parsial tetap dapat dilacak per item dan komponen produk satuan. |
+| `RET-GOAL-007` | Batch outbound asal disimpan sebagai provenance bila dapat ditelusuri. |
+| `RET-GOAL-008` | Hasil sellable selalu masuk ke batch baru bertanda `RETURN`, bukan batch asal. |
 | `RET-GOAL-009` | Event duplikat tidak menghasilkan movement ganda. |
-| `RET-GOAL-010` | Klaim memiliki dasar tanggal, aturan deadline, dan histori status. |
+| `RET-GOAL-010` | Klaim TikTok memakai `return.created_at` sebagai dasar deadline 40 hari dan menyimpan histori status. |
 | `RET-GOAL-011` | Perubahan konfigurasi tidak mengubah deadline historis. |
 | `RET-GOAL-012` | Klaim tidak menyimpan nilai uang pada fase 1. |
-| `RET-GOAL-013` | Retur dapat direkonsiliasi dengan order, allocation, ledger, dan stock position. |
+| `RET-GOAL-013` | Retur dapat direkonsiliasi dengan order, allocation, receipt operasional, inspection, ledger sellable, dan stock position. |
 | `RET-GOAL-014` | Admin dapat menyelesaikan alur dari perangkat mobile. |
 | `RET-GOAL-015` | Adapter API masa depan tidak mengubah logika retur inti. |
 
@@ -257,39 +258,35 @@ Movement:
 none
 ```
 
-### 6.3 Receipt Selalu ke Quarantine
+### 6.3 Receipt Bersifat Stock-Neutral
 
-Barang yang benar-benar tiba:
-
-```text
-QUARANTINE +received_qty
-```
-
-Tidak boleh:
+Barang yang benar-benar tiba menambah quantity receipt operasional dan pending inspection.
 
 ```text
-SELLABLE +received_qty
+received_qty_operational +qty
+ledger movement          0
+projection delta         0
 ```
 
-langsung pada receipt.
+Receipt tidak boleh membuat inbound ke `QUARANTINE`, `SELLABLE`, atau `DAMAGED`.
 
-### 6.4 Inspection Memindahkan Bucket
+### 6.4 Inspection Menentukan Dampak Stok
 
 Sellable:
 
 ```text
-QUARANTINE -qty
-SELLABLE   +qty
+new RETURN batch / SELLABLE +qty
 ```
 
 Damaged:
 
 ```text
-QUARANTINE -qty
-DAMAGED    +qty
+condition audit +qty
+ledger movement 0
+projection delta 0
 ```
 
-Transfer harus net zero.
+Pada inspeksi campuran, hanya quantity `SELLABLE` yang menghasilkan inbound fisik.
 
 ### 6.5 Lost Tidak Mengubah Stock
 
@@ -993,56 +990,42 @@ Admin tidak bebas mengubah ke batch lain tanpa:
 
 ### 20.3 Controlled Unidentified Return Batch
 
-Jika batch tidak dapat diverifikasi:
+Jika batch asal tidak dapat diverifikasi:
 
-- gunakan satu controlled placeholder per product dan organization;
-- `batch_kind_code = UNIDENTIFIED_RETURN`;
-- hanya dapat berada di `QUARANTINE`;
-- tidak eligible FEFO;
-- tidak memiliki status sellable;
-- tidak dapat dipakai untuk outbound;
-- tidak dibuat per klik;
-- dibuat melalui migration/system command yang terkontrol.
+- jangan membuat placeholder batch inventory;
+- receipt tetap stock-neutral;
+- simpan provenance sebagai `UNKNOWN`;
+- hasil `SELLABLE` ditolak sampai provenance terverifikasi;
+- hasil `DAMAGED` tetap dapat dicatat tanpa movement stok;
+- penyelesaian provenance harus melalui audit event, bukan edit diam-diam.
 
-Contoh code:
+Contoh status:
 
 ```text
-UNIDENTIFIED-RETURN-{PRODUCT_SKU}
+batch_provenance_status = UNKNOWN
 ```
 
 ### 20.4 Identifikasi Setelah Receipt
 
-Ketika batch terverifikasi:
+Ketika batch outbound asal terverifikasi, sistem memperbarui provenance return item secara auditabel. Tidak ada reclassification ledger karena receipt tidak pernah membuat saldo batch.
 
-Transaction:
-
-```text
-RETURN_BATCH_RECLASSIFICATION
-```
-
-Entries:
+Pada hasil `SELLABLE`, server membuat destination batch baru:
 
 ```text
-placeholder batch / QUARANTINE -qty
-actual batch      / QUARANTINE +qty
+batch_kind = RETURN
+original_outbound_batch_id = verified batch, jika tersedia
 ```
 
-Net product quantity:
-
-```text
-0
-```
-
-Setelah itu, barang dapat diinspeksi.
+Lalu server memposting satu inbound ke destination batch tersebut.
 
 ### 20.5 Larangan
 
-Barang pada placeholder batch:
+Provenance retur:
 
-- tidak dapat ditransfer ke `SELLABLE`;
-- tidak dapat dipindah ke `DAMAGED` tanpa policy eksplisit;
-- default harus diidentifikasi dahulu;
-- tidak dapat ditutup sebagai completed sellable.
+- tidak boleh direkayasa menjadi batch produksi palsu;
+- batch asal tidak boleh dipakai sebagai destination inbound retur;
+- hasil `DAMAGED` tidak boleh membuat batch stok;
+- destination batch `RETURN` hanya dibuat untuk quantity `SELLABLE`.
 
 ---
 
@@ -1069,7 +1052,6 @@ type InspectReturnCommand = {
   inspectedAt: string
   lines: Array<{
     returnItemId: string
-    batchId: string
     condition: 'SELLABLE' | 'DAMAGED'
     quantity: number
     note?: string
@@ -1084,36 +1066,38 @@ type InspectReturnCommand = {
 
 - quantity > 0;
 - quantity tidak melebihi uninspected received;
-- batch berada di quarantine;
-- batch terverifikasi;
 - return item/product cocok;
+- provenance batch asal tervalidasi bila tersedia;
+- destination batch dibuat server hanya untuk `SELLABLE`;
 - condition valid;
 - actor dan waktu tersedia;
-- idempotency.
+- idempotency dan atomic rollback.
 
 ### 21.4 Sellable
 
 Transaction:
 
 ```text
-RETURN_INSPECTION_TRANSFER
+RETURN_SELLABLE_INBOUND
 ```
 
-Entries:
+Entry:
 
 ```text
-QUARANTINE -qty
-SELLABLE   +qty
+new RETURN batch / SELLABLE +qty
 ```
+
+Batch outbound asal hanya disimpan sebagai provenance.
 
 ### 21.5 Damaged
 
-Entries:
-
 ```text
-QUARANTINE -qty
-DAMAGED    +qty
+transaction     = none
+ledger movement = 0
+projection delta = 0
 ```
+
+Kondisi rusak tetap disimpan untuk audit, klaim, dan keputusan loss/disposal berikutnya tanpa menulis movement kedua.
 
 ### 21.6 Mixed Inspection
 
@@ -1209,11 +1193,12 @@ Jika barang marked lost kemudian tiba:
 
 1. return menjadi `EXCEPTION`;
 2. Admin membuka late-arrival flow;
-3. physical receipt masuk quarantine;
+3. physical receipt dicatat stock-neutral;
 4. lost quantity dikurangi melalui audited correction event;
 5. claim tetap memiliki histori;
 6. jika claim sudah resolved, buat operational warning;
-7. tidak menghapus event lost lama.
+7. inspeksi sellable, bila terjadi, membuat inbound ke batch `RETURN` baru;
+8. tidak menghapus event lost lama.
 
 ---
 
@@ -1493,49 +1478,23 @@ Angka ini:
 
 ### 32.3 Claim Basis
 
-Field wajib:
+Untuk TikTok, basis final adalah waktu pembuatan retur internal:
 
 ```text
-claim_basis_code
-claim_basis_at
+claim_basis_code = RETURN_CREATED_AT
+claim_basis_at   = operations.returns.created_at
 ```
 
-Possible basis:
+Basis lain tidak boleh dipilih untuk countdown TikTok 40 hari. Nilai tersebut disalin ke snapshot klaim agar perubahan data atau policy berikutnya tidak mengubah histori.
 
-```text
-RETURN_REQUESTED_AT
-RETURN_SHIPPED_AT
-EXPECTED_ARRIVAL_AT
-LOST_DECLARED_AT
-MARKETPLACE_PROVIDED_BASIS
-OTHER_CONFIGURED_EVENT
-```
-
-Nilai final untuk TikTok harus diputuskan operasional.
-
-Jika tidak ada basis:
-
-```text
-status = EXCEPTION
-deadline_at = null
-```
-
-Dilarang menebak tanggal.
+Jika relasi retur tidak valid, pembuatan klaim harus gagal; deadline tidak boleh ditebak dari shipment, expected arrival, atau lost declaration.
 
 ### 32.4 Perhitungan
 
-Jika marketplace memberi exact timestamp:
-
 ```text
-deadline_at = marketplace_deadline_at
-deadline_source = MARKETPLACE
-```
-
-Jika internal:
-
-```text
-basis_local = claim_basis_at in Asia/Jakarta
-deadline = apply configured calendar-day policy
+basis_local = operations.returns.created_at in Asia/Jakarta
+deadline_at = basis_local + 40 calendar days
+deadline_source = INTERNAL_RETURN_CREATED_AT
 ```
 
 Simpan:
@@ -1866,16 +1825,16 @@ UI menampilkan waktu lokal.
 |---|---|---|
 | Expected return | None | None |
 | Return in transit | None | None |
-| Physical receipt | `RETURN_RECEIPT` | `QUARANTINE +qty` |
-| Batch reclassification | `RETURN_BATCH_RECLASSIFICATION` | placeholder quarantine `-qty`, actual quarantine `+qty` |
-| Inspection sellable | `RETURN_INSPECTION_TRANSFER` | `QUARANTINE -qty`, `SELLABLE +qty` |
-| Inspection damaged | `RETURN_INSPECTION_TRANSFER` | `QUARANTINE -qty`, `DAMAGED +qty` |
+| Physical receipt | None | None; receipt operasional |
+| Provenance correction | None | None; audit event |
+| Inspection sellable | `RETURN_SELLABLE_INBOUND` | batch `RETURN` baru / `SELLABLE +qty` |
+| Inspection damaged | None | None; audit kondisi fisik |
 | Mark lost | None | None |
 | Create claim | None | None |
 | Submit claim | None | None |
 | Resolve claim | None | None |
-| Reverse receipt | `REVERSAL` | Opposite original receipt |
-| Reverse inspection | `REVERSAL` | Opposite original transfer |
+| Correct receipt quantity | None | Audited correction event; tidak ada ledger reversal |
+| Reverse sellable inspection | `REVERSAL` | Kebalikan inbound sellable asal |
 
 ---
 
@@ -1885,34 +1844,30 @@ UI menampilkan waktu lokal.
 
 Contoh receipt 5, seharusnya 3:
 
-- reverse 2 dari original receipt;
-- posting reversal:
-  `QUARANTINE -2`;
-- update derived received through transaction references;
-- jangan edit ledger entry.
+- append audited receipt correction sebesar `-2`;
+- perbarui derived received dan pending inspection secara atomic;
+- jangan membuat ledger reversal karena receipt Phase 2 tidak pernah membuat movement;
+- jangan mengedit atau menghapus event receipt asli.
 
 ### 42.2 Inspection Salah
 
-Sellable 4 ternyata damaged:
+Contoh: 4 unit sudah diposting `SELLABLE`, tetapi hasil audit berikutnya menetapkan kondisi `DAMAGED`.
 
-Option:
+Koreksi wajib:
 
-1. reverse original sellable transfer 4;
-2. post damaged inspection 4.
+1. reverse quantity 4 dari transaction `RETURN_SELLABLE_INBOUND` asli;
+2. reversal mengurangi `SELLABLE` pada batch `RETURN` yang sama;
+3. append correction event yang menetapkan kondisi `DAMAGED`;
+4. correction `DAMAGED` tidak membuat inbound, transfer bucket, atau movement stok kedua;
+5. event inspeksi dan ledger asli tetap immutable.
 
-Entries reversal:
-
-```text
-SELLABLE   -4
-QUARANTINE +4
-```
-
-New inspection:
+Entry reversal:
 
 ```text
-QUARANTINE -4
-DAMAGED    +4
+return batch / SELLABLE -4
 ```
+
+Jika quantity sellable sudah teralokasi atau keluar, reversal ditolak dan kasus masuk exception untuk penyelesaian audit.
 
 ### 42.3 Constraints
 
@@ -2871,14 +2826,15 @@ Simpan:
 Checks dari `08-reconciliation-logic.md`:
 
 ```text
-REC_RETURN_RECEIVED_QUARANTINE
-REC_RETURN_INSPECTION_TRANSFER
+RETURN_RECEIPT_CONSISTENCY
+RETURN_INSPECTION_CONSISTENCY
 REC_RETURN_SELLABLE_BEFORE_INSPECTION
 REC_RETURN_QUANTITY
 REC_RETURN_OVER_RECEIPT
-REC_QUARANTINE_PENDING_INSPECTION
 REC_CLAIM_DEADLINE
 ```
+
+Pending inspection adalah antrean operasional dan sumber notifikasi, bukan check code reconciliation yang terpisah.
 
 Tambahan:
 
@@ -3440,6 +3396,6 @@ window snapshot
 calculated deadline
 ```
 
-Marketplace event memberi informasi. Gudang memberi keputusan fisik. Ledger mencatat movement. Rekonsiliasi memastikan semua quantity memiliki cerita.
+Marketplace event memberi informasi. Gudang memberi keputusan fisik. Ledger hanya mencatat dampak stok yang sah. Rekonsiliasi memastikan setiap quantity memiliki jejak operasional dan efek stok yang dapat dibuktikan.
 
-Barang retur tidak kembali menjadi sellable hanya karena sebuah webhook merasa optimistis. Barang harus tiba, masuk quarantine, diperiksa, lalu dipindahkan melalui ledger. Inilah cara sistem membedakan inventaris dari fan fiction.
+Barang retur tidak kembali menjadi sellable hanya karena status marketplace berubah. Barang harus diterima secara operasional, diperiksa, lalu quantity layak jual diposting sebagai inbound ke batch baru bertanda `RETURN`. Quantity rusak atau hilang tetap tercatat untuk audit dan klaim tanpa movement stok kedua.

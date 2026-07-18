@@ -34,7 +34,7 @@ select
   api.run_reconciliation(
     '00000000-0000-4000-8000-000000000001'::uuid,
     'PGTAP-RECON-RETURN-INTEGRATION-CLEAN-001',
-    array['RETURN_RECEIPT_QUARANTINE']::text[],
+    array['RETURN_RECEIPT_CONSISTENCY']::text[],
     '{}'::jsonb,
     '{"test": true, "fixture": "return-integration-empty"}'::jsonb
   );
@@ -64,7 +64,7 @@ select is(
       where kind = 'CLEAN_EMPTY'
     )
       and run_check.check_code =
-        'RETURN_RECEIPT_QUARANTINE'
+        'RETURN_RECEIPT_CONSISTENCY'
   ),
   'PASSED:0:0',
   'empty return check persists a clean zero-entity result'
@@ -280,7 +280,7 @@ select
   api.run_reconciliation(
     '00000000-0000-4000-8000-000000000001'::uuid,
     'PGTAP-RECON-RETURN-INTEGRATION-VALID-001',
-    array['RETURN_RECEIPT_QUARANTINE']::text[],
+    array['RETURN_RECEIPT_CONSISTENCY']::text[],
     '{}'::jsonb,
     '{"test": true, "fixture": "return-integration-valid"}'::jsonb
   );
@@ -310,7 +310,7 @@ select is(
       where kind = 'RECEIPT_CLEAN'
     )
       and run_check.check_code =
-        'RETURN_RECEIPT_QUARANTINE'
+        'RETURN_RECEIPT_CONSISTENCY'
   ),
   'PASSED:3:0',
   'valid return check covers expected, lost, and receipt events'
@@ -336,7 +336,7 @@ select
   api.run_reconciliation(
     '00000000-0000-4000-8000-000000000001'::uuid,
     'PGTAP-RECON-RETURN-INTEGRATION-DRIFT-001',
-    array['RETURN_RECEIPT_QUARANTINE']::text[],
+    array['RETURN_RECEIPT_CONSISTENCY']::text[],
     '{}'::jsonb,
     '{"test": true, "fixture": "return-integration-drift"}'::jsonb
   );
@@ -356,7 +356,7 @@ select is(
     select count(*)
     from reconciliation.issues issue
     where issue.check_code =
-        'RETURN_RECEIPT_QUARANTINE'
+        'RETURN_RECEIPT_CONSISTENCY'
       and issue.status_code = 'OPEN'
       and issue.source_ref =
         'RECON-RETURN-INTEGRATION-RECEIPT-001'
@@ -375,7 +375,7 @@ select is(
         || coalesce(issue.source_type_code, '')
     from reconciliation.issues issue
     where issue.check_code =
-        'RETURN_RECEIPT_QUARANTINE'
+        'RETURN_RECEIPT_CONSISTENCY'
       and issue.source_ref =
         'RECON-RETURN-INTEGRATION-RECEIPT-001'
   ),
@@ -409,12 +409,12 @@ select is(
         || (issue.difference_value ->> 'ledgerQuarantineQuantity')
     from reconciliation.issues issue
     where issue.check_code =
-        'RETURN_RECEIPT_QUARANTINE'
+        'RETURN_RECEIPT_CONSISTENCY'
       and issue.source_ref =
         'RECON-RETURN-INTEGRATION-RECEIPT-001'
   ),
-  '3:2:3:1:1:1:0:0:0:-1:0',
-  'return issue explains receipt and quarantine ledger quantities'
+  '3:2:0:1:0:1:0:0:0:-1:0',
+  'return issue explains stock-neutral receipt drift'
 );
 
 select is(
@@ -425,7 +425,7 @@ select is(
       on issue.organization_id = evidence.organization_id
      and issue.id = evidence.issue_id
     where issue.check_code =
-        'RETURN_RECEIPT_QUARANTINE'
+        'RETURN_RECEIPT_CONSISTENCY'
       and issue.source_ref =
         'RECON-RETURN-INTEGRATION-RECEIPT-001'
   ),
@@ -448,7 +448,7 @@ select is(
       where kind = 'RECEIPT_DRIFT'
     )
       and run_check.check_code =
-        'RETURN_RECEIPT_QUARANTINE'
+        'RETURN_RECEIPT_CONSISTENCY'
   ),
   'FAILED:3:1',
   'return check fails with one issue'
@@ -458,7 +458,7 @@ select is(
   api.run_reconciliation(
     '00000000-0000-4000-8000-000000000001'::uuid,
     'PGTAP-RECON-RETURN-INTEGRATION-DRIFT-001',
-    array['RETURN_RECEIPT_QUARANTINE']::text[],
+    array['RETURN_RECEIPT_CONSISTENCY']::text[],
     '{}'::jsonb,
     '{"test": true, "fixture": "return-integration-drift"}'::jsonb
   ),
@@ -494,7 +494,7 @@ select
   api.run_reconciliation(
     '00000000-0000-4000-8000-000000000001'::uuid,
     'PGTAP-RECON-RETURN-INTEGRATION-DRIFT-002',
-    array['RETURN_RECEIPT_QUARANTINE']::text[],
+    array['RETURN_RECEIPT_CONSISTENCY']::text[],
     '{}'::jsonb,
     '{"test": true, "fixture": "return-integration-drift-repeat"}'::jsonb
   );
@@ -514,7 +514,7 @@ select is(
     select count(*)
     from reconciliation.issues issue
     where issue.check_code =
-        'RETURN_RECEIPT_QUARANTINE'
+        'RETURN_RECEIPT_CONSISTENCY'
       and issue.source_ref =
         'RECON-RETURN-INTEGRATION-RECEIPT-001'
   ),
@@ -527,7 +527,7 @@ select is(
     select issue.recurrence_count
     from reconciliation.issues issue
     where issue.check_code =
-        'RETURN_RECEIPT_QUARANTINE'
+        'RETURN_RECEIPT_CONSISTENCY'
       and issue.source_ref =
         'RECON-RETURN-INTEGRATION-RECEIPT-001'
   ),
@@ -543,7 +543,7 @@ select is(
       on issue.organization_id = evidence.organization_id
      and issue.id = evidence.issue_id
     where issue.check_code =
-        'RETURN_RECEIPT_QUARANTINE'
+        'RETURN_RECEIPT_CONSISTENCY'
       and issue.source_ref =
         'RECON-RETURN-INTEGRATION-RECEIPT-001'
   ),
@@ -571,7 +571,7 @@ select
   api.run_reconciliation(
     '00000000-0000-4000-8000-000000000001'::uuid,
     'PGTAP-RECON-RETURN-INTEGRATION-RESTORED-001',
-    array['RETURN_RECEIPT_QUARANTINE']::text[],
+    array['RETURN_RECEIPT_CONSISTENCY']::text[],
     '{}'::jsonb,
     '{"test": true, "fixture": "return-integration-restored"}'::jsonb
   );
@@ -591,7 +591,7 @@ select is(
     select issue.status_code
     from reconciliation.issues issue
     where issue.check_code =
-        'RETURN_RECEIPT_QUARANTINE'
+        'RETURN_RECEIPT_CONSISTENCY'
       and issue.source_ref =
         'RECON-RETURN-INTEGRATION-RECEIPT-001'
   ),

@@ -280,10 +280,10 @@ Default batas klaim TikTok:
 
 - expected return;
 - partial return;
-- physical receipt;
-- quarantine;
-- sellable inspection;
-- damaged inspection;
+- physical receipt stock-neutral;
+- pending inspection operasional;
+- sellable inspection sebagai inbound ke batch `RETURN` baru;
+- damaged inspection tanpa movement stok kedua;
 - lost return;
 - late arrival;
 - klaim TikTok;
@@ -308,8 +308,9 @@ Default batas klaim TikTok:
 - batch vs product projection;
 - reservation vs available;
 - allocation vs outbound;
-- return receipt vs quarantine;
-- transfer net-zero;
+- return receipt operasional vs ledger;
+- sellable return inbound vs batch `RETURN` baru;
+- damaged/lost return tanpa movement stok kedua;
 - duplicate source effect;
 - negative bucket;
 - reversal limit;
@@ -1372,7 +1373,7 @@ Public environment variables dapat tertanam saat build.
 
 ---
 
-## Status Implementasi Fase 1
+## Status Implementasi Saat Ini
 
 Status berikut menggambarkan source pada branch saat ini. Status ini bukan pengganti acceptance test dan bukan klaim bahwa seluruh Fase 1 telah selesai.
 
@@ -1384,7 +1385,7 @@ Status berikut menggambarkan source pada branch saat ini. Status ini bukan pengg
 | Ledger dan projection | **Implemented** | Ledger append-only, idempotent posting, bucket fisik, serta projection produk dan batch | Drill-down lengkap, reversal umum, damaged disposal, dan expired disposal melalui Admin UI |
 | Receipt dan manual outbound | **Implemented** | Receipt dari maklon, outbound manual dengan reason/channel, dan alokasi FEFO | Preview/reversal receipt dan workflow disposal khusus |
 | Marketplace lifecycle | **Implemented** | Reservasi, release/cancel, trigger shipment, physical outbound FEFO, dan simulator Admin | CSV import dan penyelesaian bundle/listing flow |
-| Return dan claim | **Partial** | Expected return, receipt ke `QUARANTINE`, inspeksi net-zero, unidentified batch guardrail, dan lost return | Claim deadline, reminder, overdue, late arrival, dan claim administration |
+| Return dan claim | **Partial** | Expected return stock-neutral, receipt operasional tanpa ledger, inspeksi sellable sebagai inbound idempoten ke batch `RETURN` baru, damaged/lost tanpa movement kedua, partial item, provenance batch asal, dan lost return | Claim reminder, overdue, late-arrival administration, dan claim lifecycle lengkap |
 | Stocktake | **Implemented** | Create, prepare, continuous count, blind/non-blind count, review, approval immutable, posting adjustment, dan audit linkage | Frozen mode dan penyempurnaan UX lanjutan |
 | Reconciliation | **Implemented** | Manual run, delapan integrity checks, issue, evidence, history, Admin UI, serta alert Notification Center untuk issue dan run failure | Scheduled daily run production |
 | Notification Center | **Implemented** | Lifecycle OPEN/ACKNOWLEDGED/RESOLVED, per-Admin read state, unread badge aktif, evaluator expiry/return/reconciliation/stocktake, dedup episode, transactional outbox, retry, RLS, detail/history, deep link, dan Admin Operations UI | Claim deadline, import failure, marketplace stalled evaluator, production scheduler/cron, dan optional realtime refresh |
@@ -1417,8 +1418,8 @@ Minimum:
 - [x] Manual outbound dengan reason/channel.
 - [ ] Bundle expansion.
 - [x] Return expected.
-- [x] Return receipt ke quarantine.
-- [x] Return inspection.
+- [x] Return receipt operasional tanpa perubahan stok.
+- [x] Return inspection: sellable inbound ke batch `RETURN` baru; damaged tanpa movement stok kedua.
 - [ ] Lost return dan claim. **Partial:** lost return tersedia; claim deadline, reminder, overdue, dan administrasi claim belum lengkap.
 - [x] Expiry notification.
 - [x] Stocktake.
