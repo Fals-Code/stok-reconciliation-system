@@ -818,6 +818,214 @@ export type ManualOutboundData = {
   allocations: ManualOutboundAllocation[];
 };
 
+
+export type StockDisposalReasonCode =
+  | "DAMAGED_DISPOSAL"
+  | "EXPIRED_DISPOSAL";
+
+export type StockDisposalBucketCode =
+  | "SELLABLE"
+  | "QUARANTINE"
+  | "DAMAGED";
+
+export type StockDisposalLineInput = {
+  productId: string;
+  batchId: string;
+  sourceBucketCode: StockDisposalBucketCode;
+  quantity: number;
+  sourceLineRef: string;
+};
+
+export type StockDisposalPreviewBlocker = {
+  code: string;
+  scope: "REQUEST" | "LINE" | string;
+  message: string;
+  lineNo?: number;
+};
+
+export type StockDisposalPreviewLine = {
+  lineNo: number;
+  sourceLineRef: string;
+  productId: string;
+  productSku: string | null;
+  productName: string | null;
+  productActive: boolean | null;
+  productRowVersion: number | null;
+  batchId: string;
+  batchCode: string | null;
+  expiryDate: string | null;
+  batchStatusCode: string | null;
+  batchBlockReason: string | null;
+  batchRowVersion: number | null;
+  sourceBucketCode: StockDisposalBucketCode;
+  quantityRequested: number;
+  currentBatchSellableQty: number;
+  currentBatchQuarantineQty: number;
+  currentBatchDamagedQty: number;
+  currentBatchBucketQty: number;
+  resultingBatchBucketQty: number;
+  batchBalanceVersion: number;
+  batchLastLedgerSeq: number;
+  currentProductSellableQty: number;
+  currentProductQuarantineQty: number;
+  currentProductDamagedQty: number;
+  currentProductReservedQty: number;
+  currentProductAvailableQty: number;
+  currentProductOnHandQty: number;
+  resultingProductSellableQty: number;
+  resultingProductQuarantineQty: number;
+  resultingProductDamagedQty: number;
+  resultingProductAvailableQty: number;
+  resultingProductOnHandQty: number;
+  productPositionVersion: number;
+  productLastLedgerSeq: number;
+  lineEligible: boolean;
+  blockers: StockDisposalPreviewBlocker[];
+};
+
+export type StockDisposalPreview = {
+  status: "PREVIEW_READY" | "BLOCKED";
+  eligible: boolean;
+  schemaVersion: number;
+  basisHash: string;
+  requestHash: string;
+  organizationId: string;
+  organizationTimezone: string;
+  sourceRef: string;
+  occurredAt: string;
+  effectiveLocalDate: string;
+  reasonCode: StockDisposalReasonCode;
+  reasonName: string;
+  channelCode: "MANUAL";
+  referenceText: string;
+  note: string;
+  lineCount: number;
+  totalRequestedQuantity: number;
+  lines: StockDisposalPreviewLine[];
+  blockers: StockDisposalPreviewBlocker[];
+};
+
+export type StockDisposalMutationLine = {
+  lineNo: number;
+  disposalLineId: string;
+  ledgerEntryId: string;
+  ledgerSeq: number;
+  productId: string;
+  productSku: string;
+  batchId: string;
+  batchCode: string;
+  expiryDate: string;
+  sourceBucketCode: StockDisposalBucketCode;
+  quantity: number;
+  bucketBeforeQty: number;
+  bucketAfterQty: number;
+  sourceLineRef: string;
+};
+
+export type StockDisposalMutationResponse = {
+  status: "POSTED";
+  disposalId: string;
+  disposalNo: string;
+  transactionId: string;
+  transactionNo: string;
+  idempotencyKey: string;
+  requestHash: string;
+  previewBasisHash: string;
+  sourceRef: string;
+  reasonCode: StockDisposalReasonCode;
+  channelCode: "MANUAL";
+  referenceText: string;
+  lineCount: number;
+  totalQuantity: number;
+  occurredAt: string;
+  recordedAt: string;
+  lines: StockDisposalMutationLine[];
+};
+
+export type StockDisposalCandidate = {
+  organization_id: string;
+  product_id: string;
+  product_sku: string;
+  product_name: string;
+  product_is_active: boolean;
+  batch_id: string;
+  batch_code: string;
+  expiry_date: string;
+  batch_status_code: "ACTIVE" | "BLOCKED" | "EXPIRED" | "ARCHIVED";
+  block_reason: string | null;
+  batch_row_version: number;
+  sellable_qty: number;
+  quarantine_qty: number;
+  damaged_qty: number;
+  physical_qty: number;
+  reserved_qty: number;
+  local_date: string;
+  is_expired: boolean;
+  days_to_expiry: number;
+  last_ledger_seq: number;
+  balance_version: number;
+};
+
+export type StockDisposalHeader = {
+  disposal_id: string;
+  organization_id: string;
+  disposal_no: string;
+  source_ref: string;
+  reason_code_snapshot: StockDisposalReasonCode;
+  channel_code_snapshot: "MANUAL";
+  status_code: "POSTED";
+  occurred_at: string;
+  recorded_at: string;
+  actor_user_id: string | null;
+  process_name: string | null;
+  transaction_id: string;
+  total_quantity: number;
+  reference_text: string;
+  note: string;
+  request_hash: string;
+  metadata: Record<string, unknown>;
+  created_at: string;
+};
+
+export type StockDisposalLine = {
+  disposal_line_id: string;
+  organization_id: string;
+  disposal_id: string;
+  line_no: number;
+  product_id: string;
+  batch_id: string;
+  ledger_entry_id: string;
+  source_bucket_code: StockDisposalBucketCode;
+  quantity_disposed: number;
+  product_sku_snapshot: string;
+  product_name_snapshot: string;
+  batch_code_snapshot: string;
+  expiry_date_snapshot: string;
+  batch_status_code_snapshot: string;
+  source_line_ref: string;
+  bucket_before_qty: number;
+  bucket_after_qty: number;
+  created_at: string;
+};
+
+export type StockDisposalCommandInput = {
+  sourceRef: string;
+  occurredAt: string;
+  reasonCode: StockDisposalReasonCode;
+  lines: StockDisposalLineInput[];
+  referenceText: string;
+  note: string;
+  metadata?: Record<string, unknown>;
+  organizationId?: string;
+};
+
+export type StockDisposalData = {
+  candidates: StockDisposalCandidate[];
+  disposals: StockDisposalHeader[];
+  selectedDisposal: StockDisposalHeader | null;
+  lines: StockDisposalLine[];
+};
+
 export type EntryCorrectionData = {
   ledger: StockLedgerEntry[];
   applications: StockReversalApplication[];
@@ -1098,6 +1306,110 @@ export async function getManualOutboundData(
   };
 }
 
+
+export async function previewStockDisposal(
+  input: StockDisposalCommandInput,
+) {
+  const resolvedOrganizationId = await resolveOrganizationId(
+    input.organizationId,
+  );
+
+  return callRpc<StockDisposalPreview>("preview_stock_disposal", {
+    p_organization_id: resolvedOrganizationId,
+    p_source_ref: input.sourceRef,
+    p_occurred_at: input.occurredAt,
+    p_reason_code: input.reasonCode,
+    p_lines: input.lines,
+    p_reference_text: input.referenceText,
+    p_note: input.note,
+    p_metadata: input.metadata ?? {},
+  });
+}
+
+export async function postStockDisposal(
+  input: StockDisposalCommandInput & {
+    idempotencyKey: string;
+    previewBasisHash: string;
+    confirmation: boolean;
+  },
+) {
+  const resolvedOrganizationId = await resolveOrganizationId(
+    input.organizationId,
+  );
+
+  return callRpc<StockDisposalMutationResponse>("post_stock_disposal", {
+    p_organization_id: resolvedOrganizationId,
+    p_idempotency_key: input.idempotencyKey,
+    p_source_ref: input.sourceRef,
+    p_occurred_at: input.occurredAt,
+    p_reason_code: input.reasonCode,
+    p_lines: input.lines,
+    p_preview_basis_hash: input.previewBasisHash,
+    p_confirmation: input.confirmation,
+    p_reference_text: input.referenceText,
+    p_note: input.note,
+    p_metadata: input.metadata ?? {},
+  });
+}
+
+export async function getStockDisposalData(
+  organizationId?: string,
+  selectedDisposalId?: string,
+): Promise<StockDisposalData> {
+  const resolvedOrganizationId = await resolveOrganizationId(organizationId);
+  const encodedOrganizationId = encodeURIComponent(resolvedOrganizationId);
+  const normalizedSelectedDisposalId = selectedDisposalId?.trim() ?? "";
+  const selectedDisposalIsValid =
+    /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(
+      normalizedSelectedDisposalId,
+    );
+  const encodedSelectedDisposalId = encodeURIComponent(
+    normalizedSelectedDisposalId,
+  );
+
+  const selectedDisposalPromise = selectedDisposalIsValid
+    ? apiFetch<StockDisposalHeader[]>(
+        `stock_disposals?organization_id=eq.${encodedOrganizationId}&disposal_id=eq.${encodedSelectedDisposalId}&select=*&limit=1`,
+      )
+    : Promise.resolve([]);
+  const selectedLinesPromise = selectedDisposalIsValid
+    ? apiFetchAll<StockDisposalLine>(
+        `stock_disposal_lines?organization_id=eq.${encodedOrganizationId}&disposal_id=eq.${encodedSelectedDisposalId}&select=*&order=line_no.asc`,
+      )
+    : Promise.resolve([]);
+
+  const [candidates, recentDisposals, selectedDisposalRows, lines] =
+    await Promise.all([
+      apiFetchAll<StockDisposalCandidate>(
+        `stock_disposal_candidates?organization_id=eq.${encodedOrganizationId}&select=*&order=is_expired.desc,days_to_expiry.asc,batch_code.asc`,
+      ),
+      apiFetch<StockDisposalHeader[]>(
+        `stock_disposals?organization_id=eq.${encodedOrganizationId}&select=*&order=occurred_at.desc&limit=50`,
+      ),
+      selectedDisposalPromise,
+      selectedLinesPromise,
+    ]);
+
+  const selectedDisposal = selectedDisposalRows[0] ?? null;
+  const disposalById = new Map(
+    [...recentDisposals, ...selectedDisposalRows].map((disposal) => [
+      disposal.disposal_id,
+      disposal,
+    ]),
+  );
+
+  return {
+    candidates,
+    disposals: [...disposalById.values()].sort(
+      (left, right) =>
+        new Date(right.occurred_at).getTime() -
+        new Date(left.occurred_at).getTime(),
+    ),
+    selectedDisposal,
+    lines,
+  };
+}
+
 export async function getEntryCorrectionData(
   organizationId?: string,
   selectedTransactionId?: string,
@@ -1156,7 +1468,7 @@ export async function getEntryCorrectionData(
 
   return {
     ledger: [...ledgerById.values()].filter((entry) =>
-      ["RECEIPT", "MANUAL_OUTBOUND", "REVERSAL"].includes(
+      ["RECEIPT", "MANUAL_OUTBOUND", "DISPOSAL", "REVERSAL"].includes(
         entry.transaction_type_code,
       ),
     ),

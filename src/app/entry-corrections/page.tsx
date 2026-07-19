@@ -13,7 +13,7 @@ import {
 
 export const dynamic = "force-dynamic";
 
-const SUPPORTED_SOURCE_TYPES = ["RECEIPT", "MANUAL_OUTBOUND"] as const;
+const SUPPORTED_SOURCE_TYPES = ["RECEIPT", "MANUAL_OUTBOUND", "DISPOSAL"] as const;
 const WORKLIST_TYPES = [...SUPPORTED_SOURCE_TYPES, "REVERSAL"] as const;
 
 type WorklistType = (typeof WORKLIST_TYPES)[number];
@@ -711,7 +711,7 @@ export default async function EntryCorrectionsPage({
                 Balik kesalahan input tanpa menghapus jejak transaksi.
               </h1>
               <p className="mt-3 max-w-3xl text-sm leading-6 text-slate-400 sm:text-base">
-                Tinjau transaksi penerimaan atau outbound manual, periksa dampak
+                Tinjau transaksi penerimaan, outbound manual, atau disposal, periksa dampak
                 saldo yang dihitung database, lalu buat REVERSAL baru dengan
                 konfirmasi eksplisit.
               </p>
