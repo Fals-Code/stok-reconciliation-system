@@ -26,6 +26,12 @@ export const APP_NAV_SECTIONS = [
         description: "Preview FEFO dan posting",
       },
       {
+        href: "/stock-disposals",
+        label: "Rusak & Kedaluwarsa",
+        shortLabel: "RX",
+        description: "Pemusnahan batch dan bucket",
+      },
+      {
         href: "/marketplace",
         label: "Marketplace",
         shortLabel: "MP",

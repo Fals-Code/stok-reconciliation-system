@@ -15,7 +15,8 @@
     "test:notification-write-actions": "node scripts/test-notification-write-actions.mjs",
     "test:notification-admin-operations": "node scripts/test-notification-admin-operations.mjs",
     "test:entry-correction-ui": "node scripts/test-entry-correction-ui.mjs",
-    "test:manual-outbound-ui": "node scripts/test-manual-outbound-ui.mjs"
+    "test:manual-outbound-ui": "node scripts/test-manual-outbound-ui.mjs",
+    "test:stock-disposal-ui": "node scripts/test-stock-disposal-ui.mjs"
   },
   "dependencies": {
     "next": "16.2.10",
