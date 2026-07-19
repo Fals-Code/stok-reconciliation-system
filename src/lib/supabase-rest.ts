@@ -641,6 +641,183 @@ export type StockReversalMutationResponse = {
   actorUserId: string;
 };
 
+export type ManualOutboundLineInput = {
+  productId: string;
+  quantity: number;
+  sourceLineRef: string;
+};
+
+export type ManualOutboundPreviewBlocker = {
+  code: string;
+  scope: "REQUEST" | "LINE" | string;
+  message: string;
+  lineNo?: number;
+  productId?: string;
+  productSku?: string | null;
+  requestedQuantity?: number;
+  sellableQuantity?: number;
+  reservedQuantity?: number;
+  availableQuantity?: number;
+  eligibleQuantity?: number;
+  shortageQuantity?: number;
+};
+
+export type ManualOutboundPreviewAllocation = {
+  lineNo: number;
+  sourceLineRef: string;
+  allocationNo: number;
+  productId: string;
+  productSku: string;
+  batchId: string;
+  batchCode: string;
+  expiryDate: string;
+  receivedFirstAt: string | null;
+  currentBatchSellable: number;
+  quantity: number;
+  resultingBatchSellable: number;
+  batchBalanceVersion: number;
+};
+
+export type ManualOutboundPreviewProduct = {
+  lineNo: number;
+  sourceLineRef: string;
+  productId: string;
+  productSku: string | null;
+  productName: string | null;
+  requestedQuantity: number;
+  currentSellable: number;
+  currentReserved: number;
+  currentAvailable: number;
+  eligibleFefoQuantity: number;
+  allocatedQuantity: number;
+  resultingSellable: number | null;
+  resultingAvailable: number | null;
+  status: "READY" | "BLOCKED";
+  allocations: ManualOutboundPreviewAllocation[];
+};
+
+export type ManualOutboundPreview = {
+  status: "PREVIEW_READY" | "BLOCKED";
+  eligible: boolean;
+  schemaVersion: number;
+  basisHash: string;
+  requestHash: string;
+  organizationId: string;
+  sourceRef: string;
+  occurredAt: string;
+  effectiveLocalDate: string;
+  reasonCode: string;
+  reasonName: string;
+  channelCode: "MANUAL";
+  note: string | null;
+  reference: string | null;
+  lineCount: number;
+  totalRequestedQuantity: number;
+  allocationCount: number;
+  expirySafetyBufferDays: number;
+  products: ManualOutboundPreviewProduct[];
+  allocations: ManualOutboundPreviewAllocation[];
+  blockers: ManualOutboundPreviewBlocker[];
+};
+
+export type ManualOutboundMutationAllocation = {
+  lineNo: number;
+  sourceLineRef: string;
+  allocationNo: number;
+  productId: string;
+  productSku: string;
+  batchId: string;
+  batchCode: string;
+  expiryDate: string;
+  quantity: number;
+  ledgerSeq: number;
+};
+
+export type ManualOutboundMutationResponse = {
+  status: "POSTED";
+  outboundId: string;
+  outboundNo: string;
+  transactionId: string;
+  transactionNo: string;
+  idempotencyKey: string;
+  requestHash: string;
+  reasonCode: string;
+  lineCount: number;
+  allocationCount: number;
+  totalQuantity: number;
+  expirySafetyBufferDays: number;
+  occurredAt: string;
+  recordedAt: string;
+  allocations: ManualOutboundMutationAllocation[];
+};
+
+export type ManualOutboundHeader = {
+  outbound_id: string;
+  organization_id: string;
+  outbound_no: string;
+  source_ref: string;
+  reason_code_snapshot: string;
+  status_code: string;
+  occurred_at: string;
+  recorded_at: string;
+  actor_user_id: string | null;
+  process_name: string | null;
+  transaction_id: string;
+  total_quantity: number;
+  note: string | null;
+  metadata: Record<string, unknown>;
+  created_at: string;
+};
+
+export type ManualOutboundLine = {
+  outbound_line_id: string;
+  organization_id: string;
+  outbound_id: string;
+  line_no: number;
+  product_id: string;
+  quantity_requested: number;
+  product_sku_snapshot: string;
+  source_line_ref: string;
+  created_at: string;
+};
+
+export type ManualOutboundAllocation = {
+  allocation_id: string;
+  organization_id: string;
+  outbound_id: string;
+  outbound_line_id: string;
+  allocation_no: number;
+  ledger_entry_id: string;
+  product_id: string;
+  batch_id: string;
+  quantity_allocated: number;
+  product_sku_snapshot: string;
+  batch_code_snapshot: string;
+  expiry_date_snapshot: string;
+  received_first_at_snapshot: string | null;
+  source_line_ref: string;
+  created_at: string;
+};
+
+export type ManualOutboundCommandInput = {
+  sourceRef: string;
+  occurredAt: string;
+  reasonCode: string;
+  lines: ManualOutboundLineInput[];
+  note?: string | null;
+  reference?: string | null;
+  metadata?: Record<string, unknown>;
+  organizationId?: string;
+};
+
+export type ManualOutboundData = {
+  products: ProductInventory[];
+  outbounds: ManualOutboundHeader[];
+  selectedOutbound: ManualOutboundHeader | null;
+  lines: ManualOutboundLine[];
+  allocations: ManualOutboundAllocation[];
+};
+
 export type EntryCorrectionData = {
   ledger: StockLedgerEntry[];
   applications: StockReversalApplication[];
@@ -794,6 +971,131 @@ export async function getDashboardData(
   ]);
 
   return { products, batches, ledger };
+}
+
+function manualOutboundMetadata(input: ManualOutboundCommandInput) {
+  const metadata = { ...(input.metadata ?? {}) };
+
+  if (input.reference) {
+    metadata.reference = input.reference;
+  } else {
+    delete metadata.reference;
+  }
+
+  return metadata;
+}
+
+export async function previewManualOutbound(
+  input: ManualOutboundCommandInput,
+) {
+  const resolvedOrganizationId = await resolveOrganizationId(
+    input.organizationId,
+  );
+
+  return callRpc<ManualOutboundPreview>("preview_manual_outbound", {
+    p_organization_id: resolvedOrganizationId,
+    p_source_ref: input.sourceRef,
+    p_occurred_at: input.occurredAt,
+    p_reason_code: input.reasonCode,
+    p_lines: input.lines,
+    p_note: input.note ?? null,
+    p_metadata: manualOutboundMetadata(input),
+  });
+}
+
+export async function postManualOutbound(
+  input: ManualOutboundCommandInput & {
+    idempotencyKey: string;
+    previewBasisHash: string;
+    confirmation: boolean;
+  },
+) {
+  const resolvedOrganizationId = await resolveOrganizationId(
+    input.organizationId,
+  );
+
+  return callRpc<ManualOutboundMutationResponse>("post_manual_outbound", {
+    p_organization_id: resolvedOrganizationId,
+    p_idempotency_key: input.idempotencyKey,
+    p_source_ref: input.sourceRef,
+    p_occurred_at: input.occurredAt,
+    p_reason_code: input.reasonCode,
+    p_lines: input.lines,
+    p_preview_basis_hash: input.previewBasisHash,
+    p_confirmation: input.confirmation,
+    p_note: input.note ?? null,
+    p_metadata: manualOutboundMetadata(input),
+  });
+}
+
+export async function getManualOutboundData(
+  organizationId?: string,
+  selectedOutboundId?: string,
+): Promise<ManualOutboundData> {
+  const resolvedOrganizationId = await resolveOrganizationId(organizationId);
+  const encodedOrganizationId = encodeURIComponent(resolvedOrganizationId);
+  const normalizedSelectedOutboundId = selectedOutboundId?.trim() ?? "";
+  const selectedOutboundIsValid =
+    /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(
+      normalizedSelectedOutboundId,
+    );
+  const encodedSelectedOutboundId = encodeURIComponent(
+    normalizedSelectedOutboundId,
+  );
+
+  const selectedOutboundPromise = selectedOutboundIsValid
+    ? apiFetch<ManualOutboundHeader[]>(
+        `manual_outbounds?organization_id=eq.${encodedOrganizationId}&outbound_id=eq.${encodedSelectedOutboundId}&select=*&limit=1`,
+      )
+    : Promise.resolve([]);
+  const selectedLinesPromise = selectedOutboundIsValid
+    ? apiFetchAll<ManualOutboundLine>(
+        `manual_outbound_lines?organization_id=eq.${encodedOrganizationId}&outbound_id=eq.${encodedSelectedOutboundId}&select=*&order=line_no.asc`,
+      )
+    : Promise.resolve([]);
+  const selectedAllocationsPromise = selectedOutboundIsValid
+    ? apiFetchAll<ManualOutboundAllocation>(
+        `manual_outbound_allocations?organization_id=eq.${encodedOrganizationId}&outbound_id=eq.${encodedSelectedOutboundId}&select=*&order=outbound_line_id.asc,allocation_no.asc`,
+      )
+    : Promise.resolve([]);
+
+  const [
+    products,
+    recentOutbounds,
+    selectedOutboundRows,
+    lines,
+    allocations,
+  ] = await Promise.all([
+    apiFetch<ProductInventory[]>(
+      `product_inventory?organization_id=eq.${encodedOrganizationId}&is_active=eq.true&select=*&order=name.asc`,
+    ),
+    apiFetch<ManualOutboundHeader[]>(
+      `manual_outbounds?organization_id=eq.${encodedOrganizationId}&select=*&order=occurred_at.desc&limit=50`,
+    ),
+    selectedOutboundPromise,
+    selectedLinesPromise,
+    selectedAllocationsPromise,
+  ]);
+
+  const selectedOutbound = selectedOutboundRows[0] ?? null;
+  const outboundById = new Map(
+    [...recentOutbounds, ...selectedOutboundRows].map((outbound) => [
+      outbound.outbound_id,
+      outbound,
+    ]),
+  );
+
+  return {
+    products,
+    outbounds: [...outboundById.values()].sort(
+      (left, right) =>
+        new Date(right.occurred_at).getTime() -
+        new Date(left.occurred_at).getTime(),
+    ),
+    selectedOutbound,
+    lines,
+    allocations,
+  };
 }
 
 export async function getEntryCorrectionData(

@@ -1,9 +1,8 @@
+import Link from "next/link";
+
 import PageSectionNav from "@/app/app-shell/page-section-nav";
 
-import {
-  postManualOutboundAction,
-  postReceiptAction,
-} from "@/app/actions";
+import { postReceiptAction } from "@/app/actions";
 import {
   type BatchInventory,
   getDashboardData,
@@ -265,54 +264,28 @@ export default async function Home({
               <button className="primary-button mt-6" type="submit">Post receipt</button>
             </form>
 
-            <form action={postManualOutboundAction} className="panel-card">
+            <article className="panel-card">
               <div className="flex items-start justify-between gap-4">
                 <div>
                   <p className="section-kicker">Outbound</p>
-                  <h3 className="mt-1 text-xl font-semibold">Pengeluaran manual FEFO</h3>
+                  <h3 className="mt-1 text-xl font-semibold">
+                    Barang Keluar dengan preview FEFO
+                  </h3>
                 </div>
-                <Pill label="FEFO AUTO" tone="warning" />
+                <Pill label="PREVIEW WAJIB" tone="warning" />
               </div>
-              <div className="form-grid mt-6">
-                <label className="field-label">
-                  Referensi outbound
-                  <input name="sourceRef" required placeholder="OFFLINE-2026-001" />
-                </label>
-                <label className="field-label">
-                  Waktu keluar
-                  <input name="occurredAt" type="datetime-local" defaultValue={currentDateTime} required />
-                </label>
-                <label className="field-label">
-                  Produk
-                  <select name="productId" required defaultValue="">
-                    <option value="" disabled>Pilih produk</option>
-                    {products.map((product) => (
-                      <option key={product.product_id} value={product.product_id}>
-                        {product.sku} · available {product.available_qty}
-                      </option>
-                    ))}
-                  </select>
-                </label>
-                <label className="field-label">
-                  Alasan
-                  <select name="reasonCode" defaultValue="OFFLINE_SALE" required>
-                    <option value="OFFLINE_SALE">Offline sale</option>
-                    <option value="BONUS">Bonus</option>
-                    <option value="PROMO">Promo</option>
-                    <option value="SAMPLE">Sample</option>
-                  </select>
-                </label>
-                <label className="field-label">
-                  Quantity
-                  <input name="quantity" type="number" min="1" step="1" required placeholder="8" />
-                </label>
-                <label className="field-label">
-                  Catatan
-                  <input name="note" placeholder="Opsional" />
-                </label>
-              </div>
-              <button className="primary-button mt-6" type="submit">Allocate & post outbound</button>
-            </form>
+              <p className="mt-5 text-sm leading-6 text-slate-400">
+                Pengeluaran manual tidak lagi diposting langsung dari
+                dashboard. Tinjau alokasi batch, reserved stock, dan saldo
+                setelah transaksi sebelum konfirmasi final.
+              </p>
+              <Link
+                className="primary-button mt-6 inline-flex"
+                href="/manual-outbounds"
+              >
+                Buka workflow Barang Keluar
+              </Link>
+            </article>
           </div>
         </section>
 

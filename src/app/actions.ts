@@ -252,54 +252,6 @@ export async function postReceiptAction(formData: FormData) {
   resultRedirect(kind, message);
 }
 
-export async function postManualOutboundAction(formData: FormData) {
-  const session = await requireAdminSession();
-  let message: string;
-  let kind: "success" | "error" = "success";
-
-  try {
-    const sourceRef = required(formData, "sourceRef");
-    const occurredAt = jakartaTimestamp(required(formData, "occurredAt"));
-    const productId = required(formData, "productId");
-    const reasonCode = required(formData, "reasonCode");
-    const quantity = positiveInteger(formData, "quantity");
-    const note = String(formData.get("note") ?? "").trim() || null;
-
-    const result = await callRpc<{
-      outboundNo: string;
-      totalQuantity: number;
-      allocationCount: number;
-    }>("post_manual_outbound", {
-      p_organization_id: session.profile.organization_id,
-      p_idempotency_key: `outbound:${sourceRef}`,
-      p_source_ref: sourceRef,
-      p_occurred_at: occurredAt,
-      p_reason_code: reasonCode,
-      p_lines: [
-        {
-          productId,
-          quantity,
-          sourceLineRef: "UI-1",
-        },
-      ],
-      p_note: note,
-      p_metadata: {
-        source: "dashboard",
-        version: 1,
-        actorUserId: session.user.id,
-      },
-    });
-
-    message = `${result.outboundNo} berhasil mengeluarkan ${result.totalQuantity} unit melalui ${result.allocationCount} batch FEFO.`;
-    revalidatePath("/");
-  } catch (error) {
-    kind = "error";
-    message = errorMessage(error);
-  }
-
-  resultRedirect(kind, message);
-}
-
 export async function reserveMarketplaceOrderAction(formData: FormData) {
   const session = await requireAdminSession();
   let message: string;

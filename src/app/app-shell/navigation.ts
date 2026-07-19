@@ -19,6 +19,11 @@ export const APP_NAV_SECTIONS = [
         label: "Dashboard",
         shortLabel: "DB",
         description: "Ringkasan stok dan transaksi",
+      },      {
+        href: "/manual-outbounds",
+        label: "Barang Keluar",
+        shortLabel: "BK",
+        description: "Preview FEFO dan posting",
       },
       {
         href: "/marketplace",
