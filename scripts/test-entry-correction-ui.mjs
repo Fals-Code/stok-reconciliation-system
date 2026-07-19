@@ -852,27 +852,56 @@ async function postManualOutbound({
   quantity,
   runId,
 }) {
+  const occurredAt = new Date().toISOString();
+  const lines = [
+    {
+      productId,
+      quantity,
+      sourceLineRef: "SMOKE-FEFO-LINE-1",
+    },
+  ];
+  const note =
+    "Temporary FEFO outbound for Entry Correction smoke.";
+  const metadata = {
+    source: "entry-correction-ui-smoke",
+    version: 1,
+    runId,
+    fixture: "manual-outbound-fefo",
+    temporary: true,
+  };
+
+  const preview = await rpc("preview_manual_outbound", {
+    p_organization_id: organizationId,
+    p_source_ref: sourceRef,
+    p_occurred_at: occurredAt,
+    p_reason_code: "OFFLINE_SALE",
+    p_lines: lines,
+    p_note: note,
+    p_metadata: metadata,
+  });
+
+  if (
+    preview?.eligible !== true ||
+    preview?.status !== "PREVIEW_READY" ||
+    !HASH_PATTERN.test(preview?.basisHash ?? "")
+  ) {
+    throw new Error(
+      "Preview manual outbound fixture diblokir: " +
+        JSON.stringify(preview),
+    );
+  }
+
   return rpc("post_manual_outbound", {
     p_organization_id: organizationId,
     p_idempotency_key: idempotencyKey,
     p_source_ref: sourceRef,
-    p_occurred_at: new Date().toISOString(),
+    p_occurred_at: occurredAt,
     p_reason_code: "OFFLINE_SALE",
-    p_lines: [
-      {
-        productId,
-        quantity,
-        sourceLineRef: "SMOKE-FEFO-LINE-1",
-      },
-    ],
-    p_note: "Temporary FEFO outbound for Entry Correction smoke.",
-    p_metadata: {
-      source: "entry-correction-ui-smoke",
-      version: 1,
-      runId,
-      fixture: "manual-outbound-fefo",
-      temporary: true,
-    },
+    p_lines: lines,
+    p_preview_basis_hash: preview.basisHash,
+    p_confirmation: true,
+    p_note: note,
+    p_metadata: metadata,
   });
 }
 
