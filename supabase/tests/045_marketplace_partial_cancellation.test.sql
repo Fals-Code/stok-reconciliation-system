@@ -1309,7 +1309,7 @@ select is(
   'candidate view exposes mixed cancellation state without rewriting shipment history'
 );
 
--- Return overlap blocks post-shipment cancellation.
+-- Expected return reserves only its quantity; the remaining shipment stays cancellable.
 reset role;
 
 insert into operations.returns (
@@ -1357,35 +1357,190 @@ insert into operations.return_items (
 set local role authenticated;
 
 insert into marketplace_cancellation_results (kind, result)
-select 'PREVIEW_RETURN_CONFLICT', api.preview_marketplace_cancellation(
+select 'PREVIEW_RETURN_REMAINDER', api.preview_marketplace_cancellation(
   '00000000-0000-4000-8000-000000000040'::uuid,
-  'SHOPEE', 'PGTAP-MCC-CANCEL-RETURN-1', 'PGTAP-MCC-ORDER-RETURN',
+  'SHOPEE',
+  'PGTAP-MCC-CANCEL-RETURN-REMAINDER',
+  'PGTAP-MCC-ORDER-RETURN',
   '2026-07-20 10:07:00+07'::timestamptz,
   'CANCELLED_AFTER_SHIPMENT',
   jsonb_build_array(jsonb_build_object(
     'productId', '40000000-0000-4000-8000-000000000004',
     'orderItemRef', 'ITEM-RETURN',
     'phaseCode', 'POST_SHIPMENT',
-    'quantity', 1,
-    'sourceLineRef', 'CANCEL-RETURN-1'
+    'quantity', 3,
+    'sourceLineRef', 'CANCEL-RETURN-REMAINDER'
   )),
-  'Tidak boleh tumpang tindih dengan retur.',
+  'Batalkan hanya shipment yang tidak dicadangkan untuk retur.',
   '{"test":true}'::jsonb
 );
+
 select is(
-  (select result ->> 'eligible' from marketplace_cancellation_results where kind = 'PREVIEW_RETURN_CONFLICT'),
-  'false',
-  'post-shipment cancellation is blocked when a return exists'
+  (
+    select result ->> 'eligible'
+    from marketplace_cancellation_results
+    where kind = 'PREVIEW_RETURN_REMAINDER'
+  ),
+  'true',
+  'expected return does not block cancellation of remaining shipped quantity'
 );
-select ok(
-  (select result -> 'blockers' from marketplace_cancellation_results where kind = 'PREVIEW_RETURN_CONFLICT') @>
-    '[{"code":"MARKETPLACE_CANCELLATION_RETURN_CONFLICT"}]'::jsonb,
-  'return conflict blocker is explicit'
-);
+
 select is(
-  (select remaining_post_cancellable_qty::text from api.marketplace_cancellation_candidates where external_order_ref = 'PGTAP-MCC-ORDER-RETURN'),
+  (
+    select result #>> '{lines,0,remainingPostCancellableBefore}'
+    from marketplace_cancellation_results
+    where kind = 'PREVIEW_RETURN_REMAINDER'
+  ),
   '3',
-  'candidate view excludes return-expected quantity from post cancellable quantity'
+  'preview exposes only shipped quantity not reserved by expected return'
+);
+
+insert into marketplace_cancellation_results (kind, result)
+select 'POST_RETURN_REMAINDER', api.post_marketplace_cancellation(
+  '00000000-0000-4000-8000-000000000040'::uuid,
+  'PGTAP-MCC-POST-RETURN-REMAINDER',
+  'SHOPEE',
+  'PGTAP-MCC-CANCEL-RETURN-REMAINDER',
+  'PGTAP-MCC-ORDER-RETURN',
+  '2026-07-20 10:07:00+07'::timestamptz,
+  'CANCELLED_AFTER_SHIPMENT',
+  jsonb_build_array(jsonb_build_object(
+    'productId', '40000000-0000-4000-8000-000000000004',
+    'orderItemRef', 'ITEM-RETURN',
+    'phaseCode', 'POST_SHIPMENT',
+    'quantity', 3,
+    'sourceLineRef', 'CANCEL-RETURN-REMAINDER'
+  )),
+  (
+    select result ->> 'basisHash'
+    from marketplace_cancellation_results
+    where kind = 'PREVIEW_RETURN_REMAINDER'
+  ),
+  true,
+  'Batalkan hanya shipment yang tidak dicadangkan untuk retur.',
+  '{"test":true}'::jsonb
+);
+
+select is(
+  (
+    select post_shipment_cancelled_qty::text
+    from api.marketplace_cancellation_candidates
+    where external_order_ref = 'PGTAP-MCC-ORDER-RETURN'
+  ),
+  '3',
+  'remaining shipped quantity is cancelled through exact reversal'
+);
+
+select is(
+  (
+    select return_expected_qty::text
+    from api.marketplace_cancellation_candidates
+    where external_order_ref = 'PGTAP-MCC-ORDER-RETURN'
+  ),
+  '1',
+  'legal cancellation preserves expected return quantity'
+);
+
+select is(
+  (
+    select remaining_post_cancellable_qty::text
+    from api.marketplace_cancellation_candidates
+    where external_order_ref = 'PGTAP-MCC-ORDER-RETURN'
+  ),
+  '0',
+  'expected return plus post cancellation consumes all shipped quantity'
+);
+
+insert into marketplace_cancellation_results (kind, result)
+select 'PREVIEW_RETURN_OVERLAP', api.preview_marketplace_cancellation(
+  '00000000-0000-4000-8000-000000000040'::uuid,
+  'SHOPEE',
+  'PGTAP-MCC-CANCEL-RETURN-OVERLAP',
+  'PGTAP-MCC-ORDER-RETURN',
+  '2026-07-20 10:07:30+07'::timestamptz,
+  'CANCELLED_AFTER_SHIPMENT',
+  jsonb_build_array(jsonb_build_object(
+    'productId', '40000000-0000-4000-8000-000000000004',
+    'orderItemRef', 'ITEM-RETURN',
+    'phaseCode', 'POST_SHIPMENT',
+    'quantity', 1,
+    'sourceLineRef', 'CANCEL-RETURN-OVERLAP'
+  )),
+  'Quantity ini akan tumpang tindih dengan expected return.',
+  '{"test":true}'::jsonb
+);
+
+select is(
+  (
+    select result ->> 'eligible'
+    from marketplace_cancellation_results
+    where kind = 'PREVIEW_RETURN_OVERLAP'
+  ),
+  'false',
+  'cancellation is blocked only when requested quantity overlaps expected return'
+);
+
+select ok(
+  (
+    select result -> 'blockers'
+    from marketplace_cancellation_results
+    where kind = 'PREVIEW_RETURN_OVERLAP'
+  ) @> '[{"code":"MARKETPLACE_CANCELLATION_EXCEEDS_SHIPPED_REMAINING"}]'::jsonb,
+  'overlap blocker uses remaining shipped quantity'
+);
+
+select ok(
+  not (
+    (
+      select result -> 'blockers'
+      from marketplace_cancellation_results
+      where kind = 'PREVIEW_RETURN_OVERLAP'
+    ) @> '[{"code":"MARKETPLACE_CANCELLATION_RETURN_CONFLICT"}]'::jsonb
+  ),
+  'blanket return conflict is no longer emitted'
+);
+
+select throws_ok(
+  $sql$
+    select api.post_marketplace_cancellation(
+      '00000000-0000-4000-8000-000000000040'::uuid,
+      'PGTAP-MCC-POST-RETURN-OVERLAP',
+      'SHOPEE',
+      'PGTAP-MCC-CANCEL-RETURN-OVERLAP',
+      'PGTAP-MCC-ORDER-RETURN',
+      '2026-07-20 10:07:30+07'::timestamptz,
+      'CANCELLED_AFTER_SHIPMENT',
+      jsonb_build_array(jsonb_build_object(
+        'productId', '40000000-0000-4000-8000-000000000004',
+        'orderItemRef', 'ITEM-RETURN',
+        'phaseCode', 'POST_SHIPMENT',
+        'quantity', 1,
+        'sourceLineRef', 'CANCEL-RETURN-OVERLAP'
+      )),
+      (
+        select result ->> 'basisHash'
+        from marketplace_cancellation_results
+        where kind = 'PREVIEW_RETURN_OVERLAP'
+      ),
+      true,
+      'Quantity ini akan tumpang tindih dengan expected return.',
+      '{"test":true}'::jsonb
+    )
+  $sql$,
+  'P0001',
+  'MARKETPLACE_CANCELLATION_EXCEEDS_SHIPPED_REMAINING',
+  'overlapping cancellation creates no additional domain effect'
+);
+
+select is(
+  (
+    select count(*)::text
+    from operations.marketplace_events
+    where external_event_ref =
+      'PGTAP-MCC-CANCEL-RETURN-OVERLAP'
+  ),
+  '0',
+  'blocked overlap creates no cancellation event'
 );
 
 -- Illegal time ordering is rejected.

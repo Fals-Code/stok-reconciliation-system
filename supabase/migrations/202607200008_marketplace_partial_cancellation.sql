@@ -1179,17 +1179,6 @@ begin
           )
         );
       else
-        if v_return_expected_qty > 0 then
-          v_line_blockers := v_line_blockers || jsonb_build_array(
-            jsonb_build_object(
-              'code', 'MARKETPLACE_CANCELLATION_RETURN_CONFLICT',
-              'scope', 'LINE',
-              'lineNo', v_line.line_no,
-              'message', 'Item sudah memiliki proses retur dan tidak boleh dibalik melalui pembatalan shipment.'
-            )
-          );
-        end if;
-
         if exists (
           select 1
           from operations.marketplace_ship_allocations allocation
