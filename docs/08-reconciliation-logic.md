@@ -2324,7 +2324,7 @@ Skor ini hanya hint dan harus versioned.
 | Duplicate effect | Reversal terhadap duplicate transaction | Delete ledger |
 | Salah quantity receipt | Reversal + repost benar | Update quantity entry |
 | Cancel pre-shipment masih reserve | Release reservation | Tambah physical stock |
-| Cancel post-shipment | Return workflow | Auto-restock |
+| Cancel post-shipment | Cancellation application + exact linked reversal | Generic restock, FEFO rerun, batch substitution, over-reversal, missing original linkage, atau overlap dengan expected return |
 | Retur received belum inspected | Complete inspection | Langsung sellable |
 | Batch count tertukar | Correct stocktake classification/adjustment sesuai evidence | Memindahkan angka tanpa trace |
 | Physical shortage | Stocktake adjustment dengan reason | Edit projection |

@@ -82,6 +82,16 @@ export type MarketplaceOrder = {
   shipped_qty: number;
   released_qty: number;
   open_qty: number;
+  pre_shipment_cancelled_qty: number;
+  post_shipment_cancelled_qty: number;
+  return_expected_qty: number;
+  remaining_post_cancellable_qty: number;
+  total_remaining_cancellable_qty: number;
+  cancellation_status_code:
+    | "NONE"
+    | "PRE_SHIPMENT"
+    | "POST_SHIPMENT"
+    | "MIXED";
 };
 
 export type MarketplaceReservation = {
@@ -103,6 +113,16 @@ export type MarketplaceReservation = {
   status_code: string;
   reserved_at: string;
   closed_at: string | null;
+  pre_shipment_cancelled_qty: number;
+  post_shipment_cancelled_qty: number;
+  return_expected_qty: number;
+  remaining_post_cancellable_qty: number;
+  total_remaining_cancellable_qty: number;
+  cancellation_status_code:
+    | "NONE"
+    | "PRE_SHIPMENT"
+    | "POST_SHIPMENT"
+    | "MIXED";
 };
 
 export type MarketplaceEvent = {
@@ -1026,6 +1046,284 @@ export type StockDisposalData = {
   lines: StockDisposalLine[];
 };
 
+export type MarketplaceCancellationPhaseCode =
+  | "PRE_SHIPMENT"
+  | "POST_SHIPMENT";
+
+export type MarketplaceCancellationEffectCode =
+  | "PRE_SHIPMENT_RELEASE"
+  | "POST_SHIPMENT_REVERSAL";
+
+export type MarketplaceCancellationStatusCode = "POSTED";
+
+export type MarketplaceCancellationLineInput = {
+  productId: string;
+  orderItemRef: string;
+  phaseCode: MarketplaceCancellationPhaseCode;
+  quantity: number;
+  sourceLineRef: string;
+};
+
+export type MarketplaceCancellationCommandInput = {
+  channelCode: "SHOPEE" | "TIKTOK_SHOP";
+  eventRef: string;
+  orderRef: string;
+  occurredAt: string;
+  sourceStatus: string;
+  lines: MarketplaceCancellationLineInput[];
+  note?: string | null;
+  metadata?: Record<string, unknown>;
+  organizationId?: string;
+};
+
+export type MarketplaceCancellationPreviewBlocker = {
+  code: string;
+  scope: "REQUEST" | "LINE" | string;
+  message: string;
+  lineNo?: number;
+};
+
+export type MarketplaceCancellationPreviewApplication = {
+  applicationNo: number;
+  effectCode: MarketplaceCancellationEffectCode;
+  quantity: number;
+  reservationId: string;
+  shipAllocationId?: string;
+  shipAllocationNo?: number;
+  shipEventId?: string;
+  shipEventRef?: string;
+  originalTransactionId?: string;
+  originalTransactionNo?: string;
+  originalLedgerEntryId?: string;
+  originalLedgerSeq?: number;
+  productId?: string;
+  productSku?: string;
+  batchId?: string;
+  batchCode?: string;
+  expiryDate?: string;
+  bucketCode?: "SELLABLE";
+  allocationQuantity?: number;
+  alreadyReversedQuantity?: number;
+  remainingBeforeQuantity?: number;
+  batchSellableBefore?: number;
+  batchSellableAfter?: number;
+  batchBalanceVersion?: number;
+};
+
+export type MarketplaceCancellationPreviewLine = {
+  lineNo: number;
+  productId: string;
+  productSku: string | null;
+  orderItemId: string | null;
+  orderItemRef: string;
+  reservationId: string | null;
+  phaseCode: MarketplaceCancellationPhaseCode;
+  quantity: number;
+  sourceLineRef: string;
+  reservedQuantity: number;
+  shippedQuantity: number;
+  releasedQuantity: number;
+  openReservedBefore: number;
+  openReservedAfter: number;
+  preShipmentCancelledBefore: number;
+  preShipmentCancelledAfter: number;
+  postShipmentCancelledBefore: number;
+  postShipmentCancelledAfter: number;
+  returnExpectedQuantity: number;
+  remainingPostCancellableBefore: number;
+  remainingPostCancellableAfter: number;
+  productSellableBefore: number;
+  productSellableAfter: number;
+  productReservedBefore: number;
+  productReservedAfter: number;
+  productPositionVersion: number;
+  applications: MarketplaceCancellationPreviewApplication[];
+  eligible: boolean;
+  blockers: MarketplaceCancellationPreviewBlocker[];
+};
+
+export type MarketplaceCancellationPreview = {
+  eligible: boolean;
+  blockers: MarketplaceCancellationPreviewBlocker[];
+  requestHash: string;
+  basisHash: string;
+  organizationId: string;
+  organizationTimezone: string;
+  effectiveLocalDate: string;
+  channelId: string;
+  channelCode: "SHOPEE" | "TIKTOK_SHOP";
+  eventRef: string;
+  orderId: string | null;
+  orderRef: string;
+  orderStatus: string | null;
+  orderReservedAt: string | null;
+  sourceStatus: string;
+  occurredAt: string;
+  sourceAlreadyPosted: boolean;
+  totalRequestedQuantity: number;
+  preShipmentQuantity: number;
+  postShipmentQuantity: number;
+  note: string | null;
+  metadata: Record<string, unknown>;
+  lines: MarketplaceCancellationPreviewLine[];
+};
+
+export type MarketplaceCancellationMutationLine = {
+  cancellationLineId: string;
+  eventLineId: string;
+  lineNo: number;
+  orderItemId: string;
+  orderItemRef: string;
+  productId: string;
+  productSku: string;
+  phaseCode: MarketplaceCancellationPhaseCode;
+  quantity: number;
+  sourceLineRef: string;
+};
+
+export type MarketplaceCancellationReversalTransaction = {
+  originalTransactionId: string;
+  originalTransactionNo: string;
+  reversalTransactionId: string;
+  reversalTransactionNo: string;
+  applicationCount: number;
+  totalQuantity: number;
+};
+
+export type MarketplaceCancellationMutationResponse = {
+  status: "POSTED";
+  cancellationId: string;
+  cancellationNo: string;
+  eventId: string;
+  eventRef: string;
+  orderId: string;
+  orderRef: string;
+  channelCode: "SHOPEE" | "TIKTOK_SHOP";
+  sourceStatus: string;
+  totalQuantity: number;
+  preShipmentQuantity: number;
+  postShipmentQuantity: number;
+  lineCount: number;
+  reversalTransactionCount: number;
+  singleReversalTransactionId: string | null;
+  occurredAt: string;
+  recordedAt: string;
+  requestHash: string;
+  previewBasisHash: string;
+  lines: MarketplaceCancellationMutationLine[];
+  reversalTransactions: MarketplaceCancellationReversalTransaction[];
+};
+
+export type MarketplaceCancellationCandidate = {
+  organization_id: string;
+  order_id: string;
+  channel_code: "SHOPEE" | "TIKTOK_SHOP";
+  external_order_ref: string;
+  order_status_code: string;
+  order_item_id: string;
+  line_no: number;
+  external_item_ref: string;
+  product_id: string;
+  product_sku_snapshot: string;
+  quantity_ordered: number;
+  reservation_id: string;
+  reserved_qty: number;
+  shipped_qty: number;
+  released_qty: number;
+  open_reserved_qty: number;
+  pre_shipment_cancelled_qty: number;
+  post_shipment_cancelled_qty: number;
+  return_expected_qty: number;
+  return_received_qty: number;
+  return_sellable_qty: number;
+  return_damaged_qty: number;
+  return_lost_qty: number;
+  remaining_post_cancellable_qty: number;
+  total_remaining_cancellable_qty: number;
+  cancellation_status_code: "NONE" | "PRE_SHIPMENT" | "POST_SHIPMENT" | "MIXED";
+  reservation_status_code: string;
+  reserved_at: string;
+  closed_at: string | null;
+};
+
+export type MarketplaceCancellationHeader = {
+  cancellation_id: string;
+  organization_id: string;
+  cancellation_no: string;
+  event_id: string;
+  order_id: string;
+  channel_id: string;
+  channel_code: "SHOPEE" | "TIKTOK_SHOP";
+  external_order_ref: string;
+  external_event_ref: string;
+  source_status_code: string;
+  status_code: MarketplaceCancellationStatusCode;
+  occurred_at: string;
+  recorded_at: string;
+  actor_user_id: string | null;
+  process_name: string | null;
+  total_quantity: number;
+  pre_shipment_quantity: number;
+  post_shipment_quantity: number;
+  request_hash: string;
+  note: string | null;
+  metadata: Record<string, unknown>;
+  created_at: string;
+};
+
+export type MarketplaceCancellationLine = {
+  cancellation_line_id: string;
+  organization_id: string;
+  cancellation_id: string;
+  cancellation_no: string;
+  external_event_ref: string;
+  event_line_id: string;
+  line_no: number;
+  order_item_id: string;
+  reservation_id: string;
+  product_id: string;
+  phase_code: MarketplaceCancellationPhaseCode;
+  quantity_cancelled: number;
+  product_sku_snapshot: string;
+  order_item_ref_snapshot: string;
+  source_line_ref: string;
+  open_reserved_before: number;
+  open_reserved_after: number;
+  shipped_before: number;
+  return_expected_before: number;
+  post_cancelled_before: number;
+  post_cancelled_after: number;
+  created_at: string;
+};
+
+export type MarketplaceCancellationApplication = {
+  cancellation_application_id: string;
+  organization_id: string;
+  cancellation_line_id: string;
+  cancellation_id: string;
+  cancellation_no: string;
+  external_event_ref: string;
+  application_no: number;
+  effect_code: MarketplaceCancellationEffectCode;
+  quantity_applied: number;
+  reservation_id: string;
+  marketplace_ship_allocation_id: string | null;
+  original_ship_event_id: string | null;
+  original_ship_event_ref: string | null;
+  original_ledger_entry_id: string | null;
+  stock_reversal_application_id: string | null;
+  original_transaction_id: string | null;
+  original_transaction_no: string | null;
+  reversal_transaction_id: string | null;
+  reversal_transaction_no: string | null;
+  reversal_entry_id: string | null;
+  product_id: string | null;
+  batch_id: string | null;
+  product_sku_snapshot: string | null;
+  batch_code_snapshot: string | null;
+  expiry_date_snapshot: string | null;
+  created_at: string;
+};
 export type EntryCorrectionData = {
   ledger: StockLedgerEntry[];
   applications: StockReversalApplication[];
@@ -1039,8 +1337,12 @@ export type DashboardData = {
 export type MarketplaceData = {
   orders: MarketplaceOrder[];
   reservations: MarketplaceReservation[];
+  candidates: MarketplaceCancellationCandidate[];
   events: MarketplaceEvent[];
   allocations: MarketplaceShipAllocation[];
+  cancellations: MarketplaceCancellationHeader[];
+  cancellationLines: MarketplaceCancellationLine[];
+  cancellationApplications: MarketplaceCancellationApplication[];
 };
 export type ReturnData = {
   returns: ReturnHeader[];
@@ -1511,28 +1813,110 @@ export async function reverseStockTransaction(input: {
     p_metadata: input.metadata ?? {},
   });
 }
+export async function previewMarketplaceCancellation(
+  input: MarketplaceCancellationCommandInput,
+) {
+  const resolvedOrganizationId = await resolveOrganizationId(
+    input.organizationId,
+  );
+
+  return callRpc<MarketplaceCancellationPreview>(
+    "preview_marketplace_cancellation",
+    {
+      p_organization_id: resolvedOrganizationId,
+      p_channel_code: input.channelCode,
+      p_event_ref: input.eventRef,
+      p_order_ref: input.orderRef,
+      p_occurred_at: input.occurredAt,
+      p_source_status: input.sourceStatus,
+      p_lines: input.lines,
+      p_note: input.note ?? null,
+      p_metadata: input.metadata ?? {},
+    },
+  );
+}
+
+export async function postMarketplaceCancellation(
+  input: MarketplaceCancellationCommandInput & {
+    idempotencyKey: string;
+    previewBasisHash: string;
+    confirmation: boolean;
+  },
+) {
+  const resolvedOrganizationId = await resolveOrganizationId(
+    input.organizationId,
+  );
+
+  return callRpc<MarketplaceCancellationMutationResponse>(
+    "post_marketplace_cancellation",
+    {
+      p_organization_id: resolvedOrganizationId,
+      p_idempotency_key: input.idempotencyKey,
+      p_channel_code: input.channelCode,
+      p_event_ref: input.eventRef,
+      p_order_ref: input.orderRef,
+      p_occurred_at: input.occurredAt,
+      p_source_status: input.sourceStatus,
+      p_lines: input.lines,
+      p_preview_basis_hash: input.previewBasisHash,
+      p_confirmation: input.confirmation,
+      p_note: input.note ?? null,
+      p_metadata: input.metadata ?? {},
+    },
+  );
+}
 export async function getMarketplaceData(
   organizationId?: string,
 ): Promise<MarketplaceData> {
   const resolvedOrganizationId = await resolveOrganizationId(organizationId);
   const encodedOrganizationId = encodeURIComponent(resolvedOrganizationId);
 
-  const [orders, reservations, events, allocations] = await Promise.all([
+  const [
+    orders,
+    reservations,
+    candidates,
+    events,
+    allocations,
+    cancellations,
+    cancellationLines,
+    cancellationApplications,
+  ] = await Promise.all([
     apiFetch<MarketplaceOrder[]>(
       `marketplace_orders?organization_id=eq.${encodedOrganizationId}&select=*&order=reserved_at.desc&limit=50`,
     ),
     apiFetch<MarketplaceReservation[]>(
-      `marketplace_reservations?organization_id=eq.${encodedOrganizationId}&select=*&order=reserved_at.desc,line_no.asc&limit=100`,
+      `marketplace_reservations?organization_id=eq.${encodedOrganizationId}&select=*&order=reserved_at.desc,line_no.asc&limit=200`,
+    ),
+    apiFetch<MarketplaceCancellationCandidate[]>(
+      `marketplace_cancellation_candidates?organization_id=eq.${encodedOrganizationId}&select=*&order=reserved_at.desc,line_no.asc&limit=200`,
     ),
     apiFetch<MarketplaceEvent[]>(
-      `marketplace_events?organization_id=eq.${encodedOrganizationId}&select=*&order=occurred_at.desc&limit=100`,
+      `marketplace_events?organization_id=eq.${encodedOrganizationId}&select=*&order=occurred_at.desc&limit=200`,
     ),
     apiFetch<MarketplaceShipAllocation[]>(
-      `marketplace_ship_allocations?organization_id=eq.${encodedOrganizationId}&select=*&order=created_at.desc&limit=100`,
+      `marketplace_ship_allocations?organization_id=eq.${encodedOrganizationId}&select=*&order=created_at.desc&limit=200`,
+    ),
+    apiFetch<MarketplaceCancellationHeader[]>(
+      `marketplace_cancellations?organization_id=eq.${encodedOrganizationId}&select=*&order=occurred_at.desc&limit=100`,
+    ),
+    apiFetch<MarketplaceCancellationLine[]>(
+      `marketplace_cancellation_lines?organization_id=eq.${encodedOrganizationId}&select=*&order=created_at.desc,line_no.asc&limit=300`,
+    ),
+    apiFetch<MarketplaceCancellationApplication[]>(
+      `marketplace_cancellation_applications?organization_id=eq.${encodedOrganizationId}&select=*&order=created_at.desc,application_no.asc&limit=500`,
     ),
   ]);
 
-  return { orders, reservations, events, allocations };
+  return {
+    orders,
+    reservations,
+    candidates,
+    events,
+    allocations,
+    cancellations,
+    cancellationLines,
+    cancellationApplications,
+  };
 }
 
 export async function getReturnData(

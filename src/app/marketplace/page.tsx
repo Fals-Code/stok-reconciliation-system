@@ -165,6 +165,14 @@ export default async function MarketplacePage({
             RESERVE dan RELEASE hanya mengubah reserved stock, sedangkan SHIP membuat
             transaksi outbound serta alokasi batch FEFO yang dapat diaudit.
           </p>
+          <div className="mt-5">
+            <Link
+              className="primary-button inline-flex"
+              href="/marketplace/cancellations"
+            >
+              Kelola pembatalan parsial
+            </Link>
+          </div>
 
           <div className="mt-7 grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
             {[

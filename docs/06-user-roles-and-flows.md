@@ -332,7 +332,7 @@ Tidak adanya role Approver tidak berarti semua tindakan diposting tanpa review. 
 | Rendah | Menandai notifikasi dibaca | Langsung, dapat dibatalkan bila relevan |
 | Sedang | Membuat draft penerimaan | Simpan draft |
 | Tinggi | Posting outbound, inspeksi retur | Preview, ringkasan dampak, konfirmasi eksplisit |
-| Sangat tinggi | Reversal, posting adjustment opname, saldo awal | Preview detail, alasan wajib, ketik konfirmasi atau dialog tegas |
+| Sangat tinggi | Post-shipment cancellation, reversal, posting adjustment opname, saldo awal | Preview detail, alasan wajib, quantity dan batch terdampak, ketik konfirmasi atau dialog tegas |
 
 ### 8.1 Maker-Checker Tidak Berlaku pada Fase 1
 
@@ -899,8 +899,8 @@ Admin tidak memilih batch. Detail FEFO ditampilkan setelah atau pada preview pem
 
 | Kondisi | Dampak |
 |---|---|
-| Batal sebelum threshold pengiriman | Lepaskan reservasi; tidak ada inbound ledger. |
-| Batal setelah threshold tetapi barang belum kembali | Tidak menambah stok; buat expected return bila relevan. |
+| Batal sebelum threshold pengiriman | Lepaskan hanya quantity reservasi yang dibatalkan per item; tidak ada stock transaction atau ledger movement. |
+| Batal setelah threshold pengiriman | Preview exact shipment allocation lalu buat linked reversal ke batch dan ledger asal; jangan menjalankan FEFO ulang atau membuat return otomatis. |
 | Barang kembali dan diterima | Catat receipt dan pending inspection secara operasional; stok tetap. |
 | Setelah inspeksi layak jual | Satu `RETURN_SELLABLE_INBOUND` ke batch `RETURN` baru. |
 | Setelah inspeksi rusak | Catat kondisi untuk audit/klaim; tidak ada movement stok kedua. |
@@ -908,10 +908,13 @@ Admin tidak memilih batch. Detail FEFO ditampilkan setelah atau pada preview pem
 
 ### 20.2 Acceptance Criteria
 
-- `FLOW-CAN-001`: Pembatalan sebelum shipment tidak membuat reversal outbound karena outbound belum ada.
-- `FLOW-CAN-002`: Pembatalan setelah shipment tidak otomatis mengembalikan stok.
-- `FLOW-CAN-003`: Timeline menjelaskan reservasi dilepas atau expected return dibuat.
-- `FLOW-CAN-004`: Event status yang terlambat diproses idempoten dan mengikuti state machine.
+- `FLOW-CAN-001`: Pembatalan sebelum shipment melepaskan hanya quantity reservasi terkait dan tidak membuat ledger movement.
+- `FLOW-CAN-002`: Pembatalan setelah shipment membuat exact linked reversal terhadap batch dan ledger shipment asli.
+- `FLOW-CAN-003`: Preview menunjukkan open reservation, shipped quantity, prior cancellation, exact batch restoration, dan remaining cancellable quantity.
+- `FLOW-CAN-004`: Post-shipment commit memerlukan konfirmasi eksplisit dan tidak menyediakan pemilih batch.
+- `FLOW-CAN-005`: Duplicate atau replay tidak menggandakan reservation release maupun reversal.
+- `FLOW-CAN-006`: Expected return dan cancellation tidak dapat mengklaim quantity shipment yang sama.
+- `FLOW-CAN-007`: Timeline menautkan cancellation event, shipment allocation, original ledger entry, reversal transaction, dan reversal entry.
 
 ---
 
@@ -1497,7 +1500,8 @@ Karena role hanya satu, tombol terutama dikendalikan oleh state objek.
 | `RECEIVED` | Lihat, Proses/Simulasikan event berikutnya |
 | `RESERVED` | Lihat reservasi, Batalkan bila event sah |
 | `OUTBOUND_POSTED` | Lihat allocation, Buat/lihat retur |
-| `CANCELLED_PRE_SHIP` | Lihat pelepasan reservasi |
+| `CANCELLED_PRE_SHIP` | Lihat partial reservation release |
+| `CANCELLED_POST_SHIP` | Lihat original shipment, cancellation application, dan exact linked reversal |
 | `RETURN_EXPECTED` | Terima retur, kelola klaim |
 | `CLOSED` | Lihat histori |
 
@@ -1879,6 +1883,12 @@ Server memetakan error teknis menjadi error kontrak:
 **Given** order hanya reserved  
 **When** order dibatalkan  
 **Then** reservasi dilepas dan ledger fisik tidak berubah.
+
+### E2E-006A: Cancel After Shipping
+
+**Given** order telah shipped dari satu atau beberapa batch
+**When** Admin membatalkan sebagian quantity item setelah shipment dan mengonfirmasi preview
+**Then** original shipment tetap immutable, exact linked reversal memulihkan batch asal, FEFO tidak dijalankan ulang, dan tidak ada return otomatis.
 
 ### E2E-007: Return Inspection
 

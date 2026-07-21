@@ -236,7 +236,7 @@ bukan berarti satu akun dan bukan pula izin untuk melewati domain contract.
 - Pengeluaran fisik sesuai status sumber.
 - FEFO otomatis.
 - Bundle sebagai resep produk satuan.
-- Pembatalan sebelum dan setelah barang keluar.
+- Pembatalan parsial per item sebelum barang keluar melalui reservation release dan setelah barang keluar melalui exact linked reversal atas shipment asli.
 - Barang keluar manual.
 - Retur expected, penerimaan stock-neutral, pending inspection operasional, layak jual, rusak, dan hilang.
 - Pengingat klaim TikTok sebelum tenggat tetap 40 hari sejak `operations.returns.created_at`.
@@ -703,7 +703,7 @@ Sistem menolak transisi yang melompati atau bertentangan dengan state machine.
 | `READY` | Pesanan valid dan menunggu status keluar fisik |
 | `PHYSICALLY_OUT` | Barang telah meninggalkan gudang dan outbound diposting |
 | `CANCELLED_PRE_SHIPMENT` | Dibatalkan sebelum keluar; reservasi dilepas |
-| `CANCELLED_POST_SHIPMENT` | Dibatalkan setelah keluar; stok belum kembali |
+| `CANCELLED_POST_SHIPMENT` | Sebagian atau seluruh quantity dibatalkan setelah keluar dan dipulihkan melalui exact linked reversal atas shipment asli |
 | `RETURN_EXPECTED` | Pengembalian diharapkan |
 | `RETURN_IN_PROGRESS` | Retur sedang berjalan atau telah diterima sebagian |
 | `CLOSED` | Siklus pesanan dan retur selesai |
@@ -720,9 +720,13 @@ Status sumber asli tetap disimpan. Mapping dapat dikonfigurasi melalui kode, tet
 
 ### 17.3 Aturan Pembatalan
 
-- Pembatalan sebelum `PHYSICALLY_OUT` hanya melepaskan reservasi.
-- Pembatalan setelah `PHYSICALLY_OUT` tidak membuat inbound.
-- Pembatalan setelah keluar membuat proses `RETURN_EXPECTED` atau exception sesuai event sumber.
+- Pembatalan dapat dilakukan parsial per item dengan quantity bilangan bulat positif.
+- Pembatalan sebelum `PHYSICALLY_OUT` hanya melepaskan quantity reservasi yang masih terbuka dan tidak membuat movement fisik.
+- Pembatalan setelah `PHYSICALLY_OUT` membuat transaksi `REVERSAL` baru yang membalik quantity shipment asli.
+- Reversal post-shipment wajib memakai batch, bucket, allocation, dan ledger entry shipment asal.
+- Post-shipment cancellation tidak menjalankan FEFO ulang, tidak memilih batch pengganti, dan tidak mengubah atau menghapus shipment asal.
+- Pembatalan tidak otomatis membuat expected return, receipt, inspection, claim, atau movement inbound lain.
+- Total expected return dan post-shipment cancellation tidak boleh memakai quantity shipment yang sama.
 
 ## 18. Requirement Pengeluaran Fisik dan FEFO
 
@@ -1879,9 +1883,9 @@ Cabang:
 
 ### AT-05 - Pembatalan setelah keluar
 
-**Given** pesanan telah `PHYSICALLY_OUT`.
-**When** event pembatalan diterima.
-**Then** stok tidak langsung bertambah dan proses pengembalian dibuat.
+**Given** pesanan telah `PHYSICALLY_OUT` dan memiliki allocation shipment yang auditable.
+**When** quantity item dibatalkan sebagian atau seluruhnya.
+**Then** sistem membuat exact linked reversal terhadap batch dan ledger shipment asli, mempertahankan shipment original, tidak menjalankan FEFO ulang, dan tidak membuat return otomatis.
 
 ### AT-06 - Retur layak jual
 
