@@ -1032,7 +1032,7 @@ TikTok order:
 reserve 1
 IN_TRANSIT -> outbound -1
 cancel after shipment -> no inbound
-return obligation created
+exact linked reversal created
 ```
 
 Serum:
@@ -1258,7 +1258,7 @@ damaged stock bucket remains 0
 
 ### Action Operator
 
-1. buka return obligation dari TikTok cancel-after-shipment;
+1. buka TikTok post-shipment cancellation lalu drill-down ke original shipment allocation dan exact linked reversal;
 2. mark pending quantity `1` sebagai lost;
 3. create claim;
 4. buka deadline dan notification.
@@ -1647,7 +1647,7 @@ Versi ringkas harus tetap membuktikan:
 | 00:40–01:20 | Baseline + ledger |
 | 01:20–02:00 | Maklon receipt |
 | 02:00–03:20 | Shopee reserve -> shipped -> FEFO |
-| 03:20–04:20 | Cancel post-shipment + return expected |
+| 03:20?04:20 | Partial post-shipment cancellation + exact linked reversal |
 | 04:20–05:20 | Return receipt + mixed inspection |
 | 05:20–06:40 | Stocktake variance |
 | 06:40–07:30 | Reconciliation drill-down |

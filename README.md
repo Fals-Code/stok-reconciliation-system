@@ -273,7 +273,7 @@ Status klaim tidak mengubah stok.
 - pesanan baru;
 - reservasi;
 - status pesanan;
-- pembatalan;
+- pembatalan parsial per item sebelum shipment melalui reservation release dan setelah shipment melalui exact linked reversal;
 - trigger physical outbound;
 - retur;
 - event duplicate;
@@ -991,7 +991,7 @@ duplicate ledger effect
 cross-organization access
 direct ledger mutation
 FEFO memilih batch tidak eligible
-cancel post-shipment melakukan auto-restock
+cancel post-shipment melakukan restock generik, FEFO ulang, atau batch substitution alih-alih exact linked reversal
 sellable return diposting tanpa inspeksi atau provenance terverifikasi
 claim mengubah stok
 stocktake posting parsial
@@ -1391,7 +1391,7 @@ Status berikut menggambarkan source pada branch saat ini. Status ini bukan pengg
 | Produk dan batch | **Partial** | Schema, seed, read model, posisi produk/batch, dan pilihan transaksi | CRUD master data, pengarsipan, detail batch, bundle, dan mapping listing |
 | Ledger dan projection | **Implemented** | Ledger append-only, idempotent posting, bucket fisik, serta projection produk dan batch | Drill-down lengkap, reversal umum, damaged disposal, dan expired disposal melalui Admin UI |
 | Receipt dan manual outbound | **Implemented** | Receipt dari maklon, outbound manual dengan reason/channel, dan alokasi FEFO | Preview/reversal receipt dan workflow disposal khusus |
-| Marketplace lifecycle | **Implemented** | Reservasi, release/cancel, trigger shipment, physical outbound FEFO, dan simulator Admin | CSV import dan penyelesaian bundle/listing flow |
+| Marketplace lifecycle | **Implemented** | Reservasi, partial pre-shipment release, partial post-shipment exact linked reversal, trigger shipment, physical outbound FEFO, cancellation preview/confirmation Admin, dan simulator Admin | CSV import serta penyelesaian bundle/listing flow |
 | Return dan claim | **Partial** | Expected return stock-neutral, receipt operasional tanpa ledger, inspeksi sellable sebagai inbound idempoten ke batch `RETURN` baru, damaged/lost tanpa movement kedua, partial item, provenance batch asal, dan lost return | Claim reminder, overdue, late-arrival administration, dan claim lifecycle lengkap |
 | Stocktake | **Implemented** | Create, prepare, continuous count, blind/non-blind count, review, approval immutable, posting adjustment, dan audit linkage | Frozen mode dan penyempurnaan UX lanjutan |
 | Reconciliation | **Implemented** | Manual run, delapan integrity checks, issue, evidence, history, Admin UI, serta alert Notification Center untuk issue dan run failure | Scheduled daily run production |
@@ -1421,7 +1421,7 @@ Minimum:
 - [x] Shopee reservation dan `SHIPPED`.
 - [x] TikTok reservation dan `IN_TRANSIT`.
 - [x] FEFO split.
-- [ ] Pembatalan sebelum dan sesudah outbound. **Partial:** release/cancel reservation tersedia; koreksi setelah physical outbound masih memerlukan reversal/return flow yang lengkap.
+- [x] Pembatalan parsial sebelum dan sesudah outbound. Pre-shipment hanya melepaskan reservasi; post-shipment memulihkan quantity dan batch shipment asli melalui exact linked reversal tanpa FEFO ulang atau return otomatis.
 - [x] Manual outbound dengan reason/channel.
 - [ ] Bundle expansion.
 - [x] Return expected.

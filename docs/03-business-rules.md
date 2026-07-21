@@ -317,8 +317,8 @@ Setiap event kanonis MUST memiliki:
 | Shopee | `SHIPPED` | reservasi valid | posting outbound FEFO, lepas reservasi, status `PHYSICALLY_OUT` |
 | TikTok Shop | `IN_TRANSIT` | reservasi valid | posting outbound FEFO, lepas reservasi, status `PHYSICALLY_OUT` |
 | sumber apa pun | status pra-pengiriman | sudah `PHYSICALLY_OUT` | simpan histori; jangan membalik stok; buat issue bila regresi ilegal |
-| sumber apa pun | pembatalan | belum `PHYSICALLY_OUT` | lepas reservasi; status `CANCELLED_PRE_SHIPMENT` |
-| sumber apa pun | pembatalan | sudah `PHYSICALLY_OUT` | jangan tambah stok; status `CANCELLED_POST_SHIPMENT`; buat retur/exception |
+| sumber apa pun | pembatalan parsial/penuh | quantity belum shipped | lepas hanya quantity reservasi yang diminta; tanpa movement fisik; status item/order mempertahankan mixed outcome |
+| sumber apa pun | pembatalan parsial/penuh | quantity sudah shipped | exact linked reversal terhadap allocation dan ledger shipment asli; status `CANCELLED_POST_SHIPMENT`; tanpa FEFO ulang atau return otomatis |
 | sumber apa pun | event retur | sudah outbound | buat/update proses retur; jangan tambah stok sebelum fisik diterima |
 
 ## 16. Reservasi
@@ -330,7 +330,7 @@ Setiap event kanonis MUST memiliki:
 | BR-RSV-003 | Reservasi MUST memiliki referensi pesanan dan item pesanan. | `ORPHAN_RESERVATION` |
 | BR-RSV-004 | Total reservasi aktif per produk MUST NOT melebihi sellable. | `RESERVED_EXCEEDS_SELLABLE` |
 | BR-RSV-005 | Jika available tidak cukup, reservasi MUST gagal secara utuh untuk pesanan dan status menjadi `STOCK_EXCEPTION`, kecuali strategi parsial disetujui kemudian. Default fase 1: tidak ada reservasi parsial. | `PARTIAL_RESERVATION_FORBIDDEN` |
-| BR-RSV-006 | Pembatalan pra-pengiriman MUST melepaskan seluruh reservasi aktif pesanan. | `CANCELLED_ORDER_RESERVATION_REMAINS` |
+| BR-RSV-006 | Pembatalan pra-pengiriman MUST melepaskan hanya quantity reservasi aktif yang dibatalkan per item; sisa reservasi yang tidak dibatalkan tetap aktif. | `CANCELLED_QUANTITY_RESERVATION_REMAINS` |
 | BR-RSV-007 | Posting outbound MUST mengonsumsi dan menutup reservasi terkait dalam transaction yang sama. | `OUTBOUND_RESERVATION_NOT_RELEASED` |
 | BR-RSV-008 | Reservasi yang telah dilepas atau dikonsumsi MUST NOT dipakai ulang. | `RESERVATION_REUSE_FORBIDDEN` |
 | BR-RSV-009 | Histori pembuatan, pelepasan, dan konsumsi reservasi MUST dapat diaudit. | `RESERVATION_HISTORY_MISSING` |
@@ -391,11 +391,16 @@ Hasil wajib:
 
 | ID | Aturan | Kode pelanggaran |
 |---|---|---|
-| BR-ORD-010 | Pembatalan sebelum `PHYSICALLY_OUT` MUST melepaskan reservasi tanpa membuat inbound atau outbound. | `PRE_SHIPMENT_CANCEL_MOVEMENT_FOUND` |
-| BR-ORD-011 | Pembatalan setelah `PHYSICALLY_OUT` MUST NOT menambah stok. | `POST_SHIPMENT_CANCEL_RESTOCKED` |
-| BR-ORD-012 | Pembatalan setelah keluar MUST membuat `RETURN_EXPECTED` atau `EXCEPTION` sesuai informasi sumber. | `POST_SHIPMENT_CANCEL_NO_FOLLOWUP` |
-| BR-ORD-013 | Event pembatalan duplikat MUST idempoten. | `DUPLICATE_CANCEL_EFFECT` |
-| BR-ORD-014 | Pesanan yang sudah `CANCELLED_PRE_SHIPMENT` MUST NOT diposting outbound kecuali dibuka kembali melalui tindakan Admin yang diaudit. | `CANCELLED_ORDER_SHIPPED` |
+| BR-ORD-010 | Pembatalan pra-pengiriman MUST melepaskan hanya quantity reservasi yang dibatalkan per item tanpa membuat stock transaction atau ledger movement. | `PRE_SHIPMENT_CANCEL_MOVEMENT_FOUND` |
+| BR-ORD-011 | Pembatalan pasca-pengiriman MUST membuat exact linked reversal terhadap quantity, batch, bucket, allocation, dan ledger entry shipment asli. | `POST_SHIPMENT_CANCEL_REVERSAL_MISMATCH` |
+| BR-ORD-012 | Pembatalan pasca-pengiriman MUST NOT menjalankan FEFO ulang, mengganti batch, atau mengedit/menghapus shipment asal. | `POST_SHIPMENT_CANCEL_BATCH_SUBSTITUTION` |
+| BR-ORD-013 | Event atau command pembatalan duplikat MUST idempoten dan menghasilkan maksimal satu domain effect. | `DUPLICATE_CANCEL_EFFECT` |
+| BR-ORD-014 | Payload berbeda dengan idempotency key yang sama MUST ditolak. | `CANCELLATION_IDEMPOTENCY_CONFLICT` |
+| BR-ORD-015 | Pembatalan MUST mendukung quantity parsial per item dan menolak quantity nol, negatif, atau melebihi sisa cancellable. | `CANCELLATION_QUANTITY_INVALID` |
+| BR-ORD-016 | Input dengan phase pre/post-shipment yang ambigu MUST ditolak, bukan ditebak. | `CANCELLATION_PHASE_AMBIGUOUS` |
+| BR-ORD-017 | Pembatalan pasca-pengiriman MUST NOT otomatis membuat return, receipt, inspection, claim, atau inbound kedua. | `CANCELLATION_MANUFACTURED_RETURN` |
+| BR-ORD-018 | Expected return dan post-shipment cancellation MUST NOT memakai quantity shipment yang sama. | `CANCELLATION_RETURN_OVERLAP` |
+| BR-ORD-019 | Pesanan yang sudah `CANCELLED_PRE_SHIPMENT` MUST NOT diposting outbound untuk quantity yang telah dibatalkan. | `CANCELLED_QUANTITY_SHIPPED` |
 
 ## 19. Outbound Manual
 
@@ -735,7 +740,7 @@ RESOLVED -> OPEN  (jika rule gagal kembali)
 | Pesanan batal sebelum keluar | Ya, dilepas | Tidak | Tidak |
 | Shopee `SHIPPED` | Ya, dikonsumsi | Ya, berkurang | Ya |
 | TikTok `IN_TRANSIT` | Ya, dikonsumsi | Ya, berkurang | Ya |
-| Batal setelah keluar | Tidak | Tidak | Tidak |
+| Batal setelah keluar | Tidak | Ya, bertambah sesuai quantity reversal | Exact reversal terhadap outbound shipment asli |
 | Retur expected | Tidak | Tidak | Tidak |
 | Retur tiba | Tidak | Tidak | Tidak; receipt operasional |
 | Retur sellable setelah inspeksi | Tidak | Ya, bertambah | Inbound ke batch `RETURN` baru |
@@ -806,8 +811,8 @@ Aturan kritis tidak boleh hanya berada di UI. Operasi stok sebaiknya dieksekusi 
 | BR-TST-005 | BR-OUT-009 | Stok tidak cukup: tidak ada movement/status parsial. |
 | BR-TST-006 | BR-OUT-010 | Dua outbound bersamaan: maksimal satu memakai unit terakhir. |
 | BR-TST-007 | BR-EVT-002 | Event sama dua kali: efek domain hanya sekali. |
-| BR-TST-008 | BR-ORD-010 | Batal sebelum keluar hanya melepas reservasi. |
-| BR-TST-009 | BR-ORD-011 | Batal setelah keluar tidak menambah stok. |
+| BR-TST-008 | BR-ORD-010/015 | Batal parsial sebelum keluar hanya melepas quantity reservasi terkait tanpa ledger. |
+| BR-TST-009 | BR-ORD-011/012/017/018 | Batal setelah keluar membuat exact linked reversal shipment asli, tidak menjalankan FEFO ulang, tidak membuat return otomatis, dan tidak overlap dengan expected return. |
 | BR-TST-010 | BR-RET-004 | Retur tiba menambah received/pending inspection tanpa movement stok. |
 | BR-TST-011 | BR-RET-007 | Inspeksi sellable membuat satu inbound ke batch `RETURN` baru dan retry identik tidak menggandakan efek. |
 | BR-TST-012 | BR-RET-008/009 | Damaged dan lost tidak membuat movement stok kedua. |
@@ -889,7 +894,7 @@ Fase 1 tidak boleh dirilis apabila:
 - concurrent allocation dapat menghasilkan saldo negatif atau overallocation;
 - FEFO dapat memakai batch expired atau blocked;
 - pembatalan pra-pengiriman membuat movement fisik;
-- pembatalan pasca-pengiriman otomatis menambah stok;
+- pembatalan pasca-pengiriman melakukan generic restock, FEFO ulang, batch substitution, atau movement yang tidak tertaut ke shipment asli;
 - retur dapat masuk sellable tanpa penerimaan dan inspeksi;
 - stocktake adjustment dapat diposting tanpa approval;
 - reversal menghapus histori;

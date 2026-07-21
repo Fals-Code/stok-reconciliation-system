@@ -1139,10 +1139,11 @@ order = CANCELLED_PRE_SHIPMENT
 Expected:
 
 ```text
-outbound remains
-no automatic inbound
-return obligation/exception created
-order = CANCELLED_POST_SHIPMENT
+original outbound and allocation remain immutable
+exact linked reversal restores original batch and bucket
+no FEFO rerun or batch substitution
+no automatic return, receipt, inspection, or claim
+order/item preserves partial mixed outcome where applicable
 ```
 
 ---
@@ -1524,7 +1525,8 @@ security log where appropriate
 | TST-ORD-010 | P0 | API/DB | TikTok masih `AWAITING_COLLECTION`. | Tidak ada physical outbound. |
 | TST-ORD-011 | P0 | API/DB | Order completed setelah outbound. | Tidak ada outbound kedua. |
 | TST-ORD-012 | P0 | API/DB | Cancel sebelum outbound. | Reservation dilepas; stock fisik tetap. |
-| TST-ORD-013 | P0 | API/DB | Cancel setelah outbound. | Tidak ada auto-restock; return obligation/exception terbentuk. |
+| TST-ORD-013 | P0 | API/DB | Cancel parsial setelah outbound. | Exact linked reversal mengembalikan original batch dan ledger quantity; shipment tetap immutable; FEFO tidak dijalankan ulang. |
+| TST-ORD-013A | P0 | DB | Expected return dibuat setelah sebagian shipment dibatalkan. | Expected return hanya boleh memakai sisa shipment; overlap ditolak atomik tanpa header/item/idempotency parsial. |
 | TST-ORD-014 | P0 | API/DB | Event shipment datang sebelum order created. | Ditolak/held sesuai policy; tidak mengarang movement. |
 | TST-ORD-015 | P1 | API/DB | Event stale pra-shipment datang setelah physical out. | Diabaikan tercatat; state tidak mundur. |
 | TST-ORD-016 | P0 | DB | Order physical out tanpa ledger. | Reconciliation critical. |
@@ -2537,7 +2539,7 @@ ledger/projection mismatch unexplained
 cross-organization access
 direct ledger mutation
 FEFO selects ineligible batch
-cancel post-shipment auto-restocks
+cancel post-shipment melakukan generic restock, FEFO rerun, batch substitution, atau reversal tanpa original linkage
 return receipt changes stock or sellable posts without inspection/provenance
 claim changes stock
 stocktake partial posting

@@ -129,8 +129,8 @@ Simulator membantu membuktikan alur tersebut tanpa menunggu akses API marketplac
 | `SIM-GOAL-002` | Membuktikan reservasi tidak sama dengan stok keluar fisik. |
 | `SIM-GOAL-003` | Membuktikan Shopee memicu outbound pada `SHIPPED`. |
 | `SIM-GOAL-004` | Membuktikan TikTok Shop memicu outbound pada `IN_TRANSIT`. |
-| `SIM-GOAL-005` | Membuktikan pembatalan sebelum outbound hanya melepas reservasi. |
-| `SIM-GOAL-006` | Membuktikan pembatalan setelah outbound tidak menambah stok otomatis. |
+| `SIM-GOAL-005` | Membuktikan pembatalan parsial sebelum outbound hanya melepas quantity reservasi terkait. |
+| `SIM-GOAL-006` | Membuktikan pembatalan parsial setelah outbound membuat exact linked reversal terhadap shipment asli tanpa FEFO ulang atau return otomatis. |
 | `SIM-GOAL-007` | Membuktikan receipt tetap stock-neutral dan hanya inspeksi SELLABLE menambah stok melalui batch RETURN baru. |
 | `SIM-GOAL-008` | Membuktikan event duplikat tidak menghasilkan efek ganda. |
 | `SIM-GOAL-009` | Membuktikan event out-of-order ditolak, diabaikan, atau dibuat exception sesuai state machine. |
@@ -590,7 +590,6 @@ stateDiagram-v2
     RESERVED --> PHYSICALLY_OUT: threshold kanal tercapai
     PHYSICALLY_OUT --> CANCELLED_POST_SHIPMENT: ORDER_CANCELLED
     PHYSICALLY_OUT --> RETURN_EXPECTED: RETURN_REQUESTED
-    CANCELLED_POST_SHIPMENT --> RETURN_EXPECTED: retur diperlukan
     RETURN_EXPECTED --> RETURN_IN_PROGRESS: RETURN_IN_TRANSIT
     RETURN_EXPECTED --> RETURN_IN_PROGRESS: RETURN_RECEIVED
     RETURN_IN_PROGRESS --> CLOSED: retur selesai
@@ -646,7 +645,7 @@ Mapping simulator fase 1:
 | Siap dikirim | `ORDER_READY_TO_SHIP` | `READY_TO_SHIP` | Status `READY`; reservasi tetap aktif. |
 | Dikirim | `ORDER_SHIPPED` | `SHIPPED` | Posting outbound FEFO. |
 | Selesai | `ORDER_COMPLETED` | `COMPLETED` | Tutup bila tidak ada obligation. |
-| Batal | `ORDER_CANCELLED` | `CANCELLED` | Pra-shipment: lepas reservasi. Pasca-shipment: jangan tambah stok. |
+| Batal | `ORDER_CANCELLED` | `CANCELLED` | Pra-shipment: partial reservation release. Pasca-shipment: exact linked reversal atas shipment asli; tanpa FEFO ulang atau return otomatis. |
 | Retur diminta | `RETURN_REQUESTED` | `TO_RETURN` | Buat retur expected; tidak menambah stok. |
 | Retur dikirim | `RETURN_IN_TRANSIT` | `RETURN_IN_TRANSIT` | Update retur; tidak menambah stok. |
 | Retur diterima | `RETURN_RECEIVED` | `RETURN_RECEIVED` | Catat receipt dan pending inspection; stok tetap. |
@@ -659,7 +658,7 @@ Catatan implementasi:
 - simulator tidak wajib meniru seluruh daftar status Shopee;
 - raw status yang dipakai harus tetap tersimpan;
 - adapter API masa depan harus memetakan status resmi yang diterima ke event kanonis di atas;
-- pembatalan yang datang setelah `SHIPPED` tidak boleh menjadi “undo shipment”.
+- pembatalan yang datang setelah `SHIPPED` tidak boleh mengedit atau menghapus shipment; adapter harus menghasilkan cancellation contract yang memicu exact linked reversal terhadap shipment asli.
 
 ---
 
@@ -674,7 +673,7 @@ Mapping simulator fase 1:
 | Siap dikirim | `ORDER_READY_TO_SHIP` | `AWAITING_COLLECTION` | Status `READY`; reservasi tetap. |
 | Dalam perjalanan | `ORDER_IN_TRANSIT` | `IN_TRANSIT` | Posting outbound FEFO. |
 | Selesai | `ORDER_COMPLETED` | `COMPLETED` | Tutup bila obligation selesai. |
-| Batal | `ORDER_CANCELLED` | `CANCELLED` | Pra-outbound: lepas reservasi. Pasca-outbound: jangan tambah stok. |
+| Batal | `ORDER_CANCELLED` | `CANCELLED` | Pra-outbound: partial reservation release. Pasca-outbound: exact linked reversal atas shipment asli; tanpa FEFO ulang atau return otomatis. |
 | Retur diminta | `RETURN_REQUESTED` | `RETURN_REQUESTED` | Buat retur expected. |
 | Retur berjalan | `RETURN_IN_TRANSIT` | `RETURN_IN_TRANSIT` | Update proses retur. |
 | Retur diterima | `RETURN_RECEIVED` | `RETURN_RECEIVED` | Catat receipt dan pending inspection; stok tetap. |
@@ -820,11 +819,12 @@ TikTok:
 
 Expected effect:
 
-- outbound tetap ada;
-- sistem tidak menambah stok;
-- order menjadi `CANCELLED_POST_SHIPMENT`;
-- return/exception dibuat sesuai aturan;
-- Admin dapat melanjutkan retur.
+- outbound dan allocation original tetap immutable;
+- cancellation quantity dipetakan ke original shipment allocation secara deterministik;
+- exact linked reversal memulihkan batch dan bucket asal;
+- FEFO tidak dijalankan ulang dan batch tidak dapat dipilih manual;
+- order/item mencatat mixed partial cancellation bila masih ada quantity aktif;
+- tidak dibuat expected return, receipt, inspection, atau claim otomatis.
 
 ## 17.5 `RETURN_SELLABLE`
 
@@ -915,9 +915,9 @@ Step:
 Expected effect:
 
 - status tidak mundur ke pra-shipment;
-- outbound tidak dibalik;
-- cancel diproses sebagai post-shipment;
-- exception/return workflow dibuat.
+- outbound original tidak diedit atau dihapus;
+- cancel diproses sebagai post-shipment cancellation;
+- exact linked reversal dibuat atas quantity shipment asli tanpa return otomatis.
 
 ## 17.12 `INSUFFICIENT_STOCK`
 
@@ -2104,7 +2104,7 @@ Contoh:
 | `ORDER_CREATED` | Order sudah physical out | Ignore/duplicate sesuai ID. |
 | `ORDER_READY_TO_SHIP` | `PHYSICALLY_OUT` | Ignore stale; jangan mundur. |
 | `ORDER_CANCELLED` | `READY` | Cancel pre-shipment. |
-| `ORDER_CANCELLED` | `PHYSICALLY_OUT` | Cancel post-shipment; jangan restock. |
+| `ORDER_CANCELLED` | `PHYSICALLY_OUT` | Cancel post-shipment melalui exact linked reversal shipment asli; generic restock dan FEFO ulang dilarang. |
 | `RETURN_RECEIVED` | Order belum outbound | Reject dan issue. |
 | `ORDER_SHIPPED` | Order belum ada | Reject/hold sesuai policy; default reject + issue. |
 
@@ -2453,8 +2453,8 @@ Gunakan preset scenario sebagai test case.
 |---|---|---|
 | `SIM-E2E-001` | Shopee happy path | Outbound hanya pada `SHIPPED`. |
 | `SIM-E2E-002` | TikTok happy path | Outbound pada `IN_TRANSIT`. |
-| `SIM-E2E-003` | Cancel sebelum shipment | Reservasi dilepas, ledger nol. |
-| `SIM-E2E-004` | Cancel setelah shipment | Tidak ada auto-restock. |
+| `SIM-E2E-003` | Cancel parsial sebelum shipment | Quantity reservasi terkait dilepas, ledger fisik nol. |
+| `SIM-E2E-004` | Cancel parsial setelah shipment | Exact linked reversal memulihkan original batch; shipment immutable; tanpa FEFO ulang atau return otomatis. |
 | `SIM-E2E-005` | Return sellable | Receipt stock-neutral lalu inbound ke batch RETURN baru. |
 | `SIM-E2E-006` | Return damaged | Kondisi tercatat tanpa movement stok kedua. |
 | `SIM-E2E-007` | Return lost | Tidak ada inbound. |
@@ -2547,8 +2547,8 @@ Golden fixture harus dibuat melalui seed/migration fixture yang versioned.
 - `SIM-AC-020`: FEFO memilih batch otomatis.
 - `SIM-AC-021`: Stok negatif tidak dapat terjadi.
 - `SIM-AC-022`: Bundle tidak memiliki stock sendiri.
-- `SIM-AC-023`: Cancel pre-shipment melepas reservation.
-- `SIM-AC-024`: Cancel post-shipment tidak auto-restock.
+- `SIM-AC-023`: Cancel pre-shipment melepas hanya quantity reservation yang dibatalkan per item.
+- `SIM-AC-024`: Cancel post-shipment membuat exact linked reversal terhadap allocation dan ledger shipment asli tanpa FEFO ulang, batch substitution, atau return otomatis.
 - `SIM-AC-025`: Return received hanya menambah pending inspection operasional.
 - `SIM-AC-026`: Inspection sellable membuat satu inbound ke batch RETURN baru; damaged membuat nol movement stok.
 
@@ -2622,7 +2622,7 @@ Dilarang:
 - duplicate event dianggap error 500;
 - payload conflict diperlakukan sebagai duplicate aman;
 - order status ditimpa tanpa history;
-- cancellation setelah shipment menambah stok;
+- cancellation setelah shipment melakukan generic restock, FEFO ulang, batch substitution, atau reversal tanpa linkage ke shipment asli;
 - retur diminta langsung menambah stok;
 - Admin memilih batch outbound;
 - event gagal dihapus agar dashboard tampak bersih;
