@@ -2404,12 +2404,107 @@ export type OpeningBalancePostResponse = {
   }>;
 };
 
+
+export type OpeningBalanceReversalPreviewBlocker = {
+  code: string;
+  message: string;
+  activeCutoverId?: string;
+};
+
+export type OpeningBalanceReversalPreviewLine = {
+  openingBalanceLineId: string;
+  originalEntryId: string;
+  lineNo: number;
+  sourceLineRef: string;
+  productId: string;
+  productSku: string;
+  batchId: string;
+  batchCode: string;
+  expiryDate: string;
+  bucketCode: "SELLABLE" | "QUARANTINE" | "DAMAGED";
+  originalQuantity: number;
+  reversalDelta: number;
+  currentBatchBucketQty: number;
+  resultingBatchBucketQty: number;
+  currentProductSellableQty: number;
+  currentProductQuarantineQty: number;
+  currentProductDamagedQty: number;
+  currentProductReservedQty: number;
+  resultingProductSellableQty: number;
+  resultingProductQuarantineQty: number;
+  resultingProductDamagedQty: number;
+  batchBalanceVersion: number;
+  productPositionVersion: number;
+  originalLedgerSeq: number;
+};
+
+export type OpeningBalanceReversalPreview = {
+  status: "PREVIEW_READY" | "BLOCKED";
+  eligible: boolean;
+  basisHash: string;
+  schemaVersion: number;
+  cutoverId: string;
+  cutoverNo: string;
+  originalTransactionId: string | null;
+  originalTransactionNo: string | null;
+  lineCount: number;
+  totalAbsoluteQuantity: number;
+  verificationApplicationCount: number;
+  lines: OpeningBalanceReversalPreviewLine[];
+  blockers: OpeningBalanceReversalPreviewBlocker[];
+};
+
+export type OpeningBalanceReversalResponse = {
+  status: "REVERSED";
+  cutoverId: string;
+  cutoverNo: string;
+  originalTransactionId: string;
+  originalTransactionNo: string;
+  reversalRecordId: string;
+  reversalTransactionId: string;
+  reversalTransactionNo: string;
+  lineCount: number;
+  totalAbsoluteQuantity: number;
+  previewBasisHash: string;
+  idempotencyKey: string;
+  requestHash: string;
+  ledgerSeqBefore: number;
+  ledgerSeqAfter: number;
+  recordedAt: string;
+  actorUserId: string;
+};
+
+export type OpeningBalanceReversalAudit = {
+  reversal_record_id: string;
+  organization_id: string;
+  opening_balance_cutover_id: string;
+  cutover_no: string;
+  original_transaction_id: string;
+  original_transaction_no: string;
+  reversal_transaction_id: string;
+  reversal_transaction_no: string;
+  idempotency_command_id: string;
+  preview_basis_hash: string;
+  ledger_seq_before: number;
+  ledger_seq_after: number;
+  line_count: number;
+  total_absolute_quantity: number;
+  reversed_at: string;
+  reversed_by: string | null;
+  process_name: string | null;
+  note: string;
+  metadata: Record<string, unknown>;
+  created_at: string;
+};
+
 export type OpeningBalanceData = {
   batches: BatchInventory[];
   cutovers: OpeningBalanceCutover[];
   selectedCutover: OpeningBalanceCutover | null;
+  selectedReversal: OpeningBalanceReversalAudit | null;
   lines: OpeningBalanceCutoverLine[];
   ledger: StockLedgerEntry[];
+  reversalLedger: StockLedgerEntry[];
 };
 
 export async function createOpeningBalanceCutover(input: {
@@ -2516,6 +2611,48 @@ export async function postOpeningBalanceCutover(input: {
   );
 }
 
+
+export async function previewOpeningBalanceReversal(
+  cutoverId: string,
+  organizationId?: string,
+) {
+  const resolvedOrganizationId =
+    await resolveOrganizationId(organizationId);
+
+  return callRpc<OpeningBalanceReversalPreview>(
+    "preview_opening_balance_reversal",
+    {
+      p_organization_id: resolvedOrganizationId,
+      p_cutover_id: cutoverId,
+    },
+  );
+}
+
+export async function reverseOpeningBalanceCutover(input: {
+  organizationId?: string;
+  cutoverId: string;
+  idempotencyKey: string;
+  previewBasisHash: string;
+  confirmation: boolean;
+  note: string;
+  metadata?: Record<string, unknown>;
+}) {
+  const organizationId = await resolveOrganizationId(input.organizationId);
+
+  return callRpc<OpeningBalanceReversalResponse>(
+    "reverse_opening_balance_cutover",
+    {
+      p_organization_id: organizationId,
+      p_idempotency_key: input.idempotencyKey,
+      p_cutover_id: input.cutoverId,
+      p_preview_basis_hash: input.previewBasisHash,
+      p_confirmation: input.confirmation,
+      p_note: input.note,
+      p_metadata: input.metadata ?? {},
+    },
+  );
+}
+
 const OPENING_BALANCE_UUID_PATTERN =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 
@@ -2539,8 +2676,19 @@ export async function getOpeningBalanceData(
           `&cutover_id=eq.${encodedCutoverId}&select=*&limit=1`,
       )
     : Promise.resolve([]);
+  const selectedReversalPromise = selectedIsValid
+    ? apiFetch<OpeningBalanceReversalAudit[]>(
+        `opening_balance_cutover_reversals?organization_id=eq.${encodedOrganizationId}` +
+          `&opening_balance_cutover_id=eq.${encodedCutoverId}&select=*&limit=1`,
+      )
+    : Promise.resolve([]);
 
-  const [batches, recentCutovers, selectedRows] = await Promise.all([
+  const [
+    batches,
+    recentCutovers,
+    selectedRows,
+    selectedReversalRows,
+  ] = await Promise.all([
     apiFetchAll<BatchInventory>(
       `batch_inventory?organization_id=eq.${encodedOrganizationId}` +
         "&select=*&order=product_name.asc,expiry_date.asc,batch_code.asc",
@@ -2550,10 +2698,12 @@ export async function getOpeningBalanceData(
         "&select=*&order=created_at.desc&limit=50",
     ),
     selectedPromise,
+    selectedReversalPromise,
   ]);
 
   const selectedCutover = selectedRows[0] ?? null;
-  const [lines, ledger] = selectedCutover
+  const selectedReversal = selectedReversalRows[0] ?? null;
+  const [lines, ledger, reversalLedger] = selectedCutover
     ? await Promise.all([
         apiFetchAll<OpeningBalanceCutoverLine>(
           `opening_balance_cutover_lines?organization_id=eq.${encodedOrganizationId}` +
@@ -2567,8 +2717,15 @@ export async function getOpeningBalanceData(
                 "&select=*&order=line_no.asc,ledger_seq.asc",
             )
           : Promise.resolve([]),
+        selectedReversal?.reversal_transaction_id
+          ? apiFetchAll<StockLedgerEntry>(
+              `stock_ledger?organization_id=eq.${encodedOrganizationId}` +
+                `&transaction_id=eq.${encodeURIComponent(selectedReversal.reversal_transaction_id)}` +
+                "&select=*&order=line_no.asc,ledger_seq.asc",
+            )
+          : Promise.resolve([]),
       ])
-    : [[], []];
+    : [[], [], []];
 
   const byId = new Map(
     [...recentCutovers, ...selectedRows].map((cutover) => [
@@ -2585,8 +2742,10 @@ export async function getOpeningBalanceData(
         new Date(left.created_at).getTime(),
     ),
     selectedCutover,
+    selectedReversal,
     lines,
     ledger,
+    reversalLedger,
   };
 }
 // OPENING_BALANCE_ADMIN_WORKFLOW_END

@@ -6,6 +6,7 @@ import PageSectionNav from "@/app/app-shell/page-section-nav";
 import {
   createOpeningBalanceAction,
   postOpeningBalanceAction,
+  reverseOpeningBalanceAction,
   saveOpeningBalanceDraftAction,
   submitOpeningBalanceReviewAction,
 } from "@/app/opening-balances/actions";
@@ -14,9 +15,13 @@ import type { OpeningBalanceDraftLine } from "@/app/opening-balances/draft";
 import {
   getOpeningBalanceData,
   previewOpeningBalanceCutover,
+  previewOpeningBalanceReversal,
   type OpeningBalanceCutover,
   type OpeningBalancePreview,
+  type OpeningBalanceReversalAudit,
+  type OpeningBalanceReversalPreview,
   type OpeningBalanceVerificationStatus,
+  type StockLedgerEntry,
 } from "@/lib/supabase-rest";
 
 export const dynamic = "force-dynamic";
@@ -318,6 +323,365 @@ function PreviewPanel({
   );
 }
 
+
+function ReversalPreviewPanel({
+  preview,
+}: {
+  preview: OpeningBalanceReversalPreview;
+}) {
+  const intentId = preview.eligible ? randomUUID() : null;
+
+  return (
+    <section id="reversal" className="panel-card scroll-mt-24 border-rose-400/20">
+      <div className="flex flex-col gap-4 border-b border-white/10 pb-5 sm:flex-row sm:items-end sm:justify-between">
+        <div>
+          <p className="section-kicker text-rose-300">
+            Preview exact reversal
+          </p>
+          <h2 className="mt-2 text-2xl font-semibold text-white">
+            Batalkan seluruh movement saldo awal tanpa mengedit histori.
+          </h2>
+          <p className="mt-3 max-w-3xl text-sm leading-6 text-slate-400">
+            Database memakai produk, batch, bucket, dan quantity dari
+            INITIAL_BALANCE asli. Tidak ada FEFO, substitusi batch, atau
+            pengurangan parsial.
+          </p>
+        </div>
+        <Pill
+          label={preview.eligible ? "Reversal tersedia" : "Diblokir"}
+          tone={preview.eligible ? "warning" : "danger"}
+        />
+      </div>
+
+      <dl className="mt-5 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+        {[
+          ["Dokumen", preview.cutoverNo],
+          ["Transaksi asal", preview.originalTransactionNo ?? "-"],
+          ["Movement dibalik", formatNumber(preview.lineCount)],
+          [
+            "Total quantity",
+            formatNumber(preview.totalAbsoluteQuantity),
+          ],
+          [
+            "Bukti verifikasi tersimpan",
+            formatNumber(preview.verificationApplicationCount),
+          ],
+          ["Metode", "Exact full reversal"],
+          ["Alokasi batch", "Sama dengan ledger asal"],
+          ["Dampak setelah sukses", "Pointer aktif dilepas"],
+        ].map(([label, value]) => (
+          <div
+            className="rounded-2xl border border-white/10 bg-slate-950/35 p-4"
+            key={label}
+          >
+            <dt className="text-xs text-slate-500">{label}</dt>
+            <dd className="mt-2 text-sm font-medium text-slate-100">
+              {value}
+            </dd>
+          </div>
+        ))}
+      </dl>
+
+      {preview.blockers.length ? (
+        <div className="mt-5 space-y-3">
+          {preview.blockers.map((blocker, index) => (
+            <article
+              className="rounded-2xl border border-rose-400/20 bg-rose-400/[0.06] p-4"
+              key={`${blocker.code}-${index}`}
+            >
+              <p className="font-medium text-rose-100">
+                {blocker.message}
+              </p>
+              <p className="mt-2 font-mono text-xs text-rose-300/75">
+                {blocker.code}
+              </p>
+            </article>
+          ))}
+        </div>
+      ) : null}
+
+      <div className="mt-6 overflow-x-auto rounded-2xl border border-white/10 bg-slate-950/35">
+        <table>
+          <thead>
+            <tr>
+              <th>Baris</th>
+              <th>Produk</th>
+              <th>Batch</th>
+              <th>Bucket</th>
+              <th className="text-right">Movement asal</th>
+              <th className="text-right">Reversal</th>
+              <th className="text-right">Batch kini</th>
+              <th className="text-right">Batch setelah</th>
+              <th>Posisi produk setelah reversal</th>
+            </tr>
+          </thead>
+          <tbody>
+            {preview.lines.map((line) => (
+              <tr key={line.openingBalanceLineId}>
+                <td>{line.lineNo}</td>
+                <td>
+                  <p className="font-medium text-white">
+                    {line.productSku}
+                  </p>
+                  <p className="mt-1 font-mono text-xs text-slate-600">
+                    {line.productId}
+                  </p>
+                </td>
+                <td>
+                  <p className="font-medium text-white">
+                    {line.batchCode}
+                  </p>
+                  <p className="mt-1 text-xs text-slate-500">
+                    exp {line.expiryDate}
+                  </p>
+                </td>
+                <td>{line.bucketCode}</td>
+                <td className="text-right font-mono text-emerald-200">
+                  +{formatNumber(line.originalQuantity)}
+                </td>
+                <td className="text-right font-mono font-semibold text-rose-200">
+                  {formatNumber(line.reversalDelta)}
+                </td>
+                <td className="text-right font-mono">
+                  {formatNumber(line.currentBatchBucketQty)}
+                </td>
+                <td className="text-right font-mono font-semibold text-white">
+                  {formatNumber(line.resultingBatchBucketQty)}
+                </td>
+                <td className="text-xs leading-5 text-slate-400">
+                  <span className="block">
+                    Sellable{" "}
+                    {formatNumber(line.resultingProductSellableQty)}
+                  </span>
+                  <span className="block">
+                    Quarantine{" "}
+                    {formatNumber(line.resultingProductQuarantineQty)}
+                  </span>
+                  <span className="block">
+                    Damaged{" "}
+                    {formatNumber(line.resultingProductDamagedQty)}
+                  </span>
+                  <span className="block">
+                    Reserved{" "}
+                    {formatNumber(line.currentProductReservedQty)}
+                  </span>
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+
+      <details className="mt-4 rounded-2xl border border-white/10 bg-white/[0.02]">
+        <summary className="cursor-pointer px-5 py-4 text-sm font-medium text-slate-300">
+          Detail teknis preview reversal
+        </summary>
+        <dl className="grid gap-3 border-t border-white/10 p-5 sm:grid-cols-2">
+          <div>
+            <dt className="text-xs text-slate-500">Basis hash</dt>
+            <dd className="mt-2 break-all font-mono text-xs text-slate-300">
+              {preview.basisHash}
+            </dd>
+          </div>
+          <div>
+            <dt className="text-xs text-slate-500">
+              Transaksi asal
+            </dt>
+            <dd className="mt-2 break-all font-mono text-xs text-slate-300">
+              {preview.originalTransactionId ?? "-"}
+            </dd>
+          </div>
+        </dl>
+      </details>
+
+      {preview.eligible && intentId ? (
+        <form
+          action={reverseOpeningBalanceAction}
+          className="mt-6 rounded-3xl border border-rose-400/25 bg-rose-400/[0.055] p-5"
+        >
+          <input
+            name="cutoverId"
+            type="hidden"
+            value={preview.cutoverId}
+          />
+          <input
+            name="previewBasisHash"
+            type="hidden"
+            value={preview.basisHash}
+          />
+          <input name="intentId" type="hidden" value={intentId} />
+
+          <p className="section-kicker text-rose-300">
+            Tindakan destruktif terkontrol
+          </p>
+          <h3 className="mt-2 text-xl font-semibold text-white">
+            Balik seluruh saldo awal secara exact.
+          </h3>
+          <p className="mt-3 max-w-3xl text-sm leading-6 text-slate-400">
+            Ledger asal, cutover, dan bukti stok opname tidak dihapus.
+            Sistem menambahkan transaksi REVERSAL dan melepas pointer cutover
+            aktif agar dokumen pengganti dapat diposting.
+          </p>
+
+          <label className="mt-5 block space-y-2">
+            <span className="text-sm font-medium text-slate-200">
+              Alasan koreksi
+            </span>
+            <textarea
+              className="min-h-28 w-full rounded-xl border border-rose-400/20 bg-slate-950/60 px-3 py-2.5 text-sm text-white"
+              maxLength={2000}
+              name="note"
+              placeholder="Jelaskan kesalahan sumber dan alasan exact reversal."
+              required
+            />
+          </label>
+
+          <label className="mt-4 flex items-start gap-3 rounded-xl border border-white/10 bg-slate-950/45 p-4">
+            <input
+              className="mt-1"
+              name="confirmation"
+              required
+              type="checkbox"
+            />
+            <span>
+              <span className="text-sm font-semibold text-white">
+                Saya memahami seluruh movement saldo awal akan dibalik.
+              </span>
+              <span className="mt-1 block text-xs leading-5 text-slate-500">
+                Reversal hanya berhasil bila saldo bucket tetap nonnegatif,
+                reserved tidak melampaui sellable, dan basis preview belum
+                berubah.
+              </span>
+            </span>
+          </label>
+
+          <button
+            className="mt-5 rounded-xl bg-rose-300 px-4 py-2.5 text-sm font-semibold text-slate-950 transition hover:bg-rose-200"
+            type="submit"
+          >
+            Balik Saldo Awal
+          </button>
+        </form>
+      ) : (
+        <div className="mt-6 rounded-2xl border border-rose-400/20 bg-rose-400/[0.055] p-5 text-sm leading-6 text-rose-100">
+          Tombol exact reversal tidak tersedia karena database menemukan
+          blocker. Tidak ada transaksi atau movement yang dibuat.
+        </div>
+      )}
+    </section>
+  );
+}
+
+function ReversalAuditPanel({
+  reversal,
+  ledger,
+}: {
+  reversal: OpeningBalanceReversalAudit;
+  ledger: StockLedgerEntry[];
+}) {
+  return (
+    <section id="reversal" className="panel-card scroll-mt-24 border-rose-400/20">
+      <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
+        <div>
+          <p className="section-kicker text-rose-300">
+            Exact reversal selesai
+          </p>
+          <h2 className="mt-2 text-2xl font-semibold text-white">
+            Histori asal dipertahankan, pointer aktif sudah dilepas.
+          </h2>
+          <p className="mt-3 max-w-3xl text-sm leading-6 text-slate-400">
+            Dokumen lama tetap POSTED sebagai bukti audit, tetapi status
+            operasionalnya REVERSED. Cutover pengganti kini dapat dibuat dan
+            diposting melalui workflow normal.
+          </p>
+        </div>
+        <Pill label="REVERSED" tone="danger" />
+      </div>
+
+      <dl className="mt-5 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+        {[
+          ["Dokumen", reversal.cutover_no],
+          ["Transaksi asal", reversal.original_transaction_no],
+          ["Transaksi reversal", reversal.reversal_transaction_no],
+          ["Waktu reversal", formatDate(reversal.reversed_at)],
+          ["Movement reversal", formatNumber(reversal.line_count)],
+          [
+            "Total quantity",
+            formatNumber(reversal.total_absolute_quantity),
+          ],
+          ["Ledger sebelum", formatNumber(reversal.ledger_seq_before)],
+          ["Ledger setelah", formatNumber(reversal.ledger_seq_after)],
+        ].map(([label, value]) => (
+          <div
+            className="rounded-2xl border border-white/10 bg-slate-950/35 p-4"
+            key={label}
+          >
+            <dt className="text-xs text-slate-500">{label}</dt>
+            <dd className="mt-2 text-sm font-medium text-slate-100">
+              {value}
+            </dd>
+          </div>
+        ))}
+      </dl>
+
+      <div className="mt-5 rounded-2xl border border-white/10 bg-slate-950/35 p-4">
+        <p className="text-xs text-slate-500">Alasan koreksi</p>
+        <p className="mt-2 text-sm leading-6 text-slate-200">
+          {reversal.note}
+        </p>
+      </div>
+
+      <div className="mt-6 overflow-x-auto rounded-2xl border border-white/10">
+        <table>
+          <thead>
+            <tr>
+              <th>Ledger seq</th>
+              <th>Produk</th>
+              <th>Batch</th>
+              <th>Bucket</th>
+              <th className="text-right">Delta</th>
+              <th>Entry ID</th>
+            </tr>
+          </thead>
+          <tbody>
+            {ledger.map((entry) => (
+              <tr key={entry.ledger_entry_id}>
+                <td>{entry.ledger_seq}</td>
+                <td>{entry.product_sku_snapshot}</td>
+                <td>{entry.batch_code_snapshot}</td>
+                <td>{entry.bucket_code}</td>
+                <td className="text-right font-mono font-semibold text-rose-200">
+                  {formatNumber(entry.quantity_delta)}
+                </td>
+                <td className="font-mono text-xs text-slate-500">
+                  {entry.ledger_entry_id}
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+
+      <div className="mt-6 flex flex-wrap gap-3">
+        <Link
+          className="rounded-xl bg-sky-300 px-4 py-2.5 text-sm font-semibold text-slate-950 transition hover:bg-sky-200"
+          href="#new"
+        >
+          Buat cutover pengganti
+        </Link>
+        <Link
+          className="rounded-xl border border-white/10 px-4 py-2.5 text-sm font-medium text-slate-200 transition hover:bg-white/[0.05]"
+          href={`/entry-corrections?transactionId=${encodeURIComponent(
+            reversal.reversal_transaction_id,
+          )}`}
+        >
+          Buka transaksi reversal
+        </Link>
+      </div>
+    </section>
+  );
+}
+
 function ConfigurationError({ message }: { message: string }) {
   return (
     <main className="min-h-screen bg-slate-950 px-6 py-16 text-slate-100">
@@ -360,6 +724,8 @@ export default async function OpeningBalancesPage({
   const selected = data.selectedCutover;
   let preview: OpeningBalancePreview | null = null;
   let previewError: string | null = null;
+  let reversalPreview: OpeningBalanceReversalPreview | null = null;
+  let reversalPreviewError: string | null = null;
 
   if (selected?.status_code === "REVIEW") {
     try {
@@ -369,6 +735,19 @@ export default async function OpeningBalancesPage({
     } catch (error) {
       previewError =
         error instanceof Error ? error.message : "Preview gagal dimuat.";
+    }
+  }
+
+  if (selected?.operational_status_code === "ACTIVE") {
+    try {
+      reversalPreview = await previewOpeningBalanceReversal(
+        selected.cutover_id,
+      );
+    } catch (error) {
+      reversalPreviewError =
+        error instanceof Error
+          ? error.message
+          : "Preview exact reversal gagal dimuat.";
     }
   }
 
@@ -391,8 +770,11 @@ export default async function OpeningBalancesPage({
           { href: "#overview", label: "Ringkasan" },
           { href: "#new", label: "Buat draft" },
           { href: "#detail", label: "Detail" },
+          ...(selected?.status_code === "POSTED"
+            ? ([{ href: "#reversal", label: "Koreksi" }] as const)
+            : []),
           { href: "#history", label: "Riwayat" },
-        ]}
+        ] as const}
       />
 
       <div className="mx-auto max-w-[1500px] px-5 py-8 lg:px-8">
@@ -774,6 +1156,26 @@ export default async function OpeningBalancesPage({
                     </div>
                   </section>
                 </>
+              ) : null}
+
+              {reversalPreviewError ? (
+                <div
+                  id="reversal"
+                  className="panel-card scroll-mt-24 border-rose-400/20 bg-rose-400/[0.05] text-rose-100"
+                >
+                  {reversalPreviewError}
+                </div>
+              ) : null}
+
+              {reversalPreview ? (
+                <ReversalPreviewPanel preview={reversalPreview} />
+              ) : null}
+
+              {data.selectedReversal ? (
+                <ReversalAuditPanel
+                  ledger={data.reversalLedger}
+                  reversal={data.selectedReversal}
+                />
               ) : null}
             </div>
           ) : (

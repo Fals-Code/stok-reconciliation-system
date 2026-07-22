@@ -11,6 +11,7 @@ import { requireAdminSession } from "@/lib/auth";
 import {
   createOpeningBalanceCutover,
   postOpeningBalanceCutover,
+  reverseOpeningBalanceCutover,
   saveOpeningBalanceDraft,
   submitOpeningBalanceReview,
 } from "@/lib/supabase-rest";
@@ -67,6 +68,40 @@ function requiredConfirmation(formData: FormData) {
   }
 
   return true;
+}
+
+function requiredReversalPreviewHash(formData: FormData) {
+  const value = required(formData, "previewBasisHash").toLowerCase();
+
+  if (!HASH_PATTERN.test(value)) {
+    throw new Error("OPENING_BALANCE_REVERSAL_PREVIEW_HASH_INVALID");
+  }
+
+  return value;
+}
+
+function requiredReversalConfirmation(formData: FormData) {
+  if (formData.get("confirmation") !== "on") {
+    throw new Error("OPENING_BALANCE_REVERSAL_CONFIRMATION_REQUIRED");
+  }
+
+  return true;
+}
+
+function requiredReversalNote(formData: FormData) {
+  const value = formData.get("note");
+
+  if (typeof value !== "string" || value.trim() === "") {
+    throw new Error("OPENING_BALANCE_REVERSAL_NOTE_REQUIRED");
+  }
+
+  const note = value.trim();
+
+  if (note.length > 2000) {
+    throw new Error("OPENING_BALANCE_REVERSAL_NOTE_TOO_LONG");
+  }
+
+  return note;
 }
 
 function errorMessage(error: unknown) {
@@ -140,12 +175,46 @@ function errorMessage(error: unknown) {
       "Batch kedaluwarsa tidak dapat menerima saldo sellable.",
     OPENING_BALANCE_UNIDENTIFIED_BATCH_SCOPE_INVALID:
       "Batch tanpa identitas hanya dapat dicatat sebagai quarantine exception.",
+    OPENING_BALANCE_REVERSAL_CONFIRMATION_REQUIRED:
+      "Konfirmasi exact reversal wajib dicentang.",
+    OPENING_BALANCE_REVERSAL_PREVIEW_HASH_INVALID:
+      "Basis preview pembalikan tidak valid. Tinjau ulang dokumen.",
+    OPENING_BALANCE_REVERSAL_NOTE_REQUIRED:
+      "Alasan koreksi saldo awal wajib diisi.",
+    OPENING_BALANCE_REVERSAL_NOTE_TOO_LONG:
+      "Alasan koreksi maksimal 2.000 karakter.",
+    STALE_OPENING_BALANCE_REVERSAL_PREVIEW:
+      "Preview pembalikan sudah kedaluwarsa karena ledger atau projection berubah. Muat ulang dan tinjau kembali.",
+    OPENING_BALANCE_CUTOVER_NOT_POSTED:
+      "Hanya cutover yang sudah diposting yang dapat dibalik.",
+    OPENING_BALANCE_CUTOVER_NOT_ACTIVE:
+      "Cutover ini bukan saldo awal aktif organisasi.",
+    OPENING_BALANCE_TRANSACTION_REQUIRED:
+      "Cutover tidak memiliki transaksi INITIAL_BALANCE yang dapat dibalik.",
+    OPENING_BALANCE_TRANSACTION_INVALID:
+      "Transaksi asal tidak cocok dengan dokumen saldo awal.",
+    OPENING_BALANCE_ALREADY_REVERSED:
+      "Cutover saldo awal sudah memiliki exact reversal.",
+    OPENING_BALANCE_REVERSAL_LINES_REQUIRED:
+      "Cutover tidak memiliki movement positif yang dapat dibalik.",
+    OPENING_BALANCE_LEDGER_LINK_INVALID:
+      "Keterkaitan baris saldo awal dan ledger tidak lengkap atau tidak cocok.",
+    OPENING_BALANCE_REVERSAL_PROJECTION_DRIFT:
+      "Projection berbeda dari ledger. Selidiki rekonsiliasi sebelum melakukan reversal.",
+    OPENING_BALANCE_REVERSAL_NEGATIVE_BUCKET:
+      "Exact reversal akan membuat salah satu saldo batch menjadi negatif.",
+    OPENING_BALANCE_REVERSAL_RESERVED_CONFLICT:
+      "Exact reversal akan membuat reserved melebihi sellable.",
+    OPENING_BALANCE_ACTIVE_CUTOVER_MISSING:
+      "Pointer cutover aktif tidak ditemukan. Jangan lanjutkan tanpa audit.",
+    OPENING_BALANCE_REVERSAL_NOT_ALLOWED:
+      "Exact reversal diblokir oleh invariant stok.",
     IDEMPOTENCY_KEY_REUSED:
-      "Referensi posting sudah digunakan untuk payload berbeda.",
+      "Referensi aksi sudah digunakan untuk payload berbeda.",
     IDEMPOTENCY_COMMAND_IN_PROGRESS:
-      "Posting yang sama masih diproses.",
+      "Aksi yang sama masih diproses.",
     IDEMPOTENCY_COMMAND_FAILED:
-      "Percobaan posting sebelumnya gagal dan tidak dapat dipakai ulang.",
+      "Percobaan aksi sebelumnya gagal dan tidak dapat dipakai ulang.",
   };
 
   const match = Object.entries(messages).find(([code]) =>
@@ -308,5 +377,57 @@ export async function postOpeningBalanceAction(formData: FormData) {
 
   redirect(
     destination(kind, message, cutoverId, transactionId, "detail"),
+  );
+}
+
+export async function reverseOpeningBalanceAction(
+  formData: FormData,
+) {
+  const session = await requireAdminSession();
+  const cutoverId = requiredUuid(formData, "cutoverId");
+  let kind: FeedbackKind = "success";
+  let message: string;
+  let transactionId: string | undefined;
+
+  try {
+    const intentId = required(formData, "intentId");
+    const note = requiredReversalNote(formData);
+    const result = await reverseOpeningBalanceCutover({
+      organizationId: session.profile.organization_id,
+      cutoverId,
+      idempotencyKey:
+        `opening-balance:${cutoverId}:reverse:${intentId}`,
+      previewBasisHash:
+        requiredReversalPreviewHash(formData),
+      confirmation:
+        requiredReversalConfirmation(formData),
+      note,
+      metadata: {
+        source: "opening-balance-admin-ui",
+        version: 1,
+        actorUserId: session.user.id,
+      },
+    });
+
+    transactionId = result.reversalTransactionId;
+    message =
+      `${result.cutoverNo} berhasil dibalik secara exact: ` +
+      `${result.lineCount} movement, ` +
+      `${result.totalAbsoluteQuantity} unit. ` +
+      "Dokumen dan bukti verifikasi lama tetap tersimpan.";
+    revalidateOpeningBalance();
+  } catch (error) {
+    kind = "error";
+    message = errorMessage(error);
+  }
+
+  redirect(
+    destination(
+      kind,
+      message,
+      cutoverId,
+      transactionId,
+      "reversal",
+    ),
   );
 }

@@ -23,6 +23,7 @@ let supabaseUrl = "";
 let publishableKey = "";
 let serviceKey = "";
 let accessToken = "";
+let smokeUserId = "";
 let organizationId = "";
 
 function parseArgs(argv) {
@@ -412,6 +413,70 @@ function datetimeLocal() {
   return `${values.year}-${values.month}-${values.day}T${values.hour}:${values.minute}`;
 }
 
+
+async function postTemporaryReceipt({
+  runId,
+  productId,
+  batchId,
+  quantity,
+}) {
+  return rpc("post_receipt", {
+    p_organization_id: organizationId,
+    p_idempotency_key: `opening-balance-smoke:${runId}:receipt`,
+    p_source_ref: `OB-SMOKE-RECEIPT-${runId.slice(0, 8)}`,
+    p_occurred_at: new Date().toISOString(),
+    p_lines: [
+      {
+        productId,
+        batchId,
+        quantity,
+        sourceLineRef: "SMOKE-RECEIPT-1",
+      },
+    ],
+    p_note:
+      "Receipt sementara untuk mengubah basis preview exact reversal.",
+    p_metadata: {
+      source: "opening-balance-ui-smoke",
+      runId,
+      fixture: "stale-reversal-preview",
+      temporary: true,
+    },
+  });
+}
+
+async function reverseStockTransaction({
+  transactionId,
+  runId,
+  fixture,
+}) {
+  const preview = await rpc("preview_stock_transaction_reversal", {
+    p_organization_id: organizationId,
+    p_original_transaction_id: transactionId,
+  });
+
+  if (!preview?.eligible || !preview?.basisHash) {
+    throw new Error(
+      `Cleanup ${fixture} diblokir: ${JSON.stringify(preview)}`,
+    );
+  }
+
+  return rpc("reverse_stock_transaction", {
+    p_organization_id: organizationId,
+    p_idempotency_key:
+      `opening-balance-smoke:${runId}:cleanup:${fixture}`,
+    p_original_transaction_id: transactionId,
+    p_preview_basis_hash: preview.basisHash,
+    p_confirmation: true,
+    p_note: `Cleanup fixture ${fixture} melalui generic reversal.`,
+    p_metadata: {
+      source: "opening-balance-ui-smoke-cleanup",
+      runId,
+      fixture,
+      temporary: true,
+    },
+  });
+}
+
 async function reverseCutover(cutoverId, runId) {
   const preview = await rpc("preview_opening_balance_reversal", {
     p_organization_id: organizationId,
@@ -527,6 +592,20 @@ async function main() {
     Boolean(accessToken),
     "Access token smoke tersedia",
     verifyLocation ?? "Redirect Auth tidak tersedia.",
+  );
+
+  const tokenParts = accessToken.split(".");
+  const tokenPayload =
+    tokenParts.length === 3
+      ? JSON.parse(
+          Buffer.from(tokenParts[1], "base64url").toString("utf8"),
+        )
+      : {};
+  smokeUserId = String(tokenPayload.sub ?? "");
+
+  assertTest(
+    Boolean(smokeUserId),
+    "User ID smoke ter-resolve dari access token",
   );
 
   const profileRows = await restRows(
@@ -727,6 +806,10 @@ async function main() {
     "Replay idempoten mengembalikan transaksi yang sama",
   );
 
+  const reversalPreviewLedgerBefore = await restRows(
+    `stock_ledger?organization_id=eq.${encodeURIComponent(organizationId)}` +
+      "&select=ledger_seq&order=ledger_seq.desc&limit=1",
+  );
   const refreshed = await getPage(
     `${args.baseUrl}/opening-balances?cutoverId=${saved.cutover_id}#detail`,
   );
@@ -734,6 +817,21 @@ async function main() {
     containsText(refreshed.html, posted.cutover_no) &&
       containsText(refreshed.html, "Ledger drill-down"),
     "Detail dan feedback bertahan setelah refresh",
+  );
+  assertTest(
+    containsText(refreshed.html, "Preview exact reversal") &&
+      hasForm(refreshed.html, "Balik Saldo Awal"),
+    "Cutover aktif menampilkan preview dan konfirmasi exact reversal",
+  );
+
+  const reversalPreviewLedgerAfter = await restRows(
+    `stock_ledger?organization_id=eq.${encodeURIComponent(organizationId)}` +
+      "&select=ledger_seq&order=ledger_seq.desc&limit=1",
+  );
+  assertTest(
+    JSON.stringify(reversalPreviewLedgerAfter) ===
+      JSON.stringify(reversalPreviewLedgerBefore),
+    "Preview exact reversal tidak mengubah ledger",
   );
 
   const replacementSourceRef = `OB-SMOKE-REPL-${runId.slice(0, 8)}`;
@@ -780,15 +878,163 @@ async function main() {
       !hasForm(blockedPage.html, "Posting Saldo Awal"),
     "Active cutover menghasilkan blocked preview tanpa commit action",
   );
+  const staleReversalPreview = await rpc(
+    "preview_opening_balance_reversal",
+    {
+      p_organization_id: organizationId,
+      p_cutover_id: saved.cutover_id,
+    },
+  );
+  assertTest(
+    staleReversalPreview.eligible === true,
+    "Preview exact reversal awal eligible",
+  );
 
-  await reverseCutover(saved.cutover_id, runId);
+  const temporaryReceipt = await postTemporaryReceipt({
+    runId,
+    productId: batch.product_id,
+    batchId: batch.batch_id,
+    quantity: 1,
+  });
+  assertTest(
+    Boolean(temporaryReceipt?.transactionId),
+    "Receipt sementara mengubah basis reversal",
+  );
+
+  const staleActionPage = await invokeServerActionForm({
+    page: refreshed,
+    marker: "Balik Saldo Awal",
+    baseUrl: args.baseUrl,
+    fields: {
+      cutoverId: saved.cutover_id,
+      previewBasisHash: staleReversalPreview.basisHash,
+      intentId: `${runId}:stale`,
+      note: "Percobaan stale preview untuk smoke test.",
+      confirmation: "on",
+    },
+  });
+  assertTest(
+    containsText(
+      staleActionPage.html,
+      "Preview pembalikan sudah kedaluwarsa",
+    ),
+    "Server Action menolak stale reversal preview",
+  );
+
+  const reversalRowsAfterStale = await restRows(
+    `opening_balance_cutover_reversals?organization_id=eq.${encodeURIComponent(organizationId)}` +
+      `&opening_balance_cutover_id=eq.${saved.cutover_id}&select=*`,
+  );
+  assertTest(
+    reversalRowsAfterStale.length === 0,
+    "Stale reversal tidak membuat domain effect",
+  );
+
+  const freshReversalPage = await getPage(
+    `${args.baseUrl}/opening-balances?cutoverId=${saved.cutover_id}#reversal`,
+  );
+  const freshReversalPreview = await rpc(
+    "preview_opening_balance_reversal",
+    {
+      p_organization_id: organizationId,
+      p_cutover_id: saved.cutover_id,
+    },
+  );
+  assertTest(
+    freshReversalPreview.eligible === true &&
+      freshReversalPreview.basisHash !==
+        staleReversalPreview.basisHash,
+    "Basis reversal berubah dan preview baru tetap eligible",
+  );
+
+  const reversalIntentId = randomUUID();
+  const reversalNote =
+    "Membalik saldo awal fixture melalui Admin UI exact reversal.";
+  const reversedPage = await invokeServerActionForm({
+    page: freshReversalPage,
+    marker: "Balik Saldo Awal",
+    baseUrl: args.baseUrl,
+    fields: {
+      cutoverId: saved.cutover_id,
+      previewBasisHash: freshReversalPreview.basisHash,
+      intentId: reversalIntentId,
+      note: reversalNote,
+      confirmation: "on",
+    },
+  });
+  assertTest(
+    containsText(reversedPage.html, "berhasil dibalik secara exact"),
+    "Server Action exact reversal berhasil",
+  );
+  assertTest(
+    containsText(reversedPage.html, "Exact reversal selesai") &&
+      containsText(reversedPage.html, "Buat cutover pengganti") &&
+      !hasForm(reversedPage.html, "Balik Saldo Awal"),
+    "Detail reversal immutable dan link replacement tampil",
+  );
+
+  const firstReversalRows = await restRows(
+    `opening_balance_cutover_reversals?organization_id=eq.${encodeURIComponent(organizationId)}` +
+      `&opening_balance_cutover_id=eq.${saved.cutover_id}&select=*&limit=1`,
+  );
+  const firstReversal = firstReversalRows[0];
+  assertTest(
+    firstReversal?.reversal_transaction_id &&
+      firstReversal?.note === reversalNote,
+    "Read model reversal menyimpan transaksi dan alasan",
+  );
+
+  const reversalLedger = await restRows(
+    `stock_ledger?organization_id=eq.${encodeURIComponent(organizationId)}` +
+      `&transaction_id=eq.${firstReversal.reversal_transaction_id}&select=*`,
+  );
+  assertTest(
+    reversalLedger.length === 1 &&
+      Number(reversalLedger[0].quantity_delta) === -1,
+    "Ledger reversal adalah exact opposite movement",
+  );
+
+  const reversalReplay = await rpc(
+    "reverse_opening_balance_cutover",
+    {
+      p_organization_id: organizationId,
+      p_idempotency_key:
+        `opening-balance:${saved.cutover_id}:reverse:${reversalIntentId}`,
+      p_cutover_id: saved.cutover_id,
+      p_preview_basis_hash: freshReversalPreview.basisHash,
+      p_confirmation: true,
+      p_note: reversalNote,
+      p_metadata: {
+        source: "opening-balance-admin-ui",
+        version: 1,
+        actorUserId: smokeUserId,
+      },
+    },
+  );
+  assertTest(
+    reversalReplay.reversalTransactionId ===
+      firstReversal.reversal_transaction_id,
+    "Replay exact reversal mengembalikan transaksi yang sama",
+  );
+
+  await reverseStockTransaction({
+    transactionId: temporaryReceipt.transactionId,
+    runId,
+    fixture: "stale-preview-receipt",
+  });
+  addResult(
+    "Receipt sementara dibersihkan melalui generic reversal",
+    true,
+  );
+
+
   const reversedRows = await restRows(
     `opening_balance_cutovers?organization_id=eq.${encodeURIComponent(organizationId)}` +
       `&cutover_id=eq.${saved.cutover_id}&select=*&limit=1`,
   );
   assertTest(
     reversedRows[0]?.operational_status_code === "REVERSED",
-    "Cutover pertama dibersihkan melalui exact reversal",
+    "Cutover pertama berstatus REVERSED setelah UI action",
   );
 
   const replacementPreview = await rpc(
