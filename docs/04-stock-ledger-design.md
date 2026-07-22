@@ -708,7 +708,13 @@ UI dan server sebaiknya memanggil fungsi domain khusus, bukan fungsi generik sec
 
 | Fungsi | Tanggung jawab |
 |---|---|
-| `inventory.post_initial_balance(...)` | Posting cutover. |
+| `api.create_opening_balance_cutover(...)` | Membuat cutover `DRAFT`. |
+| `api.save_opening_balance_cutover_draft(...)` | Menyimpan header dan line draft dengan optimistic version. |
+| `api.submit_opening_balance_cutover_review(...)` | Membekukan draft ke `REVIEW`. |
+| `api.preview_opening_balance_cutover(...)` | Preview stock-neutral dan basis hash authoritative. |
+| `api.post_opening_balance_cutover(...)` | Posting `INITIAL_BALANCE` atomik dan projection delta yang sama. |
+| `api.preview_opening_balance_reversal(...)` | Preview exact opposite effect untuk cutover aktif. |
+| `api.reverse_opening_balance_cutover(...)` | Exact reversal dan pelepasan active-cutover pointer. |
 | `inventory.post_receipt(...)` | Validasi dan posting penerimaan. |
 | `inventory.reserve_order(...)` | Membuat reservasi produk. |
 | `inventory.release_order_reservation(...)` | Melepas reservasi. |
@@ -1595,23 +1601,41 @@ Hasil wajib:
 
 ### 34.2 Posting
 
-- buat cutover session;
-- preview;
-- approval;
-- posting `INITIAL_BALANCE`;
-- rebuild projection;
-- jalankan rekonsiliasi;
-- lock cutover.
+- buat cutover `DRAFT`;
+- simpan line per product, batch, bucket, dan quantity;
+- submit ke `REVIEW`;
+- jalankan preview authoritative yang tidak mengubah stok;
+- validasi basis hash dan konfirmasi final;
+- posting satu transaction `INITIAL_BALANCE` dengan satu ledger entry per line positif;
+- update batch dan product projection dengan delta yang identik dalam transaksi yang sama;
+- simpan exact cutover-line-to-ledger linkage dan ledger boundaries;
+- tampilkan status awal `UNVERIFIED`;
+- jalankan rekonsiliasi tanpa rebuild projection sebagai bagian posting normal.
 
-### 34.3 Verifikasi
+### 34.3 First-stocktake verification
+
+First verification bukan movement stok. Trigger internal hanya membuat immutable evidence ketika stocktake posted pertama memenuhi exact organization, product, batch, dan bucket scope setelah basis cutover.
 
 ```text
-sum initial ledger = physical approved
-projection = initial ledger
-tidak ada negative
-tidak ada orphan batch
-setiap baris punya actor dan source
+opening line positive -> UNVERIFIED
+first qualifying zero variance count -> VERIFIED, no adjustment ledger
+first qualifying nonzero variance count -> VERIFIED + ordinary STOCKTAKE_ADJUSTMENT
+partial scope -> PARTIALLY_VERIFIED
+all positive lines verified -> VERIFIED
 ```
+
+Evidence menautkan opening-balance line, stocktake, approval version, posting, posting line, count attempt, actor/process, waktu, physical quantity, variance, dan optional adjustment ledger entry.
+
+### 34.4 Koreksi
+
+Cutover posted tidak diedit atau dihapus. Command reversal:
+
+- mem-preview exact opposite effect;
+- memakai product, batch, bucket, dan quantity asal tanpa FEFO;
+- memblokir negative bucket dan reserved conflict;
+- menulis transaction dan ledger reversal baru;
+- mempertahankan original cutover serta verification history;
+- mengizinkan replacement cutover hanya setelah active cutover sebelumnya berstatus `REVERSED`.
 
 ## 35. Traceability
 

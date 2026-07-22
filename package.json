@@ -17,7 +17,9 @@
     "test:entry-correction-ui": "node scripts/test-entry-correction-ui.mjs",
     "test:manual-outbound-ui": "node scripts/test-manual-outbound-ui.mjs",
     "test:stock-disposal-ui": "node scripts/test-stock-disposal-ui.mjs",
-    "test:marketplace-cancellation-ui": "node scripts/test-marketplace-cancellation-ui.mjs"
+    "test:marketplace-cancellation-ui": "node scripts/test-marketplace-cancellation-ui.mjs",
+    "test:opening-balance-ui": "node scripts/test-opening-balance-ui.mjs",
+    "test:opening-balance-verification-ui": "node scripts/test-opening-balance-verification-ui.mjs"
   },
   "dependencies": {
     "next": "16.2.10",

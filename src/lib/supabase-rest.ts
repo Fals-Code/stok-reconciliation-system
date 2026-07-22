@@ -2167,3 +2167,585 @@ export async function callRpc<T>(name: string, body: Record<string, unknown>) {
     body: JSON.stringify(body),
   });
 }
+
+// OPENING_BALANCE_ADMIN_WORKFLOW_START
+export type OpeningBalanceVerificationStatus =
+  | "PENDING_POST"
+  | "NOT_APPLICABLE"
+  | "UNVERIFIED"
+  | "PARTIALLY_VERIFIED"
+  | "VERIFIED";
+
+export type OpeningBalanceOperationalStatus =
+  | "DRAFT"
+  | "REVIEW"
+  | "ACTIVE"
+  | "POSTED_INACTIVE"
+  | "REVERSED";
+
+export type OpeningBalanceCutover = {
+  cutover_id: string;
+  organization_id: string;
+  cutover_no: string;
+  source_ref: string;
+  source_estimate_ref: string;
+  status_code: "DRAFT" | "REVIEW" | "POSTED";
+  cutover_at: string;
+  effective_local_date: string;
+  created_at: string;
+  updated_at: string;
+  created_by: string | null;
+  create_process_name: string | null;
+  reviewed_at: string | null;
+  reviewed_by: string | null;
+  review_process_name: string | null;
+  posted_at: string | null;
+  posted_by: string | null;
+  post_process_name: string | null;
+  transaction_id: string | null;
+  request_hash: string | null;
+  posted_basis_hash: string | null;
+  ledger_seq_before: number | null;
+  ledger_seq_after: number | null;
+  line_count: number;
+  positive_line_count: number;
+  total_quantity: number;
+  note: string;
+  metadata: Record<string, unknown>;
+  row_version: number;
+  verification_status_code: OpeningBalanceVerificationStatus;
+  verified_line_count: number;
+  unverified_line_count: number;
+  operational_status_code: OpeningBalanceOperationalStatus;
+  is_active: boolean;
+  reversal_record_id: string | null;
+  reversal_transaction_id: string | null;
+  reversed_at: string | null;
+  reversed_by: string | null;
+  reversal_process_name: string | null;
+  reversal_note: string | null;
+  reversal_ledger_seq_before: number | null;
+  reversal_ledger_seq_after: number | null;
+};
+
+export type OpeningBalanceCutoverLine = {
+  opening_balance_line_id: string;
+  organization_id: string;
+  cutover_id: string;
+  line_no: number;
+  product_id: string;
+  batch_id: string;
+  bucket_code: "SELLABLE" | "QUARANTINE" | "DAMAGED";
+  quantity: number;
+  batch_identity_verified: boolean;
+  exception_reference: string | null;
+  product_sku_snapshot: string;
+  product_name_snapshot: string;
+  batch_code_snapshot: string;
+  expiry_date_snapshot: string;
+  batch_status_code_snapshot: string;
+  product_row_version_snapshot: number;
+  batch_row_version_snapshot: number;
+  source_line_ref: string;
+  ledger_entry_id: string | null;
+  batch_bucket_qty_before: number | null;
+  batch_bucket_qty_after: number | null;
+  product_bucket_qty_before: number | null;
+  product_bucket_qty_after: number | null;
+  created_at: string;
+  updated_at: string;
+  verification_status_code: OpeningBalanceVerificationStatus;
+  verification_application_id: string | null;
+  verifying_stocktake_id: string | null;
+  verifying_stocktake_approval_id: string | null;
+  verifying_approval_version_no: number | null;
+  verifying_stocktake_posting_id: string | null;
+  verifying_stocktake_posting_line_id: string | null;
+  verifying_stocktake_line_id: string | null;
+  verifying_count_attempt_id: string | null;
+  verifying_physical_quantity: number | null;
+  verifying_variance_quantity: number | null;
+  verified_at: string | null;
+  verifying_counted_at: string | null;
+  verifying_adjustment_ledger_entry_id: string | null;
+  verifying_stocktake_no: string | null;
+  cutover_operational_status_code: OpeningBalanceOperationalStatus;
+  reversal_record_id: string | null;
+  reversal_transaction_id: string | null;
+  reversed_at: string | null;
+};
+
+export type OpeningBalanceDraftLineInput = {
+  productId: string;
+  batchId: string;
+  bucketCode: "SELLABLE" | "QUARANTINE" | "DAMAGED";
+  quantity: number;
+  batchIdentityVerified: boolean;
+  exceptionReference: string | null;
+  sourceLineRef: string;
+};
+
+export type OpeningBalancePreviewBlocker = {
+  code: string;
+  scope: string;
+  lineNo?: number;
+  message: string;
+};
+
+export type OpeningBalancePreviewLine = {
+  lineNo: number;
+  openingBalanceLineId: string;
+  productId: string;
+  productSku: string;
+  productName: string;
+  batchId: string;
+  batchCode: string;
+  expiryDate: string;
+  batchStatusCode: string;
+  bucketCode: "SELLABLE" | "QUARANTINE" | "DAMAGED";
+  quantity: number;
+  batchIdentityVerified: boolean;
+  exceptionReference: string | null;
+  sourceLineRef: string;
+  currentBatchBucketQty: number;
+  resultingBatchBucketQty: number;
+  currentProductBucketQty: number;
+  resultingProductBucketQty: number;
+  reservedQty: number;
+  verificationStatusCode: OpeningBalanceVerificationStatus;
+};
+
+export type OpeningBalancePreview = {
+  status: "PREVIEW_READY" | "BLOCKED";
+  eligible: boolean;
+  schemaVersion: number;
+  organizationId: string;
+  cutoverId: string;
+  cutoverNo: string;
+  sourceRef: string;
+  sourceEstimateRef: string;
+  cutoverAt: string;
+  effectiveLocalDate: string;
+  requestHash: string;
+  basisHash: string;
+  lineCount: number;
+  positiveLineCount: number;
+  totalQuantity: number;
+  note: string;
+  metadata: Record<string, unknown>;
+  lines: OpeningBalancePreviewLine[];
+  blockers: OpeningBalancePreviewBlocker[];
+};
+
+export type OpeningBalanceCreateResponse = {
+  status: "DRAFT";
+  cutoverId: string;
+  cutoverNo: string;
+  sourceRef: string;
+  cutoverAt: string;
+  effectiveLocalDate: string;
+  rowVersion: number;
+};
+
+export type OpeningBalanceSaveResponse = {
+  status: "DRAFT";
+  cutoverId: string;
+  rowVersion: number;
+  lineCount: number;
+  positiveLineCount: number;
+  totalQuantity: number;
+  effectiveLocalDate: string;
+};
+
+export type OpeningBalanceReviewResponse = {
+  status: "REVIEW";
+  cutoverId: string;
+  requestHash: string;
+  rowVersion: number;
+  lineCount: number;
+  positiveLineCount: number;
+  totalQuantity: number;
+};
+
+export type OpeningBalancePostResponse = {
+  status: "POSTED";
+  cutoverId: string;
+  cutoverNo: string;
+  transactionId: string;
+  transactionNo: string;
+  idempotencyKey: string;
+  requestHash: string;
+  previewBasisHash: string;
+  sourceRef: string;
+  sourceEstimateRef: string;
+  cutoverAt: string;
+  recordedAt: string;
+  ledgerSeqBefore: number;
+  ledgerSeqAfter: number;
+  lineCount: number;
+  positiveLineCount: number;
+  totalQuantity: number;
+  verificationStatusCode: OpeningBalanceVerificationStatus;
+  lines: Array<{
+    lineNo: number;
+    openingBalanceLineId: string;
+    productId: string;
+    productSku: string;
+    batchId: string;
+    batchCode: string;
+    bucketCode: string;
+    quantity: number;
+    ledgerEntryId: string | null;
+    batchBucketQtyBefore: number | null;
+    batchBucketQtyAfter: number | null;
+    productBucketQtyBefore: number | null;
+    productBucketQtyAfter: number | null;
+    verificationStatusCode: OpeningBalanceVerificationStatus;
+  }>;
+};
+
+
+export type OpeningBalanceReversalPreviewBlocker = {
+  code: string;
+  message: string;
+  activeCutoverId?: string;
+};
+
+export type OpeningBalanceReversalPreviewLine = {
+  openingBalanceLineId: string;
+  originalEntryId: string;
+  lineNo: number;
+  sourceLineRef: string;
+  productId: string;
+  productSku: string;
+  batchId: string;
+  batchCode: string;
+  expiryDate: string;
+  bucketCode: "SELLABLE" | "QUARANTINE" | "DAMAGED";
+  originalQuantity: number;
+  reversalDelta: number;
+  currentBatchBucketQty: number;
+  resultingBatchBucketQty: number;
+  currentProductSellableQty: number;
+  currentProductQuarantineQty: number;
+  currentProductDamagedQty: number;
+  currentProductReservedQty: number;
+  resultingProductSellableQty: number;
+  resultingProductQuarantineQty: number;
+  resultingProductDamagedQty: number;
+  batchBalanceVersion: number;
+  productPositionVersion: number;
+  originalLedgerSeq: number;
+};
+
+export type OpeningBalanceReversalPreview = {
+  status: "PREVIEW_READY" | "BLOCKED";
+  eligible: boolean;
+  basisHash: string;
+  schemaVersion: number;
+  cutoverId: string;
+  cutoverNo: string;
+  originalTransactionId: string | null;
+  originalTransactionNo: string | null;
+  lineCount: number;
+  totalAbsoluteQuantity: number;
+  verificationApplicationCount: number;
+  lines: OpeningBalanceReversalPreviewLine[];
+  blockers: OpeningBalanceReversalPreviewBlocker[];
+};
+
+export type OpeningBalanceReversalResponse = {
+  status: "REVERSED";
+  cutoverId: string;
+  cutoverNo: string;
+  originalTransactionId: string;
+  originalTransactionNo: string;
+  reversalRecordId: string;
+  reversalTransactionId: string;
+  reversalTransactionNo: string;
+  lineCount: number;
+  totalAbsoluteQuantity: number;
+  previewBasisHash: string;
+  idempotencyKey: string;
+  requestHash: string;
+  ledgerSeqBefore: number;
+  ledgerSeqAfter: number;
+  recordedAt: string;
+  actorUserId: string;
+};
+
+export type OpeningBalanceReversalAudit = {
+  reversal_record_id: string;
+  organization_id: string;
+  opening_balance_cutover_id: string;
+  cutover_no: string;
+  original_transaction_id: string;
+  original_transaction_no: string;
+  reversal_transaction_id: string;
+  reversal_transaction_no: string;
+  idempotency_command_id: string;
+  preview_basis_hash: string;
+  ledger_seq_before: number;
+  ledger_seq_after: number;
+  line_count: number;
+  total_absolute_quantity: number;
+  reversed_at: string;
+  reversed_by: string | null;
+  process_name: string | null;
+  note: string;
+  metadata: Record<string, unknown>;
+  created_at: string;
+};
+
+export type OpeningBalanceData = {
+  batches: BatchInventory[];
+  cutovers: OpeningBalanceCutover[];
+  selectedCutover: OpeningBalanceCutover | null;
+  selectedReversal: OpeningBalanceReversalAudit | null;
+  lines: OpeningBalanceCutoverLine[];
+  ledger: StockLedgerEntry[];
+  reversalLedger: StockLedgerEntry[];
+};
+
+export async function createOpeningBalanceCutover(input: {
+  organizationId?: string;
+  sourceRef: string;
+  cutoverAt: string;
+  sourceEstimateRef: string;
+  note: string;
+  metadata?: Record<string, unknown>;
+}) {
+  const organizationId = await resolveOrganizationId(input.organizationId);
+
+  return callRpc<OpeningBalanceCreateResponse>(
+    "create_opening_balance_cutover",
+    {
+      p_organization_id: organizationId,
+      p_source_ref: input.sourceRef,
+      p_cutover_at: input.cutoverAt,
+      p_source_estimate_ref: input.sourceEstimateRef,
+      p_note: input.note,
+      p_metadata: input.metadata ?? {},
+    },
+  );
+}
+
+export async function saveOpeningBalanceDraft(input: {
+  organizationId?: string;
+  cutoverId: string;
+  expectedRowVersion: number;
+  cutoverAt: string;
+  sourceEstimateRef: string;
+  note: string;
+  lines: OpeningBalanceDraftLineInput[];
+  metadata?: Record<string, unknown>;
+}) {
+  const organizationId = await resolveOrganizationId(input.organizationId);
+
+  return callRpc<OpeningBalanceSaveResponse>(
+    "save_opening_balance_cutover_draft",
+    {
+      p_organization_id: organizationId,
+      p_cutover_id: input.cutoverId,
+      p_expected_row_version: input.expectedRowVersion,
+      p_cutover_at: input.cutoverAt,
+      p_source_estimate_ref: input.sourceEstimateRef,
+      p_note: input.note,
+      p_lines: input.lines,
+      p_metadata: input.metadata ?? {},
+    },
+  );
+}
+
+export async function submitOpeningBalanceReview(input: {
+  organizationId?: string;
+  cutoverId: string;
+  expectedRowVersion: number;
+}) {
+  const organizationId = await resolveOrganizationId(input.organizationId);
+
+  return callRpc<OpeningBalanceReviewResponse>(
+    "submit_opening_balance_cutover_review",
+    {
+      p_organization_id: organizationId,
+      p_cutover_id: input.cutoverId,
+      p_expected_row_version: input.expectedRowVersion,
+    },
+  );
+}
+
+export async function previewOpeningBalanceCutover(
+  cutoverId: string,
+  organizationId?: string,
+) {
+  const resolvedOrganizationId =
+    await resolveOrganizationId(organizationId);
+
+  return callRpc<OpeningBalancePreview>(
+    "preview_opening_balance_cutover",
+    {
+      p_organization_id: resolvedOrganizationId,
+      p_cutover_id: cutoverId,
+    },
+  );
+}
+
+export async function postOpeningBalanceCutover(input: {
+  organizationId?: string;
+  cutoverId: string;
+  idempotencyKey: string;
+  previewBasisHash: string;
+  confirmation: boolean;
+}) {
+  const organizationId = await resolveOrganizationId(input.organizationId);
+
+  return callRpc<OpeningBalancePostResponse>(
+    "post_opening_balance_cutover",
+    {
+      p_organization_id: organizationId,
+      p_idempotency_key: input.idempotencyKey,
+      p_cutover_id: input.cutoverId,
+      p_preview_basis_hash: input.previewBasisHash,
+      p_confirmation: input.confirmation,
+    },
+  );
+}
+
+
+export async function previewOpeningBalanceReversal(
+  cutoverId: string,
+  organizationId?: string,
+) {
+  const resolvedOrganizationId =
+    await resolveOrganizationId(organizationId);
+
+  return callRpc<OpeningBalanceReversalPreview>(
+    "preview_opening_balance_reversal",
+    {
+      p_organization_id: resolvedOrganizationId,
+      p_cutover_id: cutoverId,
+    },
+  );
+}
+
+export async function reverseOpeningBalanceCutover(input: {
+  organizationId?: string;
+  cutoverId: string;
+  idempotencyKey: string;
+  previewBasisHash: string;
+  confirmation: boolean;
+  note: string;
+  metadata?: Record<string, unknown>;
+}) {
+  const organizationId = await resolveOrganizationId(input.organizationId);
+
+  return callRpc<OpeningBalanceReversalResponse>(
+    "reverse_opening_balance_cutover",
+    {
+      p_organization_id: organizationId,
+      p_idempotency_key: input.idempotencyKey,
+      p_cutover_id: input.cutoverId,
+      p_preview_basis_hash: input.previewBasisHash,
+      p_confirmation: input.confirmation,
+      p_note: input.note,
+      p_metadata: input.metadata ?? {},
+    },
+  );
+}
+
+const OPENING_BALANCE_UUID_PATTERN =
+  /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+
+export async function getOpeningBalanceData(
+  organizationId?: string,
+  selectedCutoverId?: string,
+): Promise<OpeningBalanceData> {
+  const resolvedOrganizationId =
+    await resolveOrganizationId(organizationId);
+  const encodedOrganizationId = encodeURIComponent(
+    resolvedOrganizationId,
+  );
+  const normalizedCutoverId = selectedCutoverId?.trim() ?? "";
+  const selectedIsValid =
+    OPENING_BALANCE_UUID_PATTERN.test(normalizedCutoverId);
+  const encodedCutoverId = encodeURIComponent(normalizedCutoverId);
+
+  const selectedPromise = selectedIsValid
+    ? apiFetch<OpeningBalanceCutover[]>(
+        `opening_balance_cutovers?organization_id=eq.${encodedOrganizationId}` +
+          `&cutover_id=eq.${encodedCutoverId}&select=*&limit=1`,
+      )
+    : Promise.resolve([]);
+  const selectedReversalPromise = selectedIsValid
+    ? apiFetch<OpeningBalanceReversalAudit[]>(
+        `opening_balance_cutover_reversals?organization_id=eq.${encodedOrganizationId}` +
+          `&opening_balance_cutover_id=eq.${encodedCutoverId}&select=*&limit=1`,
+      )
+    : Promise.resolve([]);
+
+  const [
+    batches,
+    recentCutovers,
+    selectedRows,
+    selectedReversalRows,
+  ] = await Promise.all([
+    apiFetchAll<BatchInventory>(
+      `batch_inventory?organization_id=eq.${encodedOrganizationId}` +
+        "&select=*&order=product_name.asc,expiry_date.asc,batch_code.asc",
+    ),
+    apiFetch<OpeningBalanceCutover[]>(
+      `opening_balance_cutovers?organization_id=eq.${encodedOrganizationId}` +
+        "&select=*&order=created_at.desc&limit=50",
+    ),
+    selectedPromise,
+    selectedReversalPromise,
+  ]);
+
+  const selectedCutover = selectedRows[0] ?? null;
+  const selectedReversal = selectedReversalRows[0] ?? null;
+  const [lines, ledger, reversalLedger] = selectedCutover
+    ? await Promise.all([
+        apiFetchAll<OpeningBalanceCutoverLine>(
+          `opening_balance_cutover_lines?organization_id=eq.${encodedOrganizationId}` +
+            `&cutover_id=eq.${encodeURIComponent(selectedCutover.cutover_id)}` +
+            "&select=*&order=line_no.asc",
+        ),
+        selectedCutover.transaction_id
+          ? apiFetchAll<StockLedgerEntry>(
+              `stock_ledger?organization_id=eq.${encodedOrganizationId}` +
+                `&transaction_id=eq.${encodeURIComponent(selectedCutover.transaction_id)}` +
+                "&select=*&order=line_no.asc,ledger_seq.asc",
+            )
+          : Promise.resolve([]),
+        selectedReversal?.reversal_transaction_id
+          ? apiFetchAll<StockLedgerEntry>(
+              `stock_ledger?organization_id=eq.${encodedOrganizationId}` +
+                `&transaction_id=eq.${encodeURIComponent(selectedReversal.reversal_transaction_id)}` +
+                "&select=*&order=line_no.asc,ledger_seq.asc",
+            )
+          : Promise.resolve([]),
+      ])
+    : [[], [], []];
+
+  const byId = new Map(
+    [...recentCutovers, ...selectedRows].map((cutover) => [
+      cutover.cutover_id,
+      cutover,
+    ]),
+  );
+
+  return {
+    batches,
+    cutovers: [...byId.values()].sort(
+      (left, right) =>
+        new Date(right.created_at).getTime() -
+        new Date(left.created_at).getTime(),
+    ),
+    selectedCutover,
+    selectedReversal,
+    lines,
+    ledger,
+    reversalLedger,
+  };
+}
+// OPENING_BALANCE_ADMIN_WORKFLOW_END

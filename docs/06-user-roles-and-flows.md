@@ -731,6 +731,15 @@ flowchart TD
     H --> I[Konfirmasi posting]
     I --> J[Post INITIAL_BALANCE]
     J --> K[Rekonsiliasi hasil]
+    K --> L[Cutover POSTED dan UNVERIFIED]
+    L --> M[Post stocktake exact scope]
+    M --> N{Semua line positif telah dihitung?}
+    N -- Belum --> O[PARTIALLY_VERIFIED]
+    N -- Ya --> P[VERIFIED]
+    L --> Q{Cutover salah?}
+    Q -- Ya --> R[Preview exact reversal]
+    R --> S[Konfirmasi dan post reversal]
+    S --> T[Cutover REVERSED; replacement boleh dibuat]
 ```
 
 ### 16.3 Aturan Single Role
@@ -751,6 +760,12 @@ Karena hanya ada Admin:
 - `FLOW-CUT-004`: Sesi posted tidak dapat diedit.
 - `FLOW-CUT-005`: Koreksi memakai reversal dan repost, bukan edit ledger.
 - `FLOW-CUT-006`: Ringkasan pascaposting dapat dibandingkan dengan sumber spreadsheet.
+- `FLOW-CUT-007`: Setiap line positif mulai `UNVERIFIED`.
+- `FLOW-CUT-008`: First qualifying stocktake exact scope membuat immutable verification evidence.
+- `FLOW-CUT-009`: Zero variance memverifikasi tanpa adjustment ledger entry.
+- `FLOW-CUT-010`: Partial stocktake scope membiarkan line lain `UNVERIFIED`.
+- `FLOW-CUT-011`: Koreksi menampilkan preview exact opposite effect dan tidak menjalankan FEFO.
+- `FLOW-CUT-012`: Replacement hanya tersedia setelah active cutover direversal; original, verification, dan reversal tetap terlihat.
 
 ---
 

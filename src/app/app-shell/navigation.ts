@@ -49,6 +49,12 @@ export const APP_NAV_SECTIONS = [
     label: "Kontrol stok",
     items: [
       {
+        href: "/opening-balances",
+        label: "Saldo Awal",
+        shortLabel: "SA",
+        description: "Cutover, verifikasi, dan audit",
+      },
+      {
         href: "/stocktakes",
         label: "Stok Opname",
         shortLabel: "SO",

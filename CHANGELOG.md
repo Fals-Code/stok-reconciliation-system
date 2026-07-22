@@ -74,11 +74,15 @@ YYYY-MM-DD
 
 ### Added
 
-- Belum ada perubahan yang dicatat.
+- `[Migration][Implemented]` Menambahkan cutover saldo awal immutable dengan lifecycle `DRAFT -> REVIEW -> POSTED`, preview authoritative, posting `INITIAL_BALANCE` atomik, first-stocktake verification evidence, dan exact reversal.
+- `[Implemented]` Menambahkan workflow Admin `/opening-balances` untuk draft, review, preview, posting, per-line verification drill-down, reversal, dan cutover pengganti.
+- `[Testing]` Menambahkan pgTAP `046` sampai `048` serta smoke `test:opening-balance-ui` dan `test:opening-balance-verification-ui`.
 
 ### Changed
 
-- Belum ada perubahan yang dicatat.
+- `[Specification]` Menetapkan saldo awal estimasi tetap `UNVERIFIED` sampai stok opname pertama yang memenuhi exact organization/product/batch/bucket scope diposting.
+- `[Specification]` Memisahkan verifikasi fisik dari quantity adjustment: zero variance dapat memverifikasi tanpa membuat ledger movement.
+- `[Specification]` Menetapkan koreksi saldo awal melalui exact reversal dan dokumen pengganti, bukan edit atau delete histori.
 
 ### Deprecated
 

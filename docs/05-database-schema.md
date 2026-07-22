@@ -1172,6 +1172,31 @@ Mapping line opname ke entry adjustment.
 | `reason_code_snapshot` | `text` | Gain/loss. |
 | `created_at` | `timestamptz` | Audit. |
 
+### 15.4 Opening-balance cutover runtime
+
+Migration runtime menggunakan:
+
+- `operations.opening_balance_cutovers` untuk header lifecycle, active-cutover identity, transaction linkage, ledger boundaries, actor/process, note, metadata, dan reversal state;
+- `operations.opening_balance_cutover_lines` untuk exact product, batch, bucket, quantity, source-line reference, snapshots, original ledger entry, dan per-line verification linkage;
+- view `api.opening_balance_cutovers` dan `api.opening_balance_cutover_lines` untuk organization-scoped list, progress `UNVERIFIED`/`PARTIALLY_VERIFIED`/`VERIFIED`, serta drill-down Admin;
+- view `api.opening_balance_cutover_reversals` untuk immutable original-to-reversal audit.
+
+Baris draft dapat bernilai nol, tetapi hanya baris positif yang memperoleh ledger entry. Posted cutover dan line tidak menerima direct authenticated write atau update/delete.
+
+### 15.5 `operations.opening_balance_verification_applications`
+
+Tabel append-only ini menyimpan satu first-verification application per opening-balance line. Link wajib meliputi:
+
+- opening-balance cutover dan line;
+- stocktake dan stocktake line;
+- approval ID dan version;
+- posting dan posting line;
+- count attempt;
+- physical quantity, variance, count cutoff, dan opening-balance ledger boundary;
+- actor atau process, waktu verifikasi, rule version, serta metadata.
+
+`stocktake_adjustment_ledger_entry_id` dapat null untuk zero variance. Null tersebut sah karena verifikasi membuktikan hitung fisik, bukan memaksa movement stok. Trigger internal menulis evidence atomik saat stocktake posting line berhasil dibuat.
+
 ## 16. Schema `reconciliation`
 
 ### 16.1 `reconciliation.runs`
@@ -1465,7 +1490,13 @@ Client tidak melakukan multi-step mutation sendiri. Ia memanggil function domain
 |---|---|---|
 | `api.create_product` | Admin | Membuat master produk. |
 | `api.create_or_update_bundle_recipe` | Admin | Versioning resep bundle. |
-| `api.post_initial_balance` | Admin | Posting saldo awal. |
+| `api.create_opening_balance_cutover` | Admin | Membuat cutover draft. |
+| `api.save_opening_balance_cutover_draft` | Admin | Menyimpan header dan line draft. |
+| `api.submit_opening_balance_cutover_review` | Admin | Memindahkan draft ke review. |
+| `api.preview_opening_balance_cutover` | Admin | Preview stock-neutral dan basis hash. |
+| `api.post_opening_balance_cutover` | Admin | Posting `INITIAL_BALANCE` atomik. |
+| `api.preview_opening_balance_reversal` | Admin | Preview exact cutover reversal. |
+| `api.reverse_opening_balance_cutover` | Admin | Posting exact reversal dan membuka replacement. |
 | `api.post_receipt` | Admin, Operator | Posting penerimaan. |
 | `api.reserve_marketplace_order` | Sistem/Admin | Membuat reservasi. |
 | `api.process_marketplace_event` | Sistem/Admin | Menjalankan state transition. |
