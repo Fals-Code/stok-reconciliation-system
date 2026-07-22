@@ -40,6 +40,12 @@ function formatNumber(value: number | null | undefined) {
   return numberFormatter.format(Number(value));
 }
 
+function formatSigned(value: number | null | undefined) {
+  if (value === null || value === undefined) return "-";
+  const normalized = Number(value);
+  return `${normalized > 0 ? "+" : ""}${formatNumber(normalized)}`;
+}
+
 function formatDate(value: string | null) {
   if (!value) return "Belum tersedia";
 
@@ -763,6 +769,10 @@ export default async function OpeningBalancesPage({
     }),
   );
 
+  const verificationEvidenceLines = data.lines.filter(
+    (line) => line.verification_application_id !== null,
+  );
+
   return (
     <main className="min-h-screen bg-slate-950 text-slate-100">
       <PageSectionNav
@@ -1106,6 +1116,165 @@ export default async function OpeningBalancesPage({
                         </tbody>
                       </table>
                     </div>
+
+                    {verificationEvidenceLines.length ? (
+                      <div className="mt-6 space-y-4">
+                        <div>
+                          <p className="section-kicker">
+                            Bukti verifikasi immutable
+                          </p>
+                          <p className="mt-2 max-w-3xl text-sm leading-6 text-slate-400">
+                            Setiap bukti menghubungkan baris saldo awal dengan
+                            sesi stok opname, approval, posting, count attempt,
+                            dan movement adjustment bila variance tidak nol.
+                          </p>
+                        </div>
+
+                        {verificationEvidenceLines.map((line) => (
+                          <article
+                            className="rounded-2xl border border-emerald-400/20 bg-emerald-400/[0.045] p-5"
+                            key={line.verification_application_id ?? line.opening_balance_line_id}
+                          >
+                            <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+                              <div>
+                                <p className="font-semibold text-white">
+                                  {line.product_sku_snapshot} ·{" "}
+                                  {line.batch_code_snapshot} · {line.bucket_code}
+                                </p>
+                                <p className="mt-1 text-xs text-slate-500">
+                                  Baris {formatNumber(line.line_no)} · diverifikasi{" "}
+                                  {formatDate(line.verified_at)}
+                                </p>
+                              </div>
+                              <Pill label="VERIFIED" tone="success" />
+                            </div>
+
+                            <dl className="mt-5 grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+                              <div className="rounded-xl border border-white/10 bg-slate-950/35 p-4">
+                                <dt className="text-xs text-slate-500">
+                                  Stok opname
+                                </dt>
+                                <dd className="mt-2 text-sm font-medium text-slate-100">
+                                  {line.verifying_stocktake_id ? (
+                                    <Link
+                                      className="text-sky-200 underline decoration-sky-400/30 underline-offset-4"
+                                      href={`/stocktakes/${line.verifying_stocktake_id}`}
+                                    >
+                                      {line.verifying_stocktake_no ??
+                                        line.verifying_stocktake_id}
+                                    </Link>
+                                  ) : (
+                                    "Tidak tersedia"
+                                  )}
+                                </dd>
+                              </div>
+
+                              <div className="rounded-xl border border-white/10 bg-slate-950/35 p-4">
+                                <dt className="text-xs text-slate-500">
+                                  Approval
+                                </dt>
+                                <dd className="mt-2 text-sm text-slate-100">
+                                  Approval version{" "}
+                                  {formatNumber(
+                                    line.verifying_approval_version_no,
+                                  )}
+                                </dd>
+                                <dd className="mt-2 break-all font-mono text-xs text-slate-500">
+                                  {line.verifying_stocktake_approval_id}
+                                </dd>
+                              </div>
+
+                              <div className="rounded-xl border border-white/10 bg-slate-950/35 p-4">
+                                <dt className="text-xs text-slate-500">
+                                  Posting
+                                </dt>
+                                <dd className="mt-2 break-all font-mono text-xs text-slate-300">
+                                  {line.verifying_stocktake_posting_id}
+                                </dd>
+                                <dd className="mt-2 break-all font-mono text-xs text-slate-500">
+                                  Posting line{" "}
+                                  {line.verifying_stocktake_posting_line_id}
+                                </dd>
+                              </div>
+
+                              <div className="rounded-xl border border-white/10 bg-slate-950/35 p-4">
+                                <dt className="text-xs text-slate-500">
+                                  Count attempt
+                                </dt>
+                                <dd className="mt-2 break-all font-mono text-xs text-slate-300">
+                                  {line.verifying_count_attempt_id}
+                                </dd>
+                                <dd className="mt-2 text-xs text-slate-500">
+                                  {formatDate(line.verifying_counted_at)}
+                                </dd>
+                              </div>
+
+                              <div className="rounded-xl border border-white/10 bg-slate-950/35 p-4">
+                                <dt className="text-xs text-slate-500">
+                                  Quantity fisik
+                                </dt>
+                                <dd className="mt-2 font-mono text-sm text-white">
+                                  {formatNumber(
+                                    line.verifying_physical_quantity,
+                                  )}
+                                </dd>
+                              </div>
+
+                              <div className="rounded-xl border border-white/10 bg-slate-950/35 p-4">
+                                <dt className="text-xs text-slate-500">
+                                  Variance
+                                </dt>
+                                <dd className="mt-2 font-mono text-sm text-white">
+                                  {formatSigned(
+                                    line.verifying_variance_quantity ?? 0,
+                                  )}
+                                </dd>
+                              </div>
+
+                              <div className="rounded-xl border border-white/10 bg-slate-950/35 p-4 sm:col-span-2">
+                                <dt className="text-xs text-slate-500">
+                                  Adjustment ledger
+                                </dt>
+                                <dd className="mt-2 break-all font-mono text-xs text-slate-300">
+                                  {line.verifying_adjustment_ledger_entry_id ??
+                                    "Zero variance tanpa movement adjustment"}
+                                </dd>
+                              </div>
+                            </dl>
+
+                            <details className="mt-4 rounded-xl border border-white/10 bg-slate-950/30">
+                              <summary className="cursor-pointer px-4 py-3 text-xs font-medium text-slate-300">
+                                Identitas evidence
+                              </summary>
+                              <dl className="grid gap-3 border-t border-white/10 p-4 sm:grid-cols-2">
+                                <div>
+                                  <dt className="text-xs text-slate-500">
+                                    Verification application
+                                  </dt>
+                                  <dd className="mt-2 break-all font-mono text-xs text-slate-300">
+                                    {line.verification_application_id}
+                                  </dd>
+                                </div>
+                                <div>
+                                  <dt className="text-xs text-slate-500">
+                                    Stocktake line
+                                  </dt>
+                                  <dd className="mt-2 break-all font-mono text-xs text-slate-300">
+                                    {line.verifying_stocktake_line_id}
+                                  </dd>
+                                </div>
+                              </dl>
+                            </details>
+                          </article>
+                        ))}
+                      </div>
+                    ) : (
+                      <div className="mt-6 rounded-2xl border border-dashed border-white/10 bg-slate-950/25 p-5 text-sm leading-6 text-slate-500">
+                        Belum ada bukti stok opname pertama. Status tetap
+                        UNVERIFIED sampai posting stok opname yang cocok
+                        selesai.
+                      </div>
+                    )}
                   </section>
 
                   <section className="panel-card">
