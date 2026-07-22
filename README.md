@@ -868,6 +868,18 @@ Quarantine        = 0
 Damaged           = 0
 ```
 
+### Saldo awal production
+
+`seed.sql` hanya menyiapkan fixture demo. Saldo awal production wajib dibuat melalui `/opening-balances` sebagai cutover `DRAFT -> REVIEW -> POSTED`, memakai preview authoritative, konfirmasi final, dan posting atomik ke ledger.
+
+Setelah diposting:
+
+- setiap baris positif menghasilkan satu movement `INITIAL_BALANCE` dan projection delta yang sama;
+- baris tetap `UNVERIFIED` sampai stok opname pertama yang memenuhi scope organisasi, produk, batch, dan bucket setelah cutover diposting;
+- zero variance tetap memverifikasi karena quantity telah dihitung fisik, tetapi tidak membuat `STOCKTAKE_ADJUSTMENT`;
+- status agregat dapat menjadi `UNVERIFIED`, `PARTIALLY_VERIFIED`, atau `VERIFIED`;
+- koreksi tidak mengedit atau menghapus cutover maupun ledger asal, tetapi memakai exact reversal dan cutover pengganti bila diperlukan.
+
 ---
 
 ## Akun Admin Demo
@@ -995,6 +1007,7 @@ cancel post-shipment melakukan restock generik, FEFO ulang, atau batch substitut
 sellable return diposting tanpa inspeksi atau provenance terverifikasi
 claim mengubah stok
 stocktake posting parsial
+opening balance dianggap verified tanpa first-stocktake evidence yang memenuhi exact scope
 ledger dan projection berbeda tanpa penjelasan
 ```
 
@@ -1006,6 +1019,8 @@ pnpm lint
 pnpm test:run
 supabase db reset
 supabase test db
+pnpm test:opening-balance-ui
+pnpm test:opening-balance-verification-ui
 pnpm build
 pnpm test:e2e --grep @smoke
 ```
@@ -1390,6 +1405,7 @@ Status berikut menggambarkan source pada branch saat ini. Status ini bukan pengg
 | Shared Admin shell | **Implemented** | Sidebar desktop, navigasi mobile, active route, organisasi, mode aplikasi, akun, logout, serta unread badge Notification Center berbasis data live | Status rekonsiliasi global berbasis data live |
 | Produk dan batch | **Partial** | Schema, seed, read model, posisi produk/batch, dan pilihan transaksi | CRUD master data, pengarsipan, detail batch, bundle, dan mapping listing |
 | Ledger dan projection | **Implemented** | Ledger append-only, idempotent posting, bucket fisik, serta projection produk dan batch | Drill-down lengkap, reversal umum, damaged disposal, dan expired disposal melalui Admin UI |
+| Opening balance cutover | **Implemented** | Cutover draft/review/post, preview authoritative, `INITIAL_BALANCE` atomik, status `UNVERIFIED` sampai first-stocktake evidence, zero-variance verification, per-line audit linkage, exact reversal, dan replacement control melalui Admin UI | CSV import opsional dan penyempurnaan laporan cutover |
 | Receipt dan manual outbound | **Implemented** | Receipt dari maklon, outbound manual dengan reason/channel, dan alokasi FEFO | Preview/reversal receipt dan workflow disposal khusus |
 | Marketplace lifecycle | **Implemented** | Reservasi, partial pre-shipment release, partial post-shipment exact linked reversal, trigger shipment, physical outbound FEFO, cancellation preview/confirmation Admin, dan simulator Admin | CSV import serta penyelesaian bundle/listing flow |
 | Return dan claim | **Partial** | Expected return stock-neutral, receipt operasional tanpa ledger, inspeksi sellable sebagai inbound idempoten ke batch `RETURN` baru, damaged/lost tanpa movement kedua, partial item, provenance batch asal, dan lost return | Claim reminder, overdue, late-arrival administration, dan claim lifecycle lengkap |
@@ -1416,7 +1432,7 @@ Minimum:
 
 - [x] Login Admin aktif.
 - [ ] Produk dan batch. **Partial:** schema, seed, projection, dan read model tersedia; Admin CRUD dan detail master data belum lengkap.
-- [ ] Initial balance melalui ledger. **Partial:** ledger mendukung source movement, tetapi workflow cutover khusus belum lengkap.
+- [x] Initial balance melalui ledger: cutover immutable, preview/posting atomik, first-stocktake verification, zero-variance evidence, exact reversal, dan replacement control tersedia.
 - [x] Maklon receipt.
 - [x] Shopee reservation dan `SHIPPED`.
 - [x] TikTok reservation dan `IN_TRANSIT`.

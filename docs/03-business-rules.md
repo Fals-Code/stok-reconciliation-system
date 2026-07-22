@@ -228,6 +228,15 @@ available = sellable - reserved
 | BR-CUT-009 | Setelah posted, isi cutover MUST read-only. | `POSTED_CUTOVER_EDIT_FORBIDDEN` |
 | BR-CUT-010 | Angka spreadsheet lama hanya pembanding dan MUST NOT menjadi saldo otomatis tanpa validasi fisik. | `LEGACY_BALANCE_USED_AS_TRUTH` |
 | BR-CUT-011 | Selisih antara spreadsheet dan hitung fisik MUST ditampilkan, bukan ditutup dengan edit langsung. | `CUTOVER_VARIANCE_HIDDEN` |
+| BR-CUT-012 | Setiap baris positif yang diposting MUST mulai sebagai `UNVERIFIED`. | `OPENING_BALANCE_VERIFIED_WITHOUT_COUNT` |
+| BR-CUT-013 | Hanya first successfully posted stocktake setelah cutover dengan exact organization/product/batch/bucket scope yang MAY memverifikasi baris. | `OPENING_BALANCE_VERIFICATION_SCOPE_MISMATCH` |
+| BR-CUT-014 | Zero-variance stocktake line MUST dapat memverifikasi tanpa membuat `STOCKTAKE_ADJUSTMENT`. | `ZERO_VARIANCE_VERIFICATION_MISSING` |
+| BR-CUT-015 | Stok opname sebelum cutover, di luar scope, gagal, belum approved, atau belum posted MUST NOT memverifikasi. | `INVALID_OPENING_BALANCE_VERIFICATION` |
+| BR-CUT-016 | Satu opening-balance line MUST memiliki paling banyak satu immutable first-verification application. | `DUPLICATE_OPENING_BALANCE_VERIFICATION` |
+| BR-CUT-017 | Verification application MUST menautkan stocktake, approval version, posting, posting line, count attempt, actor/process, dan waktu. | `OPENING_BALANCE_VERIFICATION_LINK_INCOMPLETE` |
+| BR-CUT-018 | Status cutover MUST diturunkan sebagai `UNVERIFIED`, `PARTIALLY_VERIFIED`, atau `VERIFIED` tanpa mengubah ledger awal. | `OPENING_BALANCE_VERIFICATION_STATUS_INVALID` |
+| BR-CUT-019 | Koreksi cutover posted MUST memakai exact reversal atas product, batch, bucket, dan quantity asal tanpa FEFO atau substitusi. | `OPENING_BALANCE_REVERSAL_MISMATCH` |
+| BR-CUT-020 | Original cutover, ledger, verification, dan reversal history MUST tetap immutable; replacement hanya setelah active cutover direversal. | `OPENING_BALANCE_HISTORY_MUTATED` |
 
 ## 12. Penerimaan Barang dari Maklon
 
@@ -565,6 +574,8 @@ Cabang pembatalan: `DRAFT`, `COUNTING`, atau `REVIEW` dapat menjadi `CANCELLED`.
 | BR-STK-012 | Posting seluruh sesi MUST atomik. | `PARTIAL_STOCKTAKE_POST` |
 | BR-STK-013 | Setelah posted, sesi dan count menjadi read-only. | `POSTED_STOCKTAKE_EDIT_FORBIDDEN` |
 | BR-STK-014 | Laporan MUST menampilkan snapshot, movement setelah snapshot, expected, physical, variance, reviewer, approver, dan movement koreksi. | `STOCKTAKE_REPORT_INCOMPLETE` |
+| BR-STK-015 | Baris zero variance MUST tetap memiliki count evidence dan posting line, tetapi MUST NOT membuat ledger adjustment. | `ZERO_VARIANCE_LEDGER_MOVEMENT` |
+| BR-STK-016 | Verifikasi opening balance MUST menjadi audit effect terpisah dari adjustment quantity dan MUST NOT menambah movement stok. | `OPENING_BALANCE_VERIFICATION_CREATED_MOVEMENT` |
 
 ### 25.3 Decision Table Operasional Saat Opname
 

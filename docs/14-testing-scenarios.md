@@ -1491,6 +1491,19 @@ security log where appropriate
 | TST-MST-014 | P0 | DB | Client mencoba update langsung stock balance. | Grant/RLS menolak. |
 | TST-MST-015 | P0 | DB | Client mencoba update expiry batch tanpa function. | Ditolak; perubahan hanya melalui command terkontrol. |
 | TST-MST-016 | P1 | Reconciliation | Batch status `ACTIVE` tetapi tanggal sudah lewat. | Batch excluded; issue master/expiry terdeteksi. |
+| TST-MST-017 | P0 | DB/API | Cutover dibuat, disimpan, dan dikirim ke review. | Lifecycle `DRAFT -> REVIEW`; posted data belum terbentuk. |
+| TST-MST-018 | P0 | DB/API | Preview cutover dijalankan. | Hash deterministik; ledger, projection, idempotency, dan audit-success tidak berubah. |
+| TST-MST-019 | P0 | DB/API | Cutover multi-line diposting. | Semua line positif atomik; exact ledger/projection delta; zero line tanpa movement. |
+| TST-MST-020 | P0 | DB/API | Dua active posted cutover dicoba. | Cutover kedua diblokir sampai original direversal. |
+| TST-MST-021 | P0 | DB/API | Cutover posted dibaca. | Semua line positif `UNVERIFIED`; aggregate `0/n`. |
+| TST-MST-022 | P0 | API/DB/E2E | First exact stocktake zero variance diposting. | Line `VERIFIED`, immutable evidence terbentuk, adjustment ledger null. |
+| TST-MST-023 | P0 | API/DB/E2E | Stocktake hanya mencakup satu dari dua line. | Aggregate `PARTIALLY_VERIFIED`; line unrelated tetap `UNVERIFIED`. |
+| TST-MST-024 | P0 | DB/API | Stocktake sebelum cutover, di luar scope, gagal, unapproved, atau unposted. | Tidak membuat verification application. |
+| TST-MST-025 | P0 | DB/API | Duplicate stocktake posting/replay. | Satu first-verification effect per opening-balance line. |
+| TST-MST-026 | P0 | DB/API | Verification drill-down dibaca. | Link stocktake, approval, posting line, count attempt, actor/process, dan ledger boundary lengkap. |
+| TST-MST-027 | P0 | DB/API/E2E | Exact opening-balance reversal. | Product, batch, bucket, dan quantity asal dibalik; history serta verification tetap ada. |
+| TST-MST-028 | P0 | DB/API | Reversal menyebabkan negative bucket atau reserved conflict. | Diblokir; tidak ada transaction, ledger, application, atau idempotency effect. |
+| TST-MST-029 | P0 | E2E | Refresh setelah posting, verification, dan reversal. | Feedback, status, audit detail, dan link stocktake/replacement tetap tersedia. |
 
 ## Penerimaan Maklon
 
@@ -1657,6 +1670,9 @@ security log where appropriate
 | TST-STK-022 | P1 | E2E | Mobile count flow. | Task dapat selesai tanpa horizontal scroll utama. |
 | TST-STK-023 | P1 | E2E | Movement breakdown. | Setiap agregat dapat dibuka ke ledger. |
 | TST-STK-024 | P0 | API/DB | Cancel sesi sebelum post. | Hold dilepas; snapshot/attempt tetap historis. |
+| TST-STK-025 | P0 | API/DB | Zero-variance posting line cocok dengan opening balance unverified. | Tidak ada adjustment ledger; verification evidence tetap terbentuk. |
+| TST-STK-026 | P0 | API/DB | Nonzero variance posting line cocok dengan opening balance unverified. | Satu ordinary `STOCKTAKE_ADJUSTMENT` dan satu stock-neutral verification application. |
+| TST-STK-027 | P0 | DB | Verification insert gagal pada salah satu line multi-line. | Seluruh stocktake posting dan verification rollback atomik. |
 
 ## Rekonsiliasi
 

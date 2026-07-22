@@ -1759,20 +1759,26 @@ projection vs ledger
 
 ## 51. Initial Balance
 
-Stocktake pertama dapat mengoreksi initial balance.
+Saldo awal production yang berasal dari estimasi tetap `UNVERIFIED` setelah `INITIAL_BALANCE` diposting. Stok opname pertama memegang dua tanggung jawab yang berbeda:
 
-Reason:
+1. memverifikasi bahwa exact product, batch, dan bucket telah dihitung fisik;
+2. memposting koreksi hanya bila variance nonnol.
+
+Reason untuk variance yang berasal dari estimasi saldo awal:
 
 ```text
 INITIAL_BALANCE_UNCERTAIN
 ```
 
-Tetapi:
+Aturan:
 
-- saldo awal lama tetap ada;
-- adjustment baru diposting;
-- evidence stocktake disimpan;
-- source story tetap dapat ditelusuri.
+- first successfully posted stocktake setelah cutover dengan exact organization/product/batch/bucket scope membuat satu immutable verification application;
+- zero variance tetap memverifikasi, tetapi tidak membuat ledger entry;
+- nonzero variance memverifikasi dan tetap memakai ordinary `STOCKTAKE_ADJUSTMENT`;
+- partial scope hanya mengubah cutover menjadi `PARTIALLY_VERIFIED`;
+- count sebelum cutover, di luar scope, gagal, belum approved, atau belum posted tidak memverifikasi;
+- saldo awal lama, approval, posting, count attempt, adjustment, dan evidence tetap ada serta saling tertaut;
+- kesalahan pada opening-balance document sendiri dikoreksi melalui exact reversal dan replacement, bukan dengan mengedit ledger awal.
 
 ---
 

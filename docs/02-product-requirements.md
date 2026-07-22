@@ -443,6 +443,7 @@ Posting cutover menghasilkan movement `INITIAL_BALANCE` untuk setiap baris berni
 - Movement memiliki referensi sesi cutover.
 - Posting atomik: seluruh baris berhasil atau seluruhnya gagal.
 - Setelah posting, data tidak dapat diedit langsung.
+- Setiap baris positif mulai dengan status verifikasi `UNVERIFIED`.
 
 ### CUT-004 - Rekonsiliasi spreadsheet lama
 
@@ -454,6 +455,34 @@ Sistem dapat menyimpan angka spreadsheet lama sebagai pembanding tanpa menjadika
 
 - Laporan menampilkan angka lama, hitung fisik, dan selisih.
 - Selisih awal tidak disembunyikan melalui edit saldo.
+
+### CUT-005 - Verifikasi melalui stok opname pertama
+
+**Prioritas:** Must
+
+Baris saldo awal positif tetap berupa estimasi sampai stok opname pertama yang memenuhi exact organization, product, batch, dan bucket scope berhasil diposting setelah cutover.
+
+**Acceptance criteria:**
+
+- Verifikasi membuat immutable evidence yang menautkan opening-balance line, stocktake, approval version, posting, posting line, dan count attempt.
+- Zero variance tetap memverifikasi tanpa membuat adjustment ledger entry.
+- Stok opname sebelum cutover, di luar scope, gagal, belum disetujui, atau belum diposting tidak memverifikasi.
+- Satu opening-balance line hanya menerima satu first-verification effect.
+- Cutover menampilkan `UNVERIFIED`, `PARTIALLY_VERIFIED`, atau `VERIFIED` berdasarkan seluruh baris positif.
+
+### CUT-006 - Koreksi saldo awal posted
+
+**Prioritas:** Must
+
+Kesalahan saldo awal posted diperbaiki melalui exact reversal dan, bila diperlukan, cutover pengganti.
+
+**Acceptance criteria:**
+
+- Preview reversal menampilkan dampak kebalikan untuk product, batch, bucket, dan quantity asal tanpa FEFO atau substitusi.
+- Reversal yang menyebabkan saldo negatif atau reserved quantity melebihi sellable ditolak.
+- Original cutover, ledger entries, verification evidence, dan reversal linkage tetap immutable.
+- Duplicate reversal menghasilkan paling banyak satu domain effect.
+- Cutover pengganti hanya dapat diposting setelah active cutover sebelumnya direversal secara terkontrol.
 
 ## 13. Requirement Penerimaan Barang
 
@@ -1234,7 +1263,7 @@ Koreksi hanya dapat disetujui Admin.
 
 **Prioritas:** Must
 
-Posting membuat movement adjustment per baris selisih.
+Posting membuat movement `STOCKTAKE_ADJUSTMENT` per baris selisih nonnol.
 
 **Acceptance criteria:**
 
@@ -1242,6 +1271,8 @@ Posting membuat movement adjustment per baris selisih.
 - Ledger sebelum posting tidak diubah.
 - Sesi menjadi read-only setelah posted.
 - Seluruh movement mereferensikan sesi opname.
+- Baris zero variance tidak membuat movement, tetapi tetap menyimpan count, approval, posting line, dan dapat memverifikasi opening balance.
+- Verifikasi opening balance terpisah dari quantity adjustment dan tidak boleh membuat movement tambahan.
 
 ### STK-010 - Laporan opname
 
