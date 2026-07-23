@@ -77,12 +77,19 @@ YYYY-MM-DD
 - `[Migration][Implemented]` Menambahkan cutover saldo awal immutable dengan lifecycle `DRAFT -> REVIEW -> POSTED`, preview authoritative, posting `INITIAL_BALANCE` atomik, first-stocktake verification evidence, dan exact reversal.
 - `[Implemented]` Menambahkan workflow Admin `/opening-balances` untuk draft, review, preview, posting, per-line verification drill-down, reversal, dan cutover pengganti.
 - `[Testing]` Menambahkan pgTAP `046` sampai `048` serta smoke `test:opening-balance-ui` dan `test:opening-balance-verification-ui`.
+- `[Migration][Implemented]` Menambahkan registry listing marketplace channel-specific, mapping `SINGLE`, recipe bundle versioned, effective boundary, deterministic fingerprint, immutable source-line/component snapshot, dan authoritative normalization melalui migration `202607220013` sampai `202607220016`.
+- `[Implemented]` Menambahkan workflow Admin `/marketplace/listings` untuk membuat listing, mengelola draft recipe, preview expansion, aktivasi, retirement, archive, histori versi, blocker, optimistic concurrency, dan feedback persisten.
+- `[Implemented][Demo]` Mengubah simulator marketplace agar menerima external listing code dan listing quantity, kemudian memakai normalized event contract yang sama dengan adapter CSV/API/webhook masa depan.
+- `[Testing]` Menambahkan pgTAP `049` sampai `052`, smoke `test:marketplace-listing-admin-ui`, dan regression smoke `test:marketplace-listing-simulator-ui`.
 
 ### Changed
 
 - `[Specification]` Menetapkan saldo awal estimasi tetap `UNVERIFIED` sampai stok opname pertama yang memenuhi exact organization/product/batch/bucket scope diposting.
 - `[Specification]` Memisahkan verifikasi fisik dari quantity adjustment: zero variance dapat memverifikasi tanpa membuat ledger movement.
 - `[Specification]` Menetapkan koreksi saldo awal melalui exact reversal dan dokumen pengganti, bukan edit atau delete histori.
+- `[Specification]` Menetapkan adapter marketplace memakai external listing identity, sedangkan mapping dan bundle expansion dilakukan oleh domain sebelum reservasi atau efek stok.
+- `[Specification]` Menetapkan order lama mempertahankan recipe version, mapping fingerprint, dan component snapshot yang dipakai saat ingestion; perubahan recipe hanya berlaku untuk event pada effective period baru.
+- `[Specification]` Menetapkan bundle tidak pernah memiliki stok, batch, reservation, allocation, transaction, ledger entry, atau projection sendiri.
 
 ### Deprecated
 
@@ -98,7 +105,7 @@ YYYY-MM-DD
 
 ### Security
 
-- Belum ada perubahan yang dicatat.
+- `[Security]` Menambahkan organization-scoped RLS, trusted RPC boundaries, fixed `search_path`, direct-write denial, stale row-version protection, dan credential-safe local smoke untuk lifecycle marketplace listing.
 
 ---
 

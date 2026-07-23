@@ -1021,6 +1021,8 @@ supabase db reset
 supabase test db
 pnpm test:opening-balance-ui
 pnpm test:opening-balance-verification-ui
+pnpm test:marketplace-listing-admin-ui
+pnpm test:marketplace-listing-simulator-ui
 pnpm build
 pnpm test:e2e --grep @smoke
 ```
@@ -1403,11 +1405,11 @@ Status berikut menggambarkan source pada branch saat ini. Status ini bukan pengg
 |---|---|---|---|
 | Identitas dan Admin Auth | **Implemented** | Login/logout, session server-only, validasi profil aktif `ADMIN`, proteksi route, dan audit actor individual | UI pengelolaan akun Admin |
 | Shared Admin shell | **Implemented** | Sidebar desktop, navigasi mobile, active route, organisasi, mode aplikasi, akun, logout, serta unread badge Notification Center berbasis data live | Status rekonsiliasi global berbasis data live |
-| Produk dan batch | **Partial** | Schema, seed, read model, posisi produk/batch, dan pilihan transaksi | CRUD master data, pengarsipan, detail batch, bundle, dan mapping listing |
+| Produk dan batch | **Partial** | Schema, seed, read model, posisi produk/batch, pilihan transaksi, serta referensi produk untuk listing `SINGLE` dan komponen bundle | CRUD master data, pengarsipan, dan detail batch |
 | Ledger dan projection | **Implemented** | Ledger append-only, idempotent posting, bucket fisik, serta projection produk dan batch | Drill-down lengkap, reversal umum, damaged disposal, dan expired disposal melalui Admin UI |
 | Opening balance cutover | **Implemented** | Cutover draft/review/post, preview authoritative, `INITIAL_BALANCE` atomik, status `UNVERIFIED` sampai first-stocktake evidence, zero-variance verification, per-line audit linkage, exact reversal, dan replacement control melalui Admin UI | CSV import opsional dan penyempurnaan laporan cutover |
 | Receipt dan manual outbound | **Implemented** | Receipt dari maklon, outbound manual dengan reason/channel, dan alokasi FEFO | Preview/reversal receipt dan workflow disposal khusus |
-| Marketplace lifecycle | **Implemented** | Reservasi, partial pre-shipment release, partial post-shipment exact linked reversal, trigger shipment, physical outbound FEFO, cancellation preview/confirmation Admin, dan simulator Admin | CSV import serta penyelesaian bundle/listing flow |
+| Marketplace lifecycle | **Implemented** | Registry listing `SINGLE`/`BUNDLE`, recipe versioned, normalisasi external listing menjadi snapshot komponen kanonis sebelum reservasi, FEFO shipment, partial cancellation, exact linked reversal, lifecycle Admin, dan simulator normalized | CSV import serta integrasi API/webhook Shopee dan TikTok Shop |
 | Return dan claim | **Partial** | Expected return stock-neutral, receipt operasional tanpa ledger, inspeksi sellable sebagai inbound idempoten ke batch `RETURN` baru, damaged/lost tanpa movement kedua, partial item, provenance batch asal, dan lost return | Claim reminder, overdue, late-arrival administration, dan claim lifecycle lengkap |
 | Stocktake | **Implemented** | Create, prepare, continuous count, blind/non-blind count, review, approval immutable, posting adjustment, dan audit linkage | Frozen mode dan penyempurnaan UX lanjutan |
 | Reconciliation | **Implemented** | Manual run, delapan integrity checks, issue, evidence, history, Admin UI, serta alert Notification Center untuk issue dan run failure | Scheduled daily run production |
@@ -1439,7 +1441,7 @@ Minimum:
 - [x] FEFO split.
 - [x] Pembatalan parsial sebelum dan sesudah outbound. Pre-shipment hanya melepaskan reservasi; post-shipment memulihkan quantity dan batch shipment asli melalui exact linked reversal tanpa FEFO ulang atau return otomatis.
 - [x] Manual outbound dengan reason/channel.
-- [ ] Bundle expansion.
+- [x] Bundle expansion: external listing dinormalisasi melalui mapping versioned menjadi snapshot produk satuan sebelum reservasi, FEFO, cancellation, reversal, dan return; bundle tidak memiliki stok atau ledger sendiri.
 - [x] Return expected.
 - [x] Return receipt operasional tanpa perubahan stok.
 - [x] Return inspection: sellable inbound ke batch `RETURN` baru; damaged tanpa movement stok kedua.

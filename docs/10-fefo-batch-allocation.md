@@ -3,7 +3,7 @@ File: 10-fefo-batch-allocation.md
 Project: Sistem Rekonsiliasi Stok
 Status: Phase 2 synced FEFO contract
 Version: 1.1.0
-Last updated: 2026-07-18
+Last updated: 2026-07-23
 Language: id-ID
 Timezone: Asia/Jakarta
 Role model: ADMIN only
@@ -2999,3 +2999,22 @@ zero sellable
 Preview hanya memberi perkiraan. Commit menghitung ulang dan mengunci row. `SKIP LOCKED` tidak digunakan untuk FEFO normal karena batch terdekat tidak boleh dilompati hanya karena sedang sibuk selama beberapa milidetik. Sistem persediaan tidak sedang memilih antrean kasir tercepat; ia sedang mempertahankan aturan batch dan jejak fisik.
 
 Allocation historis immutable. Kesalahan diperbaiki melalui reversal dan repost. Setiap quantity yang keluar dapat ditelusuri dari source line ke allocation, batch, stock transaction, ledger, dan reconciliation evidence.
+
+---
+
+## FEFO Setelah Marketplace Listing Normalization
+
+FEFO tidak pernah berjalan pada entity bundle. Urutan marketplace yang berlaku:
+
+```text
+external listing
+-> effective mapping/recipe version
+-> canonical product component snapshot
+-> reservation per product
+-> FEFO allocation per product
+-> ledger outbound per batch
+```
+
+Untuk listing quantity lebih dari satu, kebutuhan produk dihitung lebih dahulu dengan `listing_quantity × component_quantity`. Setelah ekspansi berhasil secara atomic, setiap canonical product mengikuti aturan FEFO yang sama dengan produk satuan lain.
+
+Recipe version tidak memengaruhi sorting batch. Historical order tetap menggunakan component snapshot lama meskipun version listing baru sudah aktif. Pembatalan pasca-shipment tidak menjalankan FEFO ulang dan memulihkan exact batch allocation dari shipment asli.

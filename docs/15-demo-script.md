@@ -3,7 +3,7 @@ File: 15-demo-script.md
 Project: Sistem Rekonsiliasi Stok
 Status: Phase 2 synced live-demo contract
 Version: 1.1.0
-Last updated: 2026-07-18
+Last updated: 2026-07-23
 Language: id-ID
 Timezone: Asia/Jakarta
 Application role model: ADMIN only
@@ -2517,3 +2517,24 @@ Jika penonton hanya mengingat satu hal, biarkan itu menjadi ini:
 > **Sistem tidak sekadar menunjukkan berapa stok yang tersisa. Sistem menunjukkan bagaimana angka tersebut terbentuk dan di mana selisih harus dicari.**
 
 Itulah inti proyek. Sisanya adalah tombol, form, dan usaha manusia memberi nama resmi pada hal-hal yang seharusnya sejak awal dicatat dengan benar.
+
+---
+
+## Demo Marketplace Listing Versioned
+
+Urutan demo yang telah tersedia:
+
+1. Buka `/marketplace/listings`.
+2. Buat listing bundle untuk channel marketplace dan isi external listing code.
+3. Buat draft version dengan dua produk satuan dan positive integer quantity.
+4. Jalankan preview untuk membuktikan expansion stock-neutral dan lihat basis hash.
+5. Aktifkan version dengan effective time eksplisit.
+6. Buka `/marketplace`, pilih external listing code tersebut, lalu reserve listing quantity.
+7. Tunjukkan source listing line, mapping version, fingerprint, dan immutable canonical component snapshots.
+8. Buat dan aktifkan version kedua pada boundary baru.
+9. Buktikan order lama tetap memakai version pertama dan order baru memakai version kedua.
+10. Jalankan shipment untuk memperlihatkan FEFO per component.
+11. Jalankan partial cancellation untuk memperlihatkan reservation release dan exact post-shipment reversal.
+12. Archive listing dan tunjukkan histori order/version tetap tersedia.
+
+Jangan mendemokan bundle sebagai stok tersendiri dan jangan memasukkan internal product UUID pada simulator. Seluruh cleanup harus melalui normalized cancellation/reversal command, bukan update SQL manual.

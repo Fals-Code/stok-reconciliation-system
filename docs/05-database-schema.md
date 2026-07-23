@@ -2414,3 +2414,22 @@ Dokumen tersebut harus menetapkan:
 ---
 
 **Status dokumen:** baseline implementasi. Perubahan yang memengaruhi invariant ledger, FEFO, reservasi, idempotensi, atau rekonsiliasi harus melalui review lintas dokumen sebelum migration digabungkan.
+
+---
+
+## Schema Marketplace Listing Versioned yang Telah Diimplementasikan
+
+Migration `202607220013` sampai `202607220016` menambahkan kontrak berikut:
+
+- `catalog.marketplace_listings`;
+- `catalog.marketplace_single_listing_versions`;
+- integrasi versioned `catalog.bundle_recipes` dan `catalog.bundle_components`;
+- `operations.marketplace_normalization_events`;
+- `operations.marketplace_source_lines`;
+- `operations.marketplace_source_line_components`;
+- read model `api.marketplace_listing_catalog`, listing versions, recipe components, normalization trace, dan canonical component lifecycle;
+- trusted RPC untuk create/save draft, preview activation, activate, retire, archive, preview expansion, normalized reserve, shipment, cancellation, dan downstream lookup.
+
+Semua data organisasi dibatasi dengan RLS/read contract yang sesuai. Direct mutation oleh browser ditolak. Mutation memakai trusted function dengan fixed `search_path`, optimistic row version, idempotency identity, payload hash, dan atomic rollback.
+
+Effective period memakai boundary setengah terbuka `[effective_from, effective_to)`. Aktivasi version baru menutup version lama tepat pada boundary tersebut tanpa menulis ulang snapshot order historis.

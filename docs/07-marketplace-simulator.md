@@ -3,7 +3,7 @@ File: 07-marketplace-simulator.md
 Project: Sistem Rekonsiliasi Stok
 Status: Phase 2 synced simulator contract
 Version: 1.1.0
-Last updated: 2026-07-18
+Last updated: 2026-07-23
 Language: id-ID
 Timezone: Asia/Jakarta
 Role model: ADMIN only
@@ -2772,3 +2772,34 @@ Simulator:
 - dinonaktifkan pada production secara default.
 
 Dengan desain ini, tombol simulator dapat dibuang ketika API marketplace asli tersedia tanpa membongkar reservasi, FEFO, ledger, retur, dan rekonsiliasi. Sebuah pergantian adapter yang membosankan, sebagaimana mestinya. Sistem stok tidak membutuhkan plot twist.
+
+---
+
+## Status Implementasi Normalized Listing Adapter 2026-07-23
+
+Simulator sekarang memakai boundary yang setara dengan adapter marketplace masa depan:
+
+```text
+channel
+externalEventRef
+externalOrderRef
+sourceLineRef
+externalListingCode
+listingQuantity
+sourceStatus
+occurredAt
+receivedAt
+rawPayload/hash
+metadata/schemaVersion
+```
+
+Simulator tidak menentukan product atau bundle component. Domain resolver memilih mapping version berdasarkan event time, mengekspansi listing menjadi canonical product components, menyimpan immutable snapshots, lalu menyerahkan produk satuan ke reservation dan lifecycle berikutnya.
+
+Perubahan recipe melalui version baru hanya memengaruhi event pada effective period baru. Order lama tetap menunjuk mapping version, fingerprint, dan component snapshot lama. Duplicate reserve/shipment replay tidak menggandakan reservation, event, allocation, atau ledger effect.
+
+Focused commands:
+
+```text
+npm run test:marketplace-listing-admin-ui
+npm run test:marketplace-listing-simulator-ui
+```
