@@ -25,7 +25,7 @@ function formatNumber(value: number) {
 }
 
 function formatDate(value: string | null, includeTime = false) {
-  if (!value) return "â€”";
+  if (!value) return "—";
 
   return new Intl.DateTimeFormat("id-ID", {
     timeZone: "Asia/Jakarta",
@@ -104,9 +104,9 @@ function listingTone(listing: MarketplaceListingCatalogRow): PillTone {
 
 function componentLabel(component: MarketplaceListingComponentLifecycle) {
   return (
-    `${component.channel_code} Â· ${component.external_order_ref} Â· ` +
-    `${component.external_listing_code_snapshot} v${component.mapping_version} Â· ` +
-    `C${component.component_no} ${component.product_sku_snapshot} Â· ` +
+    `${component.channel_code} · ${component.external_order_ref} · ` +
+    `${component.external_listing_code_snapshot} v${component.mapping_version} · ` +
+    `C${component.component_no} ${component.product_sku_snapshot} · ` +
     `open ${formatNumber(component.open_reserved_quantity)}`
   );
 }
@@ -227,6 +227,12 @@ export default async function MarketplacePage({
           <div className="mt-5 flex flex-wrap gap-3">
             <Link
               className="primary-button inline-flex"
+              href="/marketplace/listings"
+            >
+              Kelola listing dan resep
+            </Link>
+            <Link
+              className="nav-link inline-flex"
               href="/marketplace/cancellations"
             >
               Kelola pembatalan parsial
@@ -320,9 +326,9 @@ export default async function MarketplacePage({
                           listingType: listing.listing_type_code,
                         })}
                       >
-                        {listing.channel_code} Â· {listing.external_listing_code} Â·{" "}
-                        {listing.display_name} Â· {listing.listing_type_code} Â· v
-                        {listing.current_version ?? "â€”"}
+                        {listing.channel_code} · {listing.external_listing_code} ·{" "}
+                        {listing.display_name} · {listing.listing_type_code} · v
+                        {listing.current_version ?? "—"}
                       </option>
                     ))}
                   </select>
@@ -487,7 +493,7 @@ export default async function MarketplacePage({
                     <div className="flex items-start justify-between gap-3">
                       <div>
                         <p className="font-mono text-xs text-slate-400">
-                          {listing.channel_code} Â· {listing.external_listing_code}
+                          {listing.channel_code} · {listing.external_listing_code}
                         </p>
                         <p className="mt-2 font-medium text-white">
                           {listing.display_name}
@@ -499,8 +505,8 @@ export default async function MarketplacePage({
                       />
                     </div>
                     <p className="mt-3 text-xs text-slate-500">
-                      {listing.listing_type_code} Â· current version{" "}
-                      {listing.current_version ?? "â€”"} Â· draft{" "}
+                      {listing.listing_type_code} · current version{" "}
+                      {listing.current_version ?? "—"} · draft{" "}
                       {listing.draft_version_count}
                     </p>
                   </article>
@@ -586,7 +592,7 @@ export default async function MarketplacePage({
                         </td>
                         <td>
                           <Pill
-                            label={`${row.reservation_status_code} Â· open ${formatNumber(
+                            label={`${row.reservation_status_code} · open ${formatNumber(
                               Number(row.reserved_qty) -
                                 Number(row.consumed_qty) -
                                 Number(row.released_qty),
@@ -757,7 +763,7 @@ export default async function MarketplacePage({
                         <td className="font-mono text-xs text-slate-400">
                           {event.transaction_id ?? "non-physical"}
                         </td>
-                        <td>{event.note ?? "â€”"}</td>
+                        <td>{event.note ?? "—"}</td>
                       </tr>
                     ))
                   )}
