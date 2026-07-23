@@ -2538,3 +2538,24 @@ Urutan demo yang telah tersedia:
 12. Archive listing dan tunjukkan histori order/version tetap tersedia.
 
 Jangan mendemokan bundle sebagai stok tersendiri dan jangan memasukkan internal product UUID pada simulator. Seluruh cleanup harus melalui normalized cancellation/reversal command, bukan update SQL manual.
+
+---
+
+## Demo Product dan Batch Master Data
+
+Gunakan data bernama jelas untuk gudang, bukan UUID.
+
+1. Login sebagai Admin dan buka `Master Data > Produk` (`/products`).
+2. Buat Product dengan SKU, nama, dan unit `UNIT`.
+3. Buka detail Product, lalu buat Batch kind `STANDARD` dengan kode Batch dan expiry date.
+4. Tunjukkan bahwa create master data bersifat stock-neutral: bucket, reserved, dan available belum berubah tanpa transaksi ledger.
+5. Edit atribut Product yang diizinkan; jelaskan bahwa `row_version` mencegah overwrite perubahan Admin lain.
+6. Block Batch dengan alasan, tunjukkan Batch tidak FEFO eligible, lalu unblock selama Batch masih valid.
+7. Koreksi expiry dengan alasan setelah ada history dan buka audit untuk menunjukkan nilai before/after serta actor/waktu.
+8. Archive Product atau Batch, lalu reactivate dengan alasan yang sah; tidak ada delete dan tidak ada edit stok langsung.
+9. Tunjukkan entity archived tidak muncul pada selector transaksi baru, tetapi detail dan audit historisnya tetap dapat dibuka.
+10. Tunjukkan FEFO otomatis: operator memilih Product/quantity, bukan Batch. Hanya Product aktif, Batch `ACTIVE`, non-expired, dan saldo `SELLABLE` yang menjadi kandidat.
+11. Jelaskan tiga dimensi terpisah: lifecycle Batch (`ACTIVE`, `BLOCKED`, `EXPIRED`, `ARCHIVED`), bucket fisik (`SELLABLE`, `QUARANTINE`, `DAMAGED`), dan kind (`STANDARD`, `RETURN`, `UNIDENTIFIED_RETURN`).
+12. Tegaskan bahwa Admin hanya membuat `STANDARD`; `RETURN` dibuat oleh return inspection dan `UNIDENTIFIED_RETURN` hanya exception sah.
+13. Refresh detail untuk memperlihatkan feedback/audit persisten dan angka read model tetap konsisten.
+14. Tutup dengan guardrail: Product inactive, Batch blocked/archived/effectively expired tidak masuk transaksi baru, sedangkan history, return historis, dan exact reversal tetap memiliki jalur yang sah.

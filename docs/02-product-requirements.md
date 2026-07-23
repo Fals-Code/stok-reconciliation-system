@@ -144,6 +144,8 @@ Bahasa, urutan langkah, dan pesan kesalahan harus menggunakan istilah bisnis yan
 | Available | Sellable dikurangi reserved aktif |
 | Quarantine | Barang yang belum boleh dijual karena menunggu inspeksi atau identifikasi |
 | Damaged | Barang rusak yang secara fisik masih berada di gudang |
+| Lifecycle Batch | Keadaan master Batch: `ACTIVE`, `BLOCKED`, `EXPIRED`, atau `ARCHIVED` |
+| Batch kind | Klasifikasi asal Batch: `STANDARD`, `RETURN`, atau `UNIDENTIFIED_RETURN` |
 | FEFO | First Expired, First Out; batch dengan kedaluwarsa terdekat digunakan lebih dahulu |
 | Event kanonis | Bentuk standar kejadian marketplace setelah sumber asli dinormalisasi |
 | Idempotency key | Identitas unik untuk mencegah kejadian yang sama diproses dua kali |
@@ -315,17 +317,18 @@ Pengguna dapat melihat identitas, organisasi, status akun, dan role dirinya.
 
 Admin dapat membuat produk dengan minimal:
 
-- SKU unik.
+- SKU unik setelah normalisasi whitespace/case.
 - Nama produk.
-- Satuan dasar `unit`.
+- Satuan dasar `UNIT`.
 - Status aktif.
 - Catatan opsional.
 
 **Acceptance criteria:**
 
-- SKU kosong atau duplikat ditolak.
+- SKU kosong atau duplikat setelah normalisasi ditolak.
 - Produk baru tidak memiliki saldo sampai ada movement.
 - Pembuatan produk tercatat pada audit trail.
+- Command memakai idempotency key dan `row_version` pada perubahan berikutnya.
 
 ### PRD-002 - Mengubah produk
 
@@ -335,7 +338,7 @@ Admin dapat mengubah atribut non-historis produk.
 
 **Acceptance criteria:**
 
-- Perubahan SKU setelah produk memiliki transaksi memerlukan konfirmasi khusus atau dilarang sesuai keputusan implementasi.
+- Perubahan SKU setelah produk memiliki authoritative history ditolak.
 - Perubahan nama tidak mengubah histori movement.
 - Nilai sebelum dan sesudah tersimpan pada audit event.
 
@@ -350,6 +353,7 @@ Produk yang pernah memiliki transaksi tidak boleh dihapus permanen melalui UI.
 - Produk diarsipkan menjadi tidak aktif.
 - Produk tidak aktif tidak dapat digunakan pada transaksi baru.
 - Histori tetap dapat dibuka.
+- Produk dapat direactivate bila identitas SKU tidak berbenturan.
 
 ### BAT-001 - Membuat batch
 
@@ -361,30 +365,36 @@ Admin dapat membuat batch dengan:
 - Kode batch.
 - Tanggal kedaluwarsa.
 - Tanggal penerimaan pertama bila tersedia.
-- Status batch.
+- Manufactured date opsional dan first-received date bila diketahui.
+- Lifecycle Batch.
 
 **Acceptance criteria:**
 
 - Kombinasi produk dan kode batch harus unik.
 - Tanggal kedaluwarsa wajib untuk produk yang dikelola pada fase 1.
 - Pembuatan batch tidak menambah stok tanpa posting penerimaan atau saldo awal.
+- Admin hanya dapat membuat kind `STANDARD`; `RETURN` dibuat return inspection dan `UNIDENTIFIED_RETURN` hanya exception sah.
+- Link Product dan kind tidak dapat diubah setelah Batch dibuat.
+- Manufactured date setelah expiry ditolak.
 
 ### BAT-002 - Status batch
 
 **Prioritas:** Must
 
-Batch harus mendukung sedikitnya status:
+Lifecycle Batch harus mendukung:
 
 - `ACTIVE`.
 - `BLOCKED`.
-- `QUARANTINED`.
-- `EXPIRED` sebagai status turunan atau efektif berdasarkan tanggal.
+- `EXPIRED` sebagai lifecycle/effective state sesuai kontrak master.
 - `ARCHIVED`.
+
+`QUARANTINE` bukan status Batch; ia bucket fisik bersama `SELLABLE` dan `DAMAGED`. Batch kind juga terpisah: `STANDARD`, `RETURN`, dan `UNIDENTIFIED_RETURN`.
 
 **Acceptance criteria:**
 
-- Batch blocked, quarantined, expired, atau archived tidak dapat dialokasikan untuk penjualan.
+- Batch blocked, effective-expired, atau archived tidak dapat dialokasikan untuk penjualan.
 - Perubahan status tercatat dengan actor, waktu, dan alasan.
+- Koreksi expiry setelah authoritative history memerlukan alasan dan menyimpan before/after audit.
 
 ### BAT-003 - Detail batch
 
@@ -399,12 +409,13 @@ Halaman detail batch harus menampilkan:
 - Available.
 - Riwayat movement.
 - Referensi transaksi terkait.
+- Lifecycle, kind, effective expiry, FEFO eligibility, dan audit before/after.
 
 ### BAT-004 - Penelusuran batch
 
 **Prioritas:** Must
 
-Pengguna dapat mencari batch berdasarkan SKU, nama produk, kode batch, dan rentang kedaluwarsa.
+Pengguna dapat mencari/filter batch berdasarkan SKU, nama produk, kode batch, lifecycle, dan rentang kedaluwarsa. Product/Batch historis yang archived tetap dapat dibaca, tetapi tidak menjadi pilihan transaksi baru.
 
 ## 12. Requirement Saldo Awal dan Cutover
 

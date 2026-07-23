@@ -2827,3 +2827,31 @@ pgTAP                     52 files, 2766 tests, PASS
 ```
 
 Smoke fixture bersifat append-only. Database suite yang memakai global count harus dijalankan pada baseline bersih setelah `npx supabase db reset`; reset tersebut menghapus data dan Auth lokal tetapi tidak mengubah Git.
+
+---
+
+## Coverage Product dan Batch Master Data
+
+Coverage implementasi tersedia pada `supabase/tests/053_product_batch_master_data.test.sql`, `supabase/tests/054_product_batch_integration_guardrails.test.sql`, dan `scripts/test-product-batch-admin-ui.mjs`.
+
+Skenario database dan smoke mencakup:
+
+- Product create/update/archive/reactivate, duplicate normalized SKU, stale Product version, SKU lock setelah authoritative history, audit immutable, idempotency, organization isolation, dan mutasi master yang stock-neutral.
+- Batch `STANDARD` creation, kind manual invalid, duplicate normalized Batch code, tanggal manufacture/expiry invalid, Product linkage dan kind immutable, expiry correction reason/audit before-after, block/unblock, archive/reactivate, effective expiry, serta nilai bucket/reserved/available/status/FEFO dari `api.product_batch_master`.
+- Guardrail transaksi baru untuk Receipt, Opening Balance, FEFO/manual outbound, Marketplace bundle component, Stocktake, Return, dan exact reversal: Product inactive atau Batch archived/effectively expired ditolak pada boundary yang relevan, sementara historical detail/reversal tetap terbaca dan dapat diselesaikan.
+- Stocktake tetap melihat saldo fisik master archived; `SELLABLE`, `QUARANTINE`, dan `DAMAGED` diuji sebagai bucket terpisah. FEFO mengecualikan Batch blocked, archived, dan effectively expired.
+- Replay idempotent, atomic rollback, ledger/projection consistency, dan repeatability smoke tanpa kontaminasi projection baru.
+
+Baseline validasi saat coverage ini ditambahkan mencatat:
+
+```text
+Product checks                  23
+Batch checks                    30
+Product/Batch smoke             53
+Opening Balance smoke           51
+Manual Outbound smoke           48
+Marketplace Listing Admin smoke 50
+Database suite                  54 files, 2933 tests, PASS
+```
+
+Angka tersebut adalah snapshot baseline, bukan batas permanen. Coverage boleh bertambah; seluruh smoke terkait dan database suite wajib PASS pada state setelah smoke.

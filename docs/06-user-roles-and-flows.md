@@ -651,6 +651,10 @@ Produk dengan histori tidak dihapus. Produk diarsipkan sehingga:
 - `FLOW-PRD-004`: Pengarsipan tercatat pada audit.
 - `FLOW-PRD-005`: Search mendukung SKU dan nama produk.
 
+### 13.5 Detail, Edit, dan Reactivate
+
+Halaman `/products` menyediakan pencarian dan filter Product. Dari detail Product, Admin dapat melihat Batch terkait dan membuat Batch `STANDARD`; Product inactive atau archived tidak muncul sebagai pilihan transaksi baru. Admin dapat mengubah atribut yang diizinkan menggunakan `row_version`, mengarsipkan dengan alasan, lalu reactivate bila identitasnya masih valid. Semua aksi menyimpan audit immutable dan feedback persisten. Riwayat transaksi tetap membuka Product archived, sehingga operator tidak kehilangan konteks transaksi lama.
+
 ---
 
 ## 14. Flow 04: Membuat Batch
@@ -666,7 +670,7 @@ Mendaftarkan identitas batch dan tanggal kedaluwarsa yang akan digunakan ledger 
 3. Admin memasukkan batch code dan expiry date.
 4. Sistem memvalidasi kombinasi produk + batch code.
 5. Admin menyimpan batch.
-6. Batch tersedia untuk penerimaan dan saldo awal.
+6. Sistem membuka detail Batch; Batch tidak memperoleh saldo hanya karena dibuat.
 
 ### 14.3 Guardrail
 
@@ -675,13 +679,28 @@ Mendaftarkan identitas batch dan tanggal kedaluwarsa yang akan digunakan ledger 
 - batch expired tidak eligible untuk outbound sellable;
 - batch dapat diblokir tanpa menghapus histori;
 - batch yang sudah dipakai tidak boleh dipindah ke produk lain.
+- Admin hanya membuat kind `STANDARD`; `RETURN` berasal dari return inspection dan `UNIDENTIFIED_RETURN` adalah exception sah.
+- `QUARANTINE` adalah bucket fisik, bukan status Batch.
 
-### 14.4 Acceptance Criteria
+### 14.4 Detail dan Lifecycle
+
+Di detail Batch, Admin dapat mencari/filter Batch dari detail Product, melihat lifecycle, kind, effective expiry, bucket `SELLABLE`/`QUARANTINE`/`DAMAGED`, reserved, available, status FEFO, dan audit before/after.
+
+1. Untuk edit atribut yang diizinkan, Admin memakai data `row_version` terbaru. Submit stale ditolak tanpa menimpa perubahan Admin lain.
+2. Untuk mengubah expiry setelah ada authoritative history, Admin mengisi correction reason; audit menyimpan nilai sebelum dan sesudah.
+3. Untuk `BLOCKED`, Admin mengisi alasan. Batch blocked tidak menyediakan aksi transaksi baru yang invalid dan tidak menjadi kandidat FEFO.
+4. Admin dapat unblock bila Batch masih valid; Batch effectively expired tidak dapat di-unblock atau direactivate untuk alokasi baru.
+5. Archive/reactivate tidak menghapus history. Entity archived hilang dari selector transaksi baru, tetapi detail dan audit historis tetap dapat dibaca.
+6. Feedback sukses atau error bertahan setelah redirect/refresh dan memakai bahasa gudang, bukan UUID atau error PostgreSQL mentah.
+
+### 14.5 Acceptance Criteria
 
 - `FLOW-BAT-001`: Kombinasi produk dan batch code unik.
 - `FLOW-BAT-002`: Sistem menampilkan status expired/near-expiry.
 - `FLOW-BAT-003`: Batch blocked tidak ikut FEFO.
 - `FLOW-BAT-004`: Perubahan expiry date setelah transaksi membutuhkan alasan dan audit.
+- `FLOW-BAT-005`: Block/unblock, archive/reactivate, dan refresh tidak mengubah saldo fisik.
+- `FLOW-BAT-006`: Batch archived tetap terbaca pada detail/histori, tetapi tidak selectable untuk transaksi baru.
 
 ---
 

@@ -2433,3 +2433,24 @@ Migration `202607220013` sampai `202607220016` menambahkan kontrak berikut:
 Semua data organisasi dibatasi dengan RLS/read contract yang sesuai. Direct mutation oleh browser ditolak. Mutation memakai trusted function dengan fixed `search_path`, optimistic row version, idempotency identity, payload hash, dan atomic rollback.
 
 Effective period memakai boundary setengah terbuka `[effective_from, effective_to)`. Aktivasi version baru menutup version lama tepat pada boundary tersebut tanpa menulis ulang snapshot order historis.
+
+---
+
+## Schema Product dan Batch Master Data yang Telah Diimplementasikan
+
+Migration `202607230017_product_batch_master_data.sql` menambahkan lifecycle master data yang terpisah dari ledger. `catalog.products` dan `catalog.product_batches` memiliki `row_version` untuk optimistic concurrency; mutasi master tidak membuat entry ledger, balance, projection, atau reservation.
+
+Identitas dinormalisasi oleh `catalog.normalize_master_identifier(text)`. Unique index `uidx_products_org_normalized_sku` membatasi SKU per organisasi, sedangkan `uidx_product_batches_org_product_normalized_code` membatasi kode Batch per organisasi dan Product. Product/Batch tidak dapat dihapus langsung; Product linkage dan Batch kind dilindungi setelah Batch dibuat.
+
+Audit immutable disimpan di `catalog.master_data_audit_events`, dengan index `idx_master_data_audit_entity` dan `idx_master_data_audit_action`. Snapshot before/after merekam create, update, archive/reactivate, block/unblock, serta correction expiry. Read model organisasi tersedia melalui:
+
+- `api.product_master` dan `api.product_batch_master` untuk daftar/detail master dan angka bucket/reserved/available;
+- `api.product_master_audit` dan `api.product_batch_master_audit` untuk histori audit yang tetap dapat dibaca setelah archive.
+
+Command lifecycle memakai sepuluh trusted RPC berikut: `api.create_product`, `api.update_product`, `api.archive_product`, `api.reactivate_product`, `api.create_product_batch`, `api.update_product_batch`, `api.block_product_batch`, `api.unblock_product_batch`, `api.archive_product_batch`, dan `api.reactivate_product_batch`. Command memverifikasi caller dan organization scope, menerima idempotency identity, serta mengembalikan hasil lama untuk replay identik tanpa menggandakan effect.
+
+Migration `202607230018_product_batch_integration_guardrails.sql` menambahkan trigger trusted-boundary `trg_stock_ledger_entries_master_guardrails` melalui `inventory.enforce_new_stock_master_guardrails()` dan `trg_opening_balance_lines_master_guardrails` melalui `operations.enforce_opening_balance_line_master_guardrails()`. Receipt baru hanya menerima Product aktif dan Batch `STANDARD`, lifecycle `ACTIVE`, milik Product yang sama, serta belum effectively expired; Batch `BLOCKED` ditolak sebagai `RECEIPT_BATCH_NOT_ACTIVE`. Opening Balance baru menolak Product inactive, Batch archived/effectively expired, dan kind `RETURN`; `UNIDENTIFIED_RETURN` hanya untuk exception `QUARANTINE` dengan identity belum terverifikasi dan reference exception sesuai kontrak.
+
+`operations.resolve_stocktake_scope(uuid, jsonb, date, bigint)` tetap menghitung bucket fisik `SELLABLE`, `QUARANTINE`, dan `DAMAGED` secara terpisah. Resolver memasukkan master archived yang masih memiliki saldo fisik, tetapi tidak memasukkan master archived bersaldo nol ke scope baru. FEFO eligibility bukan syarat untuk menghitung fisik.
+
+Helper dan trigger internal memakai fixed `search_path`; grant dibuka hanya pada read model/RPC yang diperlukan dan internal helper direvoke dari `PUBLIC`, `anon`, `authenticated`, serta `service_role` sesuai migration. RLS dan trusted caller menjaga organization scoping. Exact reversal, transaksi historis, dan return historis tidak memakai jalur transaksi baru sehingga histori tetap dapat diselesaikan tanpa direct write ke ledger atau projection.

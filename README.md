@@ -244,8 +244,8 @@ Status klaim tidak mengubah stok.
 
 - organisasi;
 - akun Admin;
-- produk;
-- batch;
+- produk dan lifecycle Admin `/products`;
+- batch `STANDARD` dari detail Produk, detail Batch, dan lifecycle-nya;
 - tanggal kedaluwarsa;
 - channel;
 - movement reason;
@@ -949,6 +949,9 @@ pnpm test:e2e
 
 # Demo smoke
 pnpm test:demo
+
+# Focused Product/Batch Admin smoke
+npm run test:product-batch-admin-ui
 ```
 
 Contoh script yang direkomendasikan:
@@ -1405,7 +1408,7 @@ Status berikut menggambarkan source pada branch saat ini. Status ini bukan pengg
 |---|---|---|---|
 | Identitas dan Admin Auth | **Implemented** | Login/logout, session server-only, validasi profil aktif `ADMIN`, proteksi route, dan audit actor individual | UI pengelolaan akun Admin |
 | Shared Admin shell | **Implemented** | Sidebar desktop, navigasi mobile, active route, organisasi, mode aplikasi, akun, logout, serta unread badge Notification Center berbasis data live | Status rekonsiliasi global berbasis data live |
-| Produk dan batch | **Partial** | Schema, seed, read model, posisi produk/batch, pilihan transaksi, serta referensi produk untuk listing `SINGLE` dan komponen bundle | CRUD master data, pengarsipan, dan detail batch |
+| Produk dan batch | **Implemented** | `/products` menyediakan list/search/filter dan detail; Product create/update/archive/reactivate; Batch `STANDARD` create/update/block/unblock/archive/reactivate; optimistic `row_version`, idempotency, immutable audit, balance read model, dan guardrail transaksi baru | CSV import, barcode, pricing, dan multi-warehouse tidak termasuk scope |
 | Ledger dan projection | **Implemented** | Ledger append-only, idempotent posting, bucket fisik, serta projection produk dan batch | Drill-down lengkap, reversal umum, damaged disposal, dan expired disposal melalui Admin UI |
 | Opening balance cutover | **Implemented** | Cutover draft/review/post, preview authoritative, `INITIAL_BALANCE` atomik, status `UNVERIFIED` sampai first-stocktake evidence, zero-variance verification, per-line audit linkage, exact reversal, dan replacement control melalui Admin UI | CSV import opsional dan penyempurnaan laporan cutover |
 | Receipt dan manual outbound | **Implemented** | Receipt dari maklon, outbound manual dengan reason/channel, dan alokasi FEFO | Preview/reversal receipt dan workflow disposal khusus |
@@ -1433,7 +1436,7 @@ Checkbox `[x]` berarti requirement utama telah tersedia pada source saat ini. It
 Minimum:
 
 - [x] Login Admin aktif.
-- [ ] Produk dan batch. **Partial:** schema, seed, projection, dan read model tersedia; Admin CRUD dan detail master data belum lengkap.
+- [x] Produk dan batch. Admin mengelola Product dan Batch `STANDARD` end-to-end tanpa direct database access; setiap mutation stock-neutral, idempoten, stale-safe, dan diaudit.
 - [x] Initial balance melalui ledger: cutover immutable, preview/posting atomik, first-stocktake verification, zero-variance evidence, exact reversal, dan replacement control tersedia.
 - [x] Maklon receipt.
 - [x] Shopee reservation dan `SHIPPED`.
