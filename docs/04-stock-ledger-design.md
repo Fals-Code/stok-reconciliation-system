@@ -1759,3 +1759,24 @@ Jika terdapat konflik:
 2. business rules mengikat perilaku domain;
 3. dokumen ledger ini mengikat desain penyimpanan dan posting;
 4. skema final tidak boleh melemahkan invariant ledger.
+
+---
+
+## Traceability Listing, Bundle, dan Ledger
+
+Marketplace listing dan bundle recipe berada sebelum batas ledger. Normalisasi menghasilkan jalur audit:
+
+```text
+external event
+-> source listing line
+-> mapping/recipe version
+-> canonical product component
+-> reservation
+-> FEFO allocation
+-> stock transaction
+-> ledger entry
+```
+
+Ledger hanya menerima produk satuan dan batch nyata. Tidak ada bundle-level movement. Source-line snapshot, mapping fingerprint, recipe version, component snapshot, reservation, allocation, transaction, dan ledger linkage harus memungkinkan penelusuran dua arah tanpa mengubah entry lama.
+
+Preview listing, draft recipe, aktivasi mapping, retirement, dan archive tidak menulis ledger. Efek fisik baru terjadi ketika canonical component mencapai trigger outbound marketplace yang berlaku. Pembatalan pasca-shipment tetap memakai exact linked reversal terhadap allocation dan ledger shipment asli.

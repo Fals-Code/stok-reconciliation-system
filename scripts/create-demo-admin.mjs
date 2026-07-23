@@ -139,6 +139,33 @@ if (!user) {
   }
 
   user = createPayload;
+} else {
+  const updateResponse = await fetch(
+    `${supabaseUrl}/auth/v1/admin/users/${encodeURIComponent(user.id)}`,
+    {
+      method: "PUT",
+      headers: adminHeaders,
+      body: JSON.stringify({
+        password,
+        email_confirm: true,
+        user_metadata: {
+          ...(user.user_metadata ?? {}),
+          display_name: displayName,
+        },
+      }),
+    },
+  );
+  const updatePayload = await parseResponse(updateResponse);
+
+  if (!updateResponse.ok) {
+    throw new Error(errorMessage(updatePayload, updateResponse));
+  }
+
+  user = updatePayload?.user ?? updatePayload;
+}
+
+if (!user?.id) {
+  throw new Error("Demo Admin tidak menghasilkan user Auth yang valid.");
 }
 
 const bootstrapResponse = await fetch(

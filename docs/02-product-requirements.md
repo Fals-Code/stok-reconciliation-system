@@ -2151,3 +2151,22 @@ Dokumen ini disusun dari:
 - `01-project-brief.md`, terutama prinsip domain, model stok, asumsi, acceptance scenario, risiko, dan guardrail implementasi.
 
 Apabila terjadi konflik, keputusan bisnis eksplisit pada brief sumber memiliki prioritas tertinggi sampai klien menyetujui perubahan tertulis.
+
+---
+
+## Marketplace Listing Normalization: Status Implementasi 2026-07-23
+
+Requirement `BND`, `EVT`, `ORD`, dan integrasi outbound marketplace kini memiliki implementasi runtime melalui migration `202607220013` sampai `202607220016`.
+
+Kontrak yang berlaku:
+
+- adapter mengirim channel, external event/order identity, source line reference, external listing code, listing quantity, event time, raw payload/hash, dan metadata;
+- adapter tidak memilih internal `productId` sebagai input bisnis;
+- domain memilih tepat satu mapping version berdasarkan organisasi, channel, external listing code, dan `occurred_at`;
+- listing `BUNDLE` diekspansi menjadi produk satuan menggunakan recipe version aktif;
+- source line, mapping version, fingerprint, recipe/component identity, dan expanded quantity disimpan sebagai snapshot immutable;
+- reservasi, FEFO, cancellation, reversal, dan return bekerja pada canonical product component;
+- listing atau recipe yang missing, inactive, archived, ambiguous, stale, atau invalid tidak menghasilkan efek stok;
+- duplicate replay maksimal menghasilkan satu domain effect, sedangkan payload berbeda pada identity yang sama ditolak sebagai conflict.
+
+UI Admin tersedia pada `/marketplace/listings`. Simulator normalized tersedia pada `/marketplace` dan menggunakan kontrak external listing yang sama. API/webhook marketplace nyata dan CSV upload tetap di luar implementasi issue ini.

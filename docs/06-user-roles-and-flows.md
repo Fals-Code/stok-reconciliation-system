@@ -3,7 +3,7 @@ File: 06-user-roles-and-flows.md
 Project: Sistem Rekonsiliasi Stok
 Status: Phase 2 synced user-flow contract
 Version: 1.1.0
-Last updated: 2026-07-18
+Last updated: 2026-07-23
 Primary source: VibeDev Phase 2 Sync Update v2, 13 Juni 2026
 Baseline source: stok-management-system.pdf
 Decision update: The application has exactly one user role: ADMIN.
@@ -2178,3 +2178,27 @@ service_role_is_user_role: false
 ```
 
 Sistem fase 1 memiliki satu role aplikasi yang sederhana, tetapi bukan sistem tanpa kontrol. Admin memperoleh seluruh kemampuan operasional, sementara integritas dijaga oleh state machine, invariant ledger, idempotensi, database function, RLS, audit actor, dan confirmation flow. Kesederhanaan role dipakai untuk mengurangi kompleksitas produk, bukan untuk menghapus disiplin data.
+
+---
+
+## Flow Admin Marketplace Listing
+
+Aplikasi tetap memakai satu role `ADMIN`.
+
+Flow yang tersedia:
+
+```text
+/marketplace/listings
+-> cari listing berdasarkan channel, code, nama, type, atau status
+-> buat mapping SINGLE/BUNDLE
+-> buat atau edit draft version
+-> atur produk/komponen dan positive integer quantity
+-> preview expansion authoritative
+-> lihat blocker tanpa action commit
+-> konfirmasi activation dengan effective time eksplisit
+-> buat version baru tanpa mengubah order lama
+-> retire atau archive tanpa menghapus histori
+-> inspect version dan component history
+```
+
+Simulator pada `/marketplace` menerima external listing code dan listing quantity. Admin tidak diminta memasukkan internal product UUID. Feedback success/error bertahan setelah redirect dan refresh. Stale row version ditolak tanpa menimpa draft terbaru.

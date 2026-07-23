@@ -934,3 +934,20 @@ Rujukan teknis berikut mendukung cara penegakan rule, bukan menggantikan keputus
 ---
 
 **Dokumen berikutnya yang disarankan:** `04-domain-model.md`, untuk menerjemahkan aturan ini menjadi entitas, aggregate, value object, event, relasi, dan lifecycle domain tanpa mengunci detail schema terlalu dini.
+
+---
+
+## Aturan Implementasi Marketplace Listing Versioned
+
+Aturan berikut telah diterapkan dan menjadi penjelas authoritative bagi contoh lama:
+
+1. Bundle bukan stock keeping entity. Bundle tidak mempunyai stok, batch, reservation, allocation, transaction, ledger entry, atau projection.
+2. Listing dinormalisasi sebelum reservasi. Input adapter adalah external listing identity dan listing quantity, bukan internal product UUID.
+3. Mapping dipilih berdasarkan organisasi, channel, external listing code, dan waktu event dengan effective range `[effective_from, effective_to)`.
+4. Activated atau used version immutable. Perubahan komponen dilakukan melalui draft version baru.
+5. Order menyimpan source listing, mapping version, mapping fingerprint, recipe/component identity, dan expanded product snapshot yang digunakan saat ingestion.
+6. Quantity komponen dihitung dengan integer arithmetic: `listing_quantity × component_quantity`.
+7. Seluruh komponen satu event diproses atomic. Satu mapping, komponen, atau stok yang invalid menggagalkan seluruh event.
+8. FEFO, partial cancellation, exact post-shipment reversal, expected return, dan partial return beroperasi per canonical product component.
+9. Replay identik tidak menggandakan effect; identity sama dengan payload berbeda adalah conflict.
+10. Lifecycle create, save, preview, activate, retire, dan archive listing bersifat stock-neutral.

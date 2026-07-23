@@ -4,7 +4,11 @@
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { requireAdminSession } from "@/lib/auth";
-import { callRpc } from "@/lib/supabase-rest";
+import {
+  callRpc,
+  reserveMarketplaceListingEvent,
+  shipMarketplaceListingEvent,
+} from "@/lib/supabase-rest";
 
 function required(formData: FormData, key: string) {
   const value = formData.get(key);
@@ -64,6 +68,18 @@ function marketplaceErrorMessage(error: unknown) {
     MARKETPLACE_ORDER_ITEM_NOT_FOUND: "Item reservasi pada order marketplace tidak ditemukan.",
     MARKETPLACE_RESERVATION_EXCEEDED: "Quantity melebihi sisa reservasi yang masih terbuka.",
     MARKETPLACE_CHANNEL_NOT_ALLOWED: "Channel tersebut bukan marketplace aktif.",
+    MARKETPLACE_LISTING_NOT_FOUND: "Kode listing marketplace belum memiliki mapping aktif.",
+    MARKETPLACE_LISTING_ARCHIVED: "Listing marketplace sudah diarsipkan.",
+    MARKETPLACE_LISTING_MAPPING_NOT_FOUND: "Mapping produk untuk waktu event tidak ditemukan.",
+    MARKETPLACE_LISTING_MAPPING_AMBIGUOUS: "Mapping listing bertumpang tindih dan harus diperbaiki.",
+    MARKETPLACE_BUNDLE_RECIPE_NOT_FOUND: "Resep bundle aktif untuk waktu event tidak ditemukan.",
+    MARKETPLACE_BUNDLE_RECIPE_AMBIGUOUS: "Versi resep bundle bertumpang tindih dan harus diperbaiki.",
+    MARKETPLACE_LISTING_PRODUCT_INACTIVE: "Produk pada mapping listing sedang tidak aktif.",
+    MARKETPLACE_BUNDLE_COMPONENT_INACTIVE: "Salah satu produk komponen bundle sedang tidak aktif.",
+    MARKETPLACE_SOURCE_COMPONENT_NOT_FOUND: "Komponen order dari listing tersebut tidak ditemukan.",
+    MARKETPLACE_SOURCE_COMPONENT_QUANTITY_EXCEEDED: "Quantity melebihi jumlah komponen hasil ekspansi order.",
+    MARKETPLACE_SOURCE_STATUS_NOT_SHIPPABLE: "Status sumber belum memenuhi waktu pengurangan stok channel.",
+    MARKETPLACE_RECEIVED_BEFORE_OCCURRED: "Waktu penerimaan event tidak boleh mendahului waktu kejadian.",
     RESERVATION_PROJECTION_MISMATCH: "Proyeksi reserved stock tidak konsisten dengan reservasi order.",
     IDEMPOTENCY_KEY_REUSED: "Referensi event sudah dipakai untuk payload yang berbeda.",
     AUTH_SESSION_REQUIRED: "Sesi Admin sudah berakhir. Silakan login kembali.",
@@ -163,41 +179,106 @@ function marketplaceChannel(formData: FormData) {
   return channelCode;
 }
 
-type MarketplaceSelection = {
-  channelCode: string;
-  orderRef: string;
-  productId: string;
-  sourceLineRef: string;
+type MarketplaceChannelCode = "SHOPEE" | "TIKTOK_SHOP";
+
+type MarketplaceListingSelection = {
+  channelCode: MarketplaceChannelCode;
+  externalListingCode: string;
+  listingName: string;
+  listingType: "SINGLE" | "BUNDLE";
 };
 
-function marketplaceSelection(formData: FormData): MarketplaceSelection {
-  const raw = required(formData, "marketplaceSelection");
+type MarketplaceSelection = {
+  channelCode: MarketplaceChannelCode;
+  orderRef: string;
+  orderSourceLineRef: string;
+  componentNo: number;
+};
+
+function parsedObject(formData: FormData, key: string, message: string) {
+  const raw = required(formData, key);
   let parsed: unknown;
 
   try {
     parsed = JSON.parse(raw);
   } catch {
-    throw new Error("Pilihan reservasi marketplace tidak valid.");
+    throw new Error(message);
   }
 
   if (!parsed || typeof parsed !== "object") {
-    throw new Error("Pilihan reservasi marketplace tidak valid.");
+    throw new Error(message);
   }
 
-  const value = parsed as Record<string, unknown>;
-  const keys = ["channelCode", "orderRef", "productId", "sourceLineRef"] as const;
+  return parsed as Record<string, unknown>;
+}
 
-  for (const key of keys) {
-    if (typeof value[key] !== "string" || value[key].trim() === "") {
-      throw new Error("Pilihan reservasi marketplace tidak lengkap.");
-    }
+function marketplaceListingSelection(
+  formData: FormData,
+): MarketplaceListingSelection {
+  const value = parsedObject(
+    formData,
+    "marketplaceListingSelection",
+    "Pilihan listing marketplace tidak valid.",
+  );
+  const channelCode = String(value.channelCode ?? "")
+    .trim()
+    .toUpperCase();
+  const listingType = String(value.listingType ?? "")
+    .trim()
+    .toUpperCase();
+  const externalListingCode = String(value.externalListingCode ?? "").trim();
+  const listingName = String(value.listingName ?? "").trim();
+
+  if (!new Set(["SHOPEE", "TIKTOK_SHOP"]).has(channelCode)) {
+    throw new Error("Channel listing marketplace tidak valid.");
+  }
+
+  if (!new Set(["SINGLE", "BUNDLE"]).has(listingType)) {
+    throw new Error("Jenis listing marketplace tidak valid.");
+  }
+
+  if (!externalListingCode || !listingName) {
+    throw new Error("Pilihan listing marketplace tidak lengkap.");
   }
 
   return {
-    channelCode: String(value.channelCode).trim().toUpperCase(),
-    orderRef: String(value.orderRef).trim(),
-    productId: String(value.productId).trim(),
-    sourceLineRef: String(value.sourceLineRef).trim(),
+    channelCode: channelCode as MarketplaceChannelCode,
+    externalListingCode,
+    listingName,
+    listingType: listingType as "SINGLE" | "BUNDLE",
+  };
+}
+
+function marketplaceSelection(formData: FormData): MarketplaceSelection {
+  const value = parsedObject(
+    formData,
+    "marketplaceSelection",
+    "Pilihan komponen marketplace tidak valid.",
+  );
+  const channelCode = String(value.channelCode ?? "")
+    .trim()
+    .toUpperCase();
+  const orderRef = String(value.orderRef ?? "").trim();
+  const orderSourceLineRef = String(value.orderSourceLineRef ?? "").trim();
+  const componentNo = Number(value.componentNo);
+
+  if (!new Set(["SHOPEE", "TIKTOK_SHOP"]).has(channelCode)) {
+    throw new Error("Channel komponen marketplace tidak valid.");
+  }
+
+  if (!orderRef || !orderSourceLineRef) {
+    throw new Error("Pilihan komponen marketplace tidak lengkap.");
+  }
+
+  if (!Number.isSafeInteger(componentNo) || componentNo <= 0) {
+    throw new Error("Nomor komponen marketplace tidak valid.");
+  }
+
+  return {
+    channelCode: channelCode as MarketplaceChannelCode,
+    orderRef,
+    orderSourceLineRef,
+    componentNo,
   };
 }
 
@@ -258,44 +339,63 @@ export async function reserveMarketplaceOrderAction(formData: FormData) {
   let kind: "success" | "error" = "success";
 
   try {
-    const channelCode = marketplaceChannel(formData);
+    const selection = marketplaceListingSelection(formData);
     const orderRef = required(formData, "orderRef");
     const eventRef = required(formData, "eventRef");
     const occurredAt = jakartaTimestamp(required(formData, "occurredAt"));
-    const productId = required(formData, "productId");
     const sourceLineRef = required(formData, "sourceLineRef");
-    const quantity = positiveInteger(formData, "quantity");
+    const listingQuantity = positiveInteger(formData, "listingQuantity");
     const note = String(formData.get("note") ?? "").trim() || null;
+    const sourceStatus = "READY_TO_SHIP";
 
-    const result = await callRpc<{
-      orderRef: string;
-      eventType: string;
-      totalQuantity: number;
-      allocationCount: number;
-    }>("apply_marketplace_event", {
-      p_organization_id: session.profile.organization_id,
-      p_idempotency_key: `marketplace:${channelCode}:${eventRef}`,
-      p_channel_code: channelCode,
-      p_event_type: "RESERVE",
-      p_event_ref: eventRef,
-      p_order_ref: orderRef,
-      p_occurred_at: occurredAt,
-      p_lines: [
+    const result = await reserveMarketplaceListingEvent({
+      organizationId: session.profile.organization_id,
+      idempotencyKey: `marketplace-listing-reserve:${selection.channelCode}:${eventRef}`,
+      channelCode: selection.channelCode,
+      eventRef,
+      orderRef,
+      sourceStatus,
+      occurredAt,
+      receivedAt: occurredAt,
+      lines: [
         {
-          productId,
-          quantity,
           sourceLineRef,
+          externalListingCode: selection.externalListingCode,
+          listingQuantity,
+          sourceTitle: selection.listingName,
+          sourceSku: selection.externalListingCode,
+          sourceStatus,
+          rawLinePayload: {
+            source: "marketplace-listing-simulator",
+            sourceLineRef,
+          },
         },
       ],
-      p_note: note,
-      p_metadata: {
-        source: "marketplace-simulator",
+      note,
+      rawPayload: {
+        channelCode: selection.channelCode,
+        eventRef,
+        orderRef,
+        sourceStatus,
+        externalListingCode: selection.externalListingCode,
+        listingQuantity,
+      },
+      metadata: {
+        source: "marketplace-listing-simulator",
         version: 1,
         actorUserId: session.user.id,
       },
+      schemaVersion: 1,
     });
 
-    message = `${result.orderRef} berhasil mereservasi ${result.totalQuantity} unit tanpa mengubah stok fisik.`;
+    const canonicalLineCount = Number(result.canonicalLineCount ?? 0);
+    const totalUnitQuantity = Number(
+      result.totalUnitQuantity ?? result.totalQuantity ?? 0,
+    );
+    message =
+      `${result.orderRef} menormalisasi ${selection.externalListingCode} ` +
+      `menjadi ${canonicalLineCount} komponen dan mereservasi ` +
+      `${totalUnitQuantity} unit tanpa mengubah stok fisik.`;
     revalidatePath("/");
     revalidatePath("/marketplace");
   } catch (error) {
@@ -312,51 +412,52 @@ export async function advanceMarketplaceOrderAction(formData: FormData) {
   let kind: "success" | "error" = "success";
 
   try {
-    const eventType = required(formData, "eventType").toUpperCase();
-
-    if (!new Set(["RELEASE", "SHIP"]).has(eventType)) {
-      throw new Error("Jenis event marketplace tidak valid.");
-    }
-
     const selection = marketplaceSelection(formData);
     const eventRef = required(formData, "eventRef");
     const occurredAt = jakartaTimestamp(required(formData, "occurredAt"));
     const quantity = positiveInteger(formData, "quantity");
     const note = String(formData.get("note") ?? "").trim() || null;
+    const sourceStatus =
+      selection.channelCode === "SHOPEE" ? "SHIPPED" : "IN_TRANSIT";
 
-    const result = await callRpc<{
-      orderRef: string;
-      eventType: string;
-      totalQuantity: number;
-      allocationCount: number;
-      transactionNo: string | null;
-    }>("apply_marketplace_event", {
-      p_organization_id: session.profile.organization_id,
-      p_idempotency_key: `marketplace:${selection.channelCode}:${eventRef}`,
-      p_channel_code: selection.channelCode,
-      p_event_type: eventType,
-      p_event_ref: eventRef,
-      p_order_ref: selection.orderRef,
-      p_occurred_at: occurredAt,
-      p_lines: [
+    const result = await shipMarketplaceListingEvent({
+      organizationId: session.profile.organization_id,
+      idempotencyKey: `marketplace-listing-ship:${selection.channelCode}:${eventRef}`,
+      channelCode: selection.channelCode,
+      eventRef,
+      orderRef: selection.orderRef,
+      sourceStatus,
+      occurredAt,
+      receivedAt: occurredAt,
+      lines: [
         {
-          productId: selection.productId,
+          orderSourceLineRef: selection.orderSourceLineRef,
+          componentNo: selection.componentNo,
           quantity,
-          sourceLineRef: selection.sourceLineRef,
         },
       ],
-      p_note: note,
-      p_metadata: {
-        source: "marketplace-simulator",
+      note,
+      rawPayload: {
+        channelCode: selection.channelCode,
+        eventRef,
+        orderRef: selection.orderRef,
+        sourceStatus,
+        orderSourceLineRef: selection.orderSourceLineRef,
+        componentNo: selection.componentNo,
+        quantity,
+      },
+      metadata: {
+        source: "marketplace-listing-simulator",
         version: 1,
         actorUserId: session.user.id,
       },
+      schemaVersion: 1,
     });
 
-    message = eventType === "RELEASE"
-      ? `${result.orderRef} berhasil melepas ${result.totalQuantity} unit dari reservasi.`
-      : `${result.transactionNo ?? result.orderRef} berhasil mengirim ${result.totalQuantity} unit melalui ${result.allocationCount} batch FEFO.`;
-
+    message =
+      `${result.transactionNo ?? result.orderRef} mengirim ` +
+      `${Number(result.totalQuantity ?? 0)} unit melalui ` +
+      `${Number(result.allocationCount ?? 0)} alokasi batch FEFO.`;
     revalidatePath("/");
     revalidatePath("/marketplace");
   } catch (error) {

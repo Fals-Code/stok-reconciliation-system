@@ -4,7 +4,7 @@ File: 14-testing-scenarios.md
 Project: Sistem Rekonsiliasi Stok
 Status: Phase 2 synced testing contract
 Version: 1.1.0
-Last updated: 2026-07-18
+Last updated: 2026-07-23
 Language: id-ID
 Timezone: Asia/Jakarta
 Application role model: ADMIN only
@@ -2800,3 +2800,30 @@ ledger mutable
 ```
 
 Sistem stok yang diuji hanya lewat happy path adalah spreadsheet dengan kostum lebih mahal. Dokumen ini memastikan aplikasi diuji pada tempat manusia dan transaksi biasanya berkhianat: retry, pembatalan, retur, waktu, hak akses, dan dua request yang datang bersamaan.
+
+---
+
+## Coverage Marketplace Listing dan Bundle Expansion
+
+Coverage implementasi tersedia pada:
+
+```text
+supabase/tests/049_marketplace_listing_recipe_foundation.test.sql
+supabase/tests/050_marketplace_listing_event_normalization.test.sql
+supabase/tests/051_marketplace_listing_downstream_lifecycle.test.sql
+supabase/tests/052_marketplace_listing_admin_lifecycle.test.sql
+scripts/test-marketplace-listing-admin-ui.mjs
+scripts/test-marketplace-listing-simulator-ui.mjs
+```
+
+Skenario mencakup schema/RLS/grant, `SINGLE` dan `BUNDLE`, quantity boundary, effective-time selection, immutable history, stale row version, blocker, atomic rollback, idempotent replay, payload conflict, organization isolation, stock-neutral listing lifecycle, FEFO component shipment, partial cancellation, exact reversal, refresh persistence, dan runtime/hydration errors.
+
+Validation terakhir untuk PR #45:
+
+```text
+Admin listing smoke      50 passed, 0 failed
+Simulator smoke          45 passed, 0 failed
+pgTAP                     52 files, 2766 tests, PASS
+```
+
+Smoke fixture bersifat append-only. Database suite yang memakai global count harus dijalankan pada baseline bersih setelah `npx supabase db reset`; reset tersebut menghapus data dan Auth lokal tetapi tidak mengubah Git.

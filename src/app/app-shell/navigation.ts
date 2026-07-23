@@ -35,7 +35,7 @@ export const APP_NAV_SECTIONS = [
         href: "/marketplace",
         label: "Marketplace",
         shortLabel: "MP",
-        description: "Reservasi dan shipment",
+        description: "Listing, reservasi, dan shipment",
       },
       {
         href: "/returns",

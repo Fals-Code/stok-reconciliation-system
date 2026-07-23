@@ -2749,3 +2749,597 @@ export async function getOpeningBalanceData(
   };
 }
 // OPENING_BALANCE_ADMIN_WORKFLOW_END
+// MARKETPLACE_LISTING_SIMULATOR_START
+export type MarketplaceListingCatalogRow = {
+  listing_id: string;
+  organization_id: string;
+  channel_code: "SHOPEE" | "TIKTOK_SHOP";
+  external_listing_code: string;
+  display_name: string;
+  listing_type_code: "SINGLE" | "BUNDLE";
+  status_code: "ACTIVE" | "ARCHIVED";
+  current_version: number | null;
+  effective_from: string | null;
+  effective_to: string | null;
+  product_id: string | null;
+  bundle_recipe_id: string | null;
+  mapping_fingerprint: string | null;
+  created_at: string;
+  updated_at: string;
+  row_version: number;
+  current_mapping_status_code: "DRAFT" | "ACTIVE" | "RETIRED" | null;
+  mapping_readiness_code: "PUBLISHED" | "DRAFT_ONLY" | "MISSING" | "ARCHIVED";
+  draft_version_count: number;
+};
+
+export type MarketplaceListingNormalization = {
+  normalization_event_id: string;
+  organization_id: string;
+  marketplace_event_id: string;
+  order_id: string;
+  channel_code: "SHOPEE" | "TIKTOK_SHOP";
+  external_event_ref_snapshot: string;
+  external_order_ref_snapshot: string;
+  event_source_status: string;
+  occurred_at: string;
+  received_at: string;
+  raw_payload_hash: string;
+  normalization_schema_version: number;
+  actor_user_id: string | null;
+  process_name: string | null;
+  metadata: Record<string, unknown>;
+  source_line_id: string;
+  source_line_no: number;
+  source_line_ref: string;
+  listing_id: string;
+  external_listing_code_snapshot: string;
+  listing_name_snapshot: string;
+  listing_type_code_snapshot: "SINGLE" | "BUNDLE";
+  listing_quantity: number;
+  mapping_version: number;
+  single_listing_version_id: string | null;
+  bundle_recipe_id: string | null;
+  mapping_fingerprint: string;
+  source_title_snapshot: string | null;
+  source_sku_snapshot: string | null;
+  line_source_status: string | null;
+  raw_line_hash: string;
+  source_component_id: string;
+  component_no: number;
+  recipe_component_id: string | null;
+  order_item_id: string;
+  reserve_event_line_id: string;
+  product_id: string;
+  canonical_source_line_ref: string;
+  product_sku_snapshot: string;
+  product_name_snapshot: string;
+  unit_quantity_per_listing: number;
+  expanded_quantity: number;
+  reservation_id: string;
+  reserved_qty: number;
+  consumed_qty: number;
+  released_qty: number;
+  reservation_status_code: string;
+  created_at: string;
+};
+
+export type MarketplaceListingComponentLifecycle = {
+  organization_id: string;
+  order_id: string;
+  external_order_ref: string;
+  channel_code: "SHOPEE" | "TIKTOK_SHOP";
+  source_line_id: string;
+  source_line_ref: string;
+  listing_id: string;
+  external_listing_code_snapshot: string;
+  listing_name_snapshot: string;
+  listing_type_code_snapshot: "SINGLE" | "BUNDLE";
+  listing_quantity: number;
+  mapping_version: number;
+  mapping_fingerprint: string;
+  source_component_id: string;
+  component_no: number;
+  recipe_component_id: string | null;
+  order_item_id: string;
+  product_id: string;
+  product_sku_snapshot: string;
+  product_name_snapshot: string;
+  canonical_source_line_ref: string;
+  unit_quantity_per_listing: number;
+  expanded_quantity: number;
+  reservation_id: string;
+  reserved_qty: number;
+  consumed_qty: number;
+  released_qty: number;
+  reservation_status_code: string;
+  shipped_quantity: number;
+  pre_shipment_cancelled_quantity: number;
+  post_shipment_cancelled_quantity: number;
+  return_expected_quantity: number;
+  return_received_quantity: number;
+  return_sellable_quantity: number;
+  return_damaged_quantity: number;
+  return_lost_quantity: number;
+  open_reserved_quantity: number;
+  remaining_returnable_or_cancellable_quantity: number;
+};
+
+export type MarketplaceListingSourceLineInput = {
+  sourceLineRef: string;
+  externalListingCode: string;
+  listingQuantity: number;
+  sourceTitle?: string | null;
+  sourceSku?: string | null;
+  sourceStatus?: string | null;
+  rawLinePayload?: Record<string, unknown>;
+};
+
+export type MarketplaceListingComponentSelectionInput = {
+  orderSourceLineRef: string;
+  componentNo: number;
+  quantity: number;
+};
+
+export type MarketplaceListingEventResponse = {
+  status: "APPLIED";
+  orderRef: string;
+  eventType: string;
+  totalQuantity: number;
+  allocationCount: number;
+  transactionNo: string | null;
+  canonicalLineCount?: number;
+  totalUnitQuantity?: number;
+  normalizationEventId?: string;
+  sourceLines?: unknown[];
+  sourceComponents?: unknown[];
+  adapterContract?: string;
+};
+
+export type MarketplaceListingSimulatorData = {
+  listingCatalog: MarketplaceListingCatalogRow[];
+  normalizations: MarketplaceListingNormalization[];
+  components: MarketplaceListingComponentLifecycle[];
+};
+
+export async function reserveMarketplaceListingEvent(input: {
+  organizationId?: string;
+  idempotencyKey: string;
+  channelCode: "SHOPEE" | "TIKTOK_SHOP";
+  eventRef: string;
+  orderRef: string;
+  sourceStatus: string;
+  occurredAt: string;
+  receivedAt: string;
+  lines: MarketplaceListingSourceLineInput[];
+  note?: string | null;
+  rawPayload?: Record<string, unknown>;
+  metadata?: Record<string, unknown>;
+  schemaVersion?: number;
+}) {
+  const organizationId = await resolveOrganizationId(input.organizationId);
+
+  return callRpc<MarketplaceListingEventResponse>(
+    "reserve_marketplace_listing_event",
+    {
+      p_organization_id: organizationId,
+      p_idempotency_key: input.idempotencyKey,
+      p_channel_code: input.channelCode,
+      p_event_ref: input.eventRef,
+      p_order_ref: input.orderRef,
+      p_source_status: input.sourceStatus,
+      p_occurred_at: input.occurredAt,
+      p_received_at: input.receivedAt,
+      p_lines: input.lines,
+      p_note: input.note ?? null,
+      p_raw_payload: input.rawPayload ?? {},
+      p_metadata: input.metadata ?? {},
+      p_schema_version: input.schemaVersion ?? 1,
+    },
+  );
+}
+
+export async function shipMarketplaceListingEvent(input: {
+  organizationId?: string;
+  idempotencyKey: string;
+  channelCode: "SHOPEE" | "TIKTOK_SHOP";
+  eventRef: string;
+  orderRef: string;
+  sourceStatus: string;
+  occurredAt: string;
+  receivedAt: string;
+  lines: MarketplaceListingComponentSelectionInput[];
+  note?: string | null;
+  rawPayload?: Record<string, unknown>;
+  metadata?: Record<string, unknown>;
+  schemaVersion?: number;
+}) {
+  const organizationId = await resolveOrganizationId(input.organizationId);
+
+  return callRpc<MarketplaceListingEventResponse>(
+    "ship_marketplace_listing_event",
+    {
+      p_organization_id: organizationId,
+      p_idempotency_key: input.idempotencyKey,
+      p_channel_code: input.channelCode,
+      p_event_ref: input.eventRef,
+      p_order_ref: input.orderRef,
+      p_source_status: input.sourceStatus,
+      p_occurred_at: input.occurredAt,
+      p_received_at: input.receivedAt,
+      p_lines: input.lines,
+      p_note: input.note ?? null,
+      p_raw_payload: input.rawPayload ?? {},
+      p_metadata: input.metadata ?? {},
+      p_schema_version: input.schemaVersion ?? 1,
+    },
+  );
+}
+
+export async function getMarketplaceListingSimulatorData(
+  organizationId?: string,
+): Promise<MarketplaceListingSimulatorData> {
+  const resolvedOrganizationId = await resolveOrganizationId(organizationId);
+  const encodedOrganizationId = encodeURIComponent(resolvedOrganizationId);
+
+  const [listingCatalog, normalizations, components] = await Promise.all([
+    apiFetch<MarketplaceListingCatalogRow[]>(
+      `marketplace_listing_catalog?organization_id=eq.${encodedOrganizationId}` +
+        "&select=*&order=channel_code.asc,external_listing_code.asc&limit=300",
+    ),
+    apiFetch<MarketplaceListingNormalization[]>(
+      `marketplace_listing_normalizations?organization_id=eq.${encodedOrganizationId}` +
+        "&select=*&order=occurred_at.desc,source_line_no.asc,component_no.asc&limit=300",
+    ),
+    apiFetch<MarketplaceListingComponentLifecycle[]>(
+      `marketplace_listing_component_lifecycle?organization_id=eq.${encodedOrganizationId}` +
+        "&select=*&order=external_order_ref.desc,source_line_ref.asc,component_no.asc&limit=300",
+    ),
+  ]);
+
+  return { listingCatalog, normalizations, components };
+}
+// MARKETPLACE_LISTING_SIMULATOR_END
+// MARKETPLACE_LISTING_ADMIN_UI_START
+export type MarketplaceListingVersionRow = {
+  organization_id: string;
+  listing_id: string;
+  channel_code: "SHOPEE" | "TIKTOK_SHOP";
+  external_listing_code: string;
+  display_name: string;
+  listing_type_code: "SINGLE" | "BUNDLE";
+  version_id: string;
+  version: number;
+  status_code: "DRAFT" | "ACTIVE" | "RETIRED";
+  effective_from: string;
+  effective_to: string | null;
+  product_id: string | null;
+  bundle_recipe_id: string | null;
+  mapping_fingerprint: string | null;
+  component_count: number;
+  row_version: number;
+  note: string | null;
+  metadata: Record<string, unknown>;
+  activated_at: string | null;
+  activated_by: string | null;
+  retired_at: string | null;
+  retired_by: string | null;
+  created_at: string;
+  created_by: string | null;
+  updated_at: string;
+  updated_by: string | null;
+};
+
+export type MarketplaceBundleRecipeComponentRow = {
+  organization_id: string;
+  listing_id: string;
+  version_id: string;
+  version: number;
+  status_code: "DRAFT" | "ACTIVE" | "RETIRED";
+  component_id: string;
+  line_no: number;
+  product_id: string;
+  product_sku: string;
+  product_name: string;
+  product_is_active: boolean;
+  component_qty: number;
+};
+
+export type MarketplaceListingAdminData = {
+  listings: MarketplaceListingCatalogRow[];
+  versions: MarketplaceListingVersionRow[];
+  bundleComponents: MarketplaceBundleRecipeComponentRow[];
+  products: ProductInventory[];
+  normalizations: MarketplaceListingNormalization[];
+};
+
+export type MarketplaceListingDraftCreatedResponse = {
+  status: "DRAFT_CREATED";
+  listingId: string;
+  versionId: string;
+  version: number;
+  versionRowVersion: number;
+  channelCode: "SHOPEE" | "TIKTOK_SHOP";
+  externalListingCode: string;
+  displayName: string;
+  listingType: "SINGLE" | "BUNDLE";
+  effectiveFrom: string;
+  componentCount: number;
+  createdAt: string;
+};
+
+export type MarketplaceListingDraftSavedResponse = {
+  status: "DRAFT_SAVED";
+  listingId: string;
+  versionId: string;
+  versionRowVersion: number;
+  displayName: string;
+  listingType: "SINGLE" | "BUNDLE";
+  effectiveFrom: string;
+  componentCount: number;
+};
+
+export type MarketplaceListingDraftMutationResponse =
+  | MarketplaceListingDraftCreatedResponse
+  | MarketplaceListingDraftSavedResponse;
+
+export type MarketplaceListingActivationPreviewBlocker = {
+  code: string;
+  scope: string;
+  message: string;
+};
+
+export type MarketplaceListingActivationPreviewComponent = {
+  active: boolean;
+  lineNo: number;
+  quantity: number;
+  productId: string;
+  productSku: string;
+  productName: string;
+};
+
+export type MarketplaceListingActivationPreview = {
+  status: "PREVIEW_READY";
+  eligible: boolean;
+  blockers: MarketplaceListingActivationPreviewBlocker[];
+  basisHash: string;
+  listingId: string;
+  versionId: string;
+  version: number;
+  listingType: "SINGLE" | "BUNDLE";
+  effectiveFrom: string;
+  componentCount: number;
+  components: MarketplaceListingActivationPreviewComponent[];
+  listingRowVersion: number;
+  versionRowVersion: number;
+  mappingFingerprint: string;
+  currentOpenVersionId: string | null;
+  currentOpenVersion: number | null;
+  currentOpenRowVersion: number | null;
+};
+
+export type MarketplaceListingActivationResponse = {
+  status: "ACTIVATED";
+  listingId: string;
+  versionId: string;
+  version: number;
+  listingType: "SINGLE" | "BUNDLE";
+  effectiveFrom: string;
+  activatedAt: string;
+  closedVersionId: string | null;
+  previewBasisHash: string;
+  mappingFingerprint?: string;
+};
+
+export type MarketplaceListingRetirementResponse = {
+  status: "RETIRED";
+  listingId: string;
+  versionId: string;
+  version: number;
+  effectiveTo: string;
+  retiredAt: string;
+};
+
+export type MarketplaceListingArchiveResponse = {
+  status: "ARCHIVED";
+  listingId: string;
+  externalListingCode: string;
+  archivedAt: string;
+  listingRowVersion: number;
+};
+
+export async function createMarketplaceListingVersionDraft(input: {
+  organizationId?: string;
+  idempotencyKey: string;
+  channelCode: "SHOPEE" | "TIKTOK_SHOP";
+  externalListingCode: string;
+  displayName: string;
+  listingTypeCode: "SINGLE" | "BUNDLE";
+  effectiveFrom: string;
+  productId?: string | null;
+  components?: Array<{ productId: string; quantity: number }>;
+  note?: string | null;
+  metadata?: Record<string, unknown>;
+}) {
+  const organizationId = await resolveOrganizationId(input.organizationId);
+
+  return callRpc<MarketplaceListingDraftCreatedResponse>(
+    "create_marketplace_listing_version_draft",
+    {
+      p_organization_id: organizationId,
+      p_idempotency_key: input.idempotencyKey,
+      p_channel_code: input.channelCode,
+      p_external_listing_code: input.externalListingCode,
+      p_display_name: input.displayName,
+      p_listing_type_code: input.listingTypeCode,
+      p_effective_from: input.effectiveFrom,
+      p_product_id: input.productId ?? null,
+      p_components: input.components ?? [],
+      p_note: input.note ?? null,
+      p_metadata: input.metadata ?? {},
+    },
+  );
+}
+
+export async function saveMarketplaceListingVersionDraft(input: {
+  organizationId?: string;
+  listingId: string;
+  versionId: string;
+  expectedRowVersion: number;
+  displayName: string;
+  effectiveFrom: string;
+  productId?: string | null;
+  components?: Array<{ productId: string; quantity: number }>;
+  note?: string | null;
+  metadata?: Record<string, unknown>;
+}) {
+  const organizationId = await resolveOrganizationId(input.organizationId);
+
+  return callRpc<MarketplaceListingDraftSavedResponse>(
+    "save_marketplace_listing_version_draft",
+    {
+      p_organization_id: organizationId,
+      p_listing_id: input.listingId,
+      p_version_id: input.versionId,
+      p_expected_row_version: input.expectedRowVersion,
+      p_display_name: input.displayName,
+      p_effective_from: input.effectiveFrom,
+      p_product_id: input.productId ?? null,
+      p_components: input.components ?? [],
+      p_note: input.note ?? null,
+      p_metadata: input.metadata ?? {},
+    },
+  );
+}
+
+export async function previewMarketplaceListingVersionActivation(input: {
+  organizationId?: string;
+  listingId: string;
+  versionId: string;
+}) {
+  const organizationId = await resolveOrganizationId(input.organizationId);
+
+  return callRpc<MarketplaceListingActivationPreview>(
+    "preview_marketplace_listing_version_activation",
+    {
+      p_organization_id: organizationId,
+      p_listing_id: input.listingId,
+      p_version_id: input.versionId,
+    },
+  );
+}
+
+export async function activateMarketplaceListingVersion(input: {
+  organizationId?: string;
+  idempotencyKey: string;
+  listingId: string;
+  versionId: string;
+  expectedRowVersion: number;
+  previewBasisHash: string;
+  confirmation: boolean;
+}) {
+  const organizationId = await resolveOrganizationId(input.organizationId);
+
+  return callRpc<MarketplaceListingActivationResponse>(
+    "activate_marketplace_listing_version",
+    {
+      p_organization_id: organizationId,
+      p_idempotency_key: input.idempotencyKey,
+      p_listing_id: input.listingId,
+      p_version_id: input.versionId,
+      p_expected_row_version: input.expectedRowVersion,
+      p_preview_basis_hash: input.previewBasisHash,
+      p_confirmation: input.confirmation,
+    },
+  );
+}
+
+export async function retireMarketplaceListingVersion(input: {
+  organizationId?: string;
+  idempotencyKey: string;
+  listingId: string;
+  versionId: string;
+  expectedRowVersion: number;
+  effectiveTo: string;
+  confirmation: boolean;
+}) {
+  const organizationId = await resolveOrganizationId(input.organizationId);
+
+  return callRpc<MarketplaceListingRetirementResponse>(
+    "retire_marketplace_listing_version",
+    {
+      p_organization_id: organizationId,
+      p_idempotency_key: input.idempotencyKey,
+      p_listing_id: input.listingId,
+      p_version_id: input.versionId,
+      p_expected_row_version: input.expectedRowVersion,
+      p_effective_to: input.effectiveTo,
+      p_confirmation: input.confirmation,
+    },
+  );
+}
+
+export async function archiveMarketplaceListing(input: {
+  organizationId?: string;
+  idempotencyKey: string;
+  listingId: string;
+  expectedRowVersion: number;
+  confirmation: boolean;
+}) {
+  const organizationId = await resolveOrganizationId(input.organizationId);
+
+  return callRpc<MarketplaceListingArchiveResponse>(
+    "archive_marketplace_listing",
+    {
+      p_organization_id: organizationId,
+      p_idempotency_key: input.idempotencyKey,
+      p_listing_id: input.listingId,
+      p_expected_row_version: input.expectedRowVersion,
+      p_confirmation: input.confirmation,
+    },
+  );
+}
+
+export async function getMarketplaceListingAdminData(
+  organizationId?: string,
+): Promise<MarketplaceListingAdminData> {
+  const resolvedOrganizationId = await resolveOrganizationId(organizationId);
+  const encodedOrganizationId = encodeURIComponent(resolvedOrganizationId);
+
+  const [
+    listings,
+    versions,
+    bundleComponents,
+    products,
+    normalizations,
+  ] = await Promise.all([
+    apiFetch<MarketplaceListingCatalogRow[]>(
+      `marketplace_listing_catalog?organization_id=eq.${encodedOrganizationId}` +
+        "&select=*&order=channel_code.asc,external_listing_code.asc&limit=500",
+    ),
+    apiFetch<MarketplaceListingVersionRow[]>(
+      `marketplace_listing_versions?organization_id=eq.${encodedOrganizationId}` +
+        "&select=*&order=external_listing_code.asc,version.desc&limit=1000",
+    ),
+    apiFetch<MarketplaceBundleRecipeComponentRow[]>(
+      `marketplace_bundle_recipe_components?organization_id=eq.${encodedOrganizationId}` +
+        "&select=*&order=version_id.asc,line_no.asc&limit=2000",
+    ),
+    apiFetch<ProductInventory[]>(
+      `product_inventory?organization_id=eq.${encodedOrganizationId}` +
+        "&is_active=eq.true&select=*&order=sku.asc&limit=500",
+    ),
+    apiFetch<MarketplaceListingNormalization[]>(
+      `marketplace_listing_normalizations?organization_id=eq.${encodedOrganizationId}` +
+        "&select=listing_id,mapping_version,order_id&order=occurred_at.desc&limit=2000",
+    ),
+  ]);
+
+  return {
+    listings,
+    versions,
+    bundleComponents,
+    products,
+    normalizations,
+  };
+}
+// MARKETPLACE_LISTING_ADMIN_UI_END
