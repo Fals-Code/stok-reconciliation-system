@@ -3018,3 +3018,13 @@ external listing
 Untuk listing quantity lebih dari satu, kebutuhan produk dihitung lebih dahulu dengan `listing_quantity × component_quantity`. Setelah ekspansi berhasil secara atomic, setiap canonical product mengikuti aturan FEFO yang sama dengan produk satuan lain.
 
 Recipe version tidak memengaruhi sorting batch. Historical order tetap menggunakan component snapshot lama meskipun version listing baru sudah aktif. Pembatalan pasca-shipment tidak menjalankan FEFO ulang dan memulihkan exact batch allocation dari shipment asli.
+
+---
+
+## FEFO dan Guardrail Product/Batch Master Data
+
+Operator tidak memilih Batch pada manual outbound maupun transaksi outbound lain. Preview hanya menjelaskan kandidat dan blocker; commit menghitung ulang keputusan FEFO authoritative dengan urutan deterministik yang sama.
+
+`ACTIVE` bukan sinonim eligible. Untuk alokasi baru, Product harus aktif dan Batch harus lifecycle `ACTIVE`, bukan effectively expired setelah safety buffer, bukan `BLOCKED`, dan bukan `ARCHIVED`. Hanya bucket fisik `SELLABLE` yang dapat dialokasikan. `QUARANTINE` dan `DAMAGED` tidak pernah menjadi kandidat FEFO karena keduanya bucket fisik, bukan lifecycle status.
+
+Master Product atau Batch yang archived tetap dapat muncul pada historical drill-down. Stocktake tetap memasukkan master archived dengan saldo fisik nonzero agar angka gudang tidak tersembunyi; hal tersebut tidak menjadikannya kandidat outbound. RETURN ke Product archived tetap memiliki jejak historis, tetapi hasilnya non-allocatable sampai Product direactivate.

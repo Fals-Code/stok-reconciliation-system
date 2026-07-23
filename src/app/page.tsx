@@ -138,7 +138,11 @@ export default async function Home({
     );
   }
 
-  const { products, batches, ledger } = data;
+  const { products, batches, receiptBatches, ledger } = data;
+  const receiptOptions = receiptBatches.map((batch) => ({
+    ...batch,
+    sku: batch.product_sku,
+  }));
   const selectedBatchId = feedback.batchId?.trim() || null;
   const selectedBatch = selectedBatchId
     ? batches.find((batch) => batch.batch_id === selectedBatchId) ?? null
@@ -245,7 +249,7 @@ export default async function Home({
                   Produk dan batch
                   <select name="batchSelection" required defaultValue="">
                     <option value="" disabled>Pilih batch terdaftar</option>
-                    {batches.map((batch) => (
+                    {receiptOptions.map((batch) => (
                       <option key={batch.batch_id} value={`${batch.product_id}:${batch.batch_id}`}>
                         {batch.sku} · {batch.batch_code} · exp {batch.expiry_date}
                       </option>

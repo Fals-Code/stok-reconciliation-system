@@ -25,6 +25,11 @@ let serviceKey = "";
 let accessToken = "";
 let smokeUserId = "";
 let organizationId = "";
+const cleanupState = {
+  runId: "",
+  cutoverIds: new Set(),
+  transactionIds: new Map(),
+};
 
 function parseArgs(argv) {
   const args = { ...DEFAULTS };
@@ -200,6 +205,19 @@ async function rpc(name, body) {
   }
 
   return payload;
+}
+
+async function expectRpcError(name, body, code) {
+  try {
+    await rpc(name, body);
+  } catch (error) {
+    if (error instanceof Error && error.message.includes(code)) {
+      return error;
+    }
+    throw error;
+  }
+
+  throw new Error(`RPC ${name} seharusnya ditolak dengan ${code}.`);
 }
 
 async function restRows(resourcePath) {
@@ -498,6 +516,60 @@ async function reverseCutover(cutoverId, runId) {
   });
 }
 
+async function cleanupSmokeEffects() {
+  if (!cleanupState.runId || !organizationId || !accessToken) return;
+
+  const failures = [];
+
+  for (const cutoverId of cleanupState.cutoverIds) {
+    try {
+      const rows = await restRows(
+        `opening_balance_cutovers?organization_id=eq.${encodeURIComponent(organizationId)}` +
+          `&cutover_id=eq.${encodeURIComponent(cutoverId)}` +
+          "&select=cutover_id,operational_status_code&limit=1",
+      );
+
+      if (rows[0]?.operational_status_code === "ACTIVE") {
+        await reverseCutover(cutoverId, `${cleanupState.runId}:finally`);
+      }
+    } catch (error) {
+      failures.push(
+        `cutover ${cutoverId}: ${
+          error instanceof Error ? error.message : String(error)
+        }`,
+      );
+    }
+  }
+
+  for (const [transactionId, fixture] of cleanupState.transactionIds) {
+    try {
+      const applications = await restRows(
+        `stock_reversal_applications?organization_id=eq.${encodeURIComponent(organizationId)}` +
+          `&original_transaction_id=eq.${encodeURIComponent(transactionId)}` +
+          "&select=reversal_application_id&limit=1",
+      );
+
+      if (applications.length === 0) {
+        await reverseStockTransaction({
+          transactionId,
+          runId: `${cleanupState.runId}:finally`,
+          fixture,
+        });
+      }
+    } catch (error) {
+      failures.push(
+        `transaction ${transactionId}: ${
+          error instanceof Error ? error.message : String(error)
+        }`,
+      );
+    }
+  }
+
+  if (failures.length > 0) {
+    throw new Error(`Cleanup smoke gagal:\n${failures.join("\n")}`);
+  }
+}
+
 async function main() {
   const args = parseArgs(process.argv.slice(2));
   const uri = new URL(args.baseUrl);
@@ -636,10 +708,95 @@ async function main() {
   );
 
   const runId = randomUUID();
+  cleanupState.runId = runId;
   const sourceRef = `OB-SMOKE-${runId.slice(0, 8)}`;
+  const fixtureSuffix = runId.slice(0, 8).toUpperCase();
+  const selectorProduct = await rpc("create_product", {
+    p_organization_id: organizationId,
+    p_idempotency_key: `opening-balance-smoke:${runId}:selector-product`,
+    p_sku: `OB SELECTOR ${fixtureSuffix}`,
+    p_name: `Opening Balance Selector ${fixtureSuffix}`,
+    p_unit_code: "UNIT",
+    p_description: "Fixture selector smoke tanpa efek stok.",
+    p_note: "Fixture sementara guardrail selector.",
+  });
+  const eligibleSelectorBatch = await rpc("create_product_batch", {
+    p_organization_id: organizationId,
+    p_idempotency_key: `opening-balance-smoke:${runId}:eligible-batch`,
+    p_product_id: selectorProduct.productId,
+    p_batch_code: `OB ELIGIBLE ${fixtureSuffix}`,
+    p_expiry_date: "2099-12-31",
+    p_manufactured_date: null,
+    p_received_first_at: null,
+    p_batch_kind_code: "STANDARD",
+    p_note: "Fixture eligible selector.",
+  });
+  const expiredSelectorBatch = await rpc("create_product_batch", {
+    p_organization_id: organizationId,
+    p_idempotency_key: `opening-balance-smoke:${runId}:expired-batch`,
+    p_product_id: selectorProduct.productId,
+    p_batch_code: `OB EXPIRED ${fixtureSuffix}`,
+    p_expiry_date: "2020-01-01",
+    p_manufactured_date: null,
+    p_received_first_at: null,
+    p_batch_kind_code: "STANDARD",
+    p_note: "Fixture expired selector.",
+  });
+  const archivedSelectorBatch = await rpc("create_product_batch", {
+    p_organization_id: organizationId,
+    p_idempotency_key: `opening-balance-smoke:${runId}:archived-batch`,
+    p_product_id: selectorProduct.productId,
+    p_batch_code: `OB ARCHIVED ${fixtureSuffix}`,
+    p_expiry_date: "2099-12-31",
+    p_manufactured_date: null,
+    p_received_first_at: null,
+    p_batch_kind_code: "STANDARD",
+    p_note: "Fixture archived selector.",
+  });
+  await rpc("archive_product_batch", {
+    p_organization_id: organizationId,
+    p_idempotency_key: `opening-balance-smoke:${runId}:archive-batch`,
+    p_batch_id: archivedSelectorBatch.batchId,
+    p_expected_row_version: archivedSelectorBatch.rowVersion,
+    p_reason: "Fixture selector archived",
+    p_note: null,
+  });
+  const inactiveProduct = await rpc("create_product", {
+    p_organization_id: organizationId,
+    p_idempotency_key: `opening-balance-smoke:${runId}:inactive-product`,
+    p_sku: `OB INACTIVE ${fixtureSuffix}`,
+    p_name: `Opening Balance Inactive ${fixtureSuffix}`,
+    p_unit_code: "UNIT",
+    p_description: "Fixture Product inactive selector.",
+    p_note: "Fixture sementara guardrail selector.",
+  });
+  const inactiveSelectorBatch = await rpc("create_product_batch", {
+    p_organization_id: organizationId,
+    p_idempotency_key: `opening-balance-smoke:${runId}:inactive-batch`,
+    p_product_id: inactiveProduct.productId,
+    p_batch_code: `OB INACTIVE LOT ${fixtureSuffix}`,
+    p_expiry_date: "2099-12-31",
+    p_manufactured_date: null,
+    p_received_first_at: null,
+    p_batch_kind_code: "STANDARD",
+    p_note: "Fixture Product inactive selector.",
+  });
+  await rpc("archive_product", {
+    p_organization_id: organizationId,
+    p_idempotency_key: `opening-balance-smoke:${runId}:archive-product`,
+    p_product_id: inactiveProduct.productId,
+    p_expected_row_version: inactiveProduct.rowVersion,
+    p_reason: "Fixture selector inactive",
+  });
+  addResult("Fixture selector master dibuat tanpa ledger mutation", true);
+
   const batches = await restRows(
     `batch_inventory?organization_id=eq.${encodeURIComponent(organizationId)}` +
-      "&status_code=eq.ACTIVE&select=product_id,batch_id,sku,batch_code,expiry_date" +
+      "&status_code=eq.ACTIVE" +
+      "&sellable_qty=gt.0" +
+      `&expiry_date=gt.${new Date().toISOString().slice(0, 10)}` +
+      `&received_first_at=lte.${encodeURIComponent(new Date().toISOString())}` +
+      "&select=product_id,batch_id,sku,batch_code,expiry_date" +
       "&order=expiry_date.desc&limit=1",
   );
   const batch = batches[0];
@@ -670,6 +827,17 @@ async function main() {
     containsText(page.html, "dibuat sebagai draft"),
     "Server Action membuat draft",
   );
+  const draftForm = findForm(page.html, "Simpan draft saldo awal");
+  assertTest(
+    containsText(draftForm, eligibleSelectorBatch.batchCode),
+    "Batch eligible tampil pada selector transaksi baru",
+  );
+  assertTest(
+    !containsText(draftForm, archivedSelectorBatch.batchCode) &&
+      !containsText(draftForm, expiredSelectorBatch.batchCode) &&
+      !containsText(draftForm, inactiveSelectorBatch.batchCode),
+    "Batch archived, expired, dan Product inactive hilang dari selector baru",
+  );
 
   const selectedRows = await restRows(
     `opening_balance_cutovers?organization_id=eq.${encodeURIComponent(organizationId)}` +
@@ -677,6 +845,33 @@ async function main() {
   );
   const cutover = selectedRows[0];
   assertTest(cutover?.status_code === "DRAFT", "Draft persisten di read model");
+  await expectRpcError(
+    "save_opening_balance_cutover_draft",
+    {
+      p_organization_id: organizationId,
+      p_cutover_id: cutover.cutover_id,
+      p_expected_row_version: cutover.row_version,
+      p_cutover_at: new Date().toISOString(),
+      p_source_estimate_ref: `BA-SMOKE-${runId}`,
+      p_note: "Direct request expired Batch harus ditolak.",
+      p_lines: [
+        {
+          productId: selectorProduct.productId,
+          batchId: expiredSelectorBatch.batchId,
+          bucketCode: "QUARANTINE",
+          quantity: 1,
+          sourceLineRef: "EXPIRED-DIRECT-1",
+        },
+      ],
+      p_metadata: {
+        source: "opening-balance-ui-smoke",
+        runId,
+        invalidDirectRequest: true,
+      },
+    },
+    "OPENING_BALANCE_BATCH_EXPIRED",
+  );
+  addResult("Invalid direct request ditolak trusted command", true);
 
   const lines = [
     {
@@ -752,6 +947,7 @@ async function main() {
     p_cutover_id: saved.cutover_id,
   });
   assertTest(preview.eligible === true, "Database menyatakan preview eligible");
+  cleanupState.cutoverIds.add(saved.cutover_id);
 
   page = await invokeServerActionForm({
     page,
@@ -896,6 +1092,10 @@ async function main() {
     batchId: batch.batch_id,
     quantity: 1,
   });
+  cleanupState.transactionIds.set(
+    temporaryReceipt.transactionId,
+    "stale-preview-receipt",
+  );
   assertTest(
     Boolean(temporaryReceipt?.transactionId),
     "Receipt sementara mengubah basis reversal",
@@ -1047,8 +1247,10 @@ async function main() {
   assertTest(
     replacementPreview.eligible === true,
     "Replacement cutover eligible setelah reversal",
+    JSON.stringify(replacementPreview),
   );
 
+  cleanupState.cutoverIds.add(replacement.cutoverId);
   await rpc("post_opening_balance_cutover", {
     p_organization_id: organizationId,
     p_idempotency_key:
@@ -1088,6 +1290,18 @@ try {
     error instanceof Error ? error.stack ?? error.message : String(error),
   );
 } finally {
+  try {
+    await cleanupSmokeEffects();
+    if (cleanupState.runId) {
+      addResult("Cleanup domain smoke terverifikasi dari finally", true);
+    }
+  } catch (error) {
+    addResult(
+      "Cleanup domain smoke terverifikasi dari finally",
+      false,
+      error instanceof Error ? error.stack ?? error.message : String(error),
+    );
+  }
   stopServer(args.keepServerRunning);
   console.log(
     `\nOpening balance UI smoke: ${results.filter((item) => item.status === "PASS").length}/${results.length} PASS`,

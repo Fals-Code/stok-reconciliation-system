@@ -74,6 +74,11 @@ YYYY-MM-DD
 
 ### Added
 
+- `[Migration][Implemented]` Menambahkan migration `202607230017_product_batch_master_data.sql`: normalisasi SKU/kode Batch, lifecycle Product dan Batch, `row_version`, trusted RPC, read model/audit Product-Batch, serta audit immutable `catalog.master_data_audit_events` yang stock-neutral.
+- `[Migration][Implemented]` Menambahkan migration `202607230018_product_batch_integration_guardrails.sql`: guardrail trusted untuk Receipt dan Opening Balance, serta resolver scope Stocktake yang membedakan Batch `BLOCKED` dari `ARCHIVED` dan tetap menghitung saldo fisik historis.
+- `[Implemented]` Menambahkan workflow Admin `/products`, detail Product, dan detail Batch untuk create/update/archive/reactivate Product serta create/update/block/unblock/archive/reactivate Batch `STANDARD`, dengan feedback persisten dan optimistic concurrency.
+- `[Testing]` Menambahkan pgTAP `053_product_batch_master_data.test.sql`, `054_product_batch_integration_guardrails.test.sql`, dan focused smoke `npm run test:product-batch-admin-ui`.
+- `[Testing]` Menambahkan cleanup `finally` dan pemilihan fixture bersaldo pada smoke Opening Balance agar pengulangan tidak mencemari projection baru.
 - `[Migration][Implemented]` Menambahkan cutover saldo awal immutable dengan lifecycle `DRAFT -> REVIEW -> POSTED`, preview authoritative, posting `INITIAL_BALANCE` atomik, first-stocktake verification evidence, dan exact reversal.
 - `[Implemented]` Menambahkan workflow Admin `/opening-balances` untuk draft, review, preview, posting, per-line verification drill-down, reversal, dan cutover pengganti.
 - `[Testing]` Menambahkan pgTAP `046` sampai `048` serta smoke `test:opening-balance-ui` dan `test:opening-balance-verification-ui`.
@@ -84,6 +89,8 @@ YYYY-MM-DD
 
 ### Changed
 
+- `[Specification]` Menetapkan `ACTIVE`/`BLOCKED`/`EXPIRED`/`ARCHIVED` sebagai lifecycle Batch; `SELLABLE`/`QUARANTINE`/`DAMAGED` sebagai bucket fisik; dan `STANDARD`/`RETURN`/`UNIDENTIFIED_RETURN` sebagai kind yang terpisah.
+- `[Testing]` Validation baseline bersih untuk perubahan Product/Batch mencatat 23 Product checks, 30 Batch checks, Product/Batch smoke 53, Opening Balance smoke 51, Manual Outbound smoke 48, Marketplace Listing Admin smoke 50, serta pgTAP 54 files/2933 tests. Angka ini bertambah bila coverage bertambah; seluruh suite tetap wajib PASS.
 - `[Specification]` Menetapkan saldo awal estimasi tetap `UNVERIFIED` sampai stok opname pertama yang memenuhi exact organization/product/batch/bucket scope diposting.
 - `[Specification]` Memisahkan verifikasi fisik dari quantity adjustment: zero variance dapat memverifikasi tanpa membuat ledger movement.
 - `[Specification]` Menetapkan koreksi saldo awal melalui exact reversal dan dokumen pengganti, bukan edit atau delete histori.

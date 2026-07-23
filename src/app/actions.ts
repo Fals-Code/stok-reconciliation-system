@@ -57,6 +57,27 @@ function errorMessage(error: unknown) {
   return "Terjadi kesalahan yang tidak diketahui.";
 }
 
+function receiptErrorMessage(error: unknown) {
+  const raw = errorMessage(error);
+  const messages: Record<string, string> = {
+    RECEIPT_LINE_MASTER_NOT_FOUND:
+      "Produk atau batch penerimaan tidak ditemukan pada organisasi aktif.",
+    RECEIPT_PRODUCT_INACTIVE:
+      "Produk sudah diarsipkan dan tidak dapat menerima transaksi baru.",
+    RECEIPT_BATCH_NOT_ACTIVE:
+      "Batch tidak aktif dan tidak dapat menerima transaksi baru.",
+    RECEIPT_BATCH_EXPIRED:
+      "Batch sudah kedaluwarsa dan tidak dapat menerima transaksi baru.",
+    RECEIPT_BATCH_KIND_INVALID:
+      "Penerimaan normal hanya dapat memakai batch standar.",
+  };
+  const matched = Object.entries(messages).find(([code]) =>
+    raw.includes(code),
+  );
+
+  return matched ? matched[1] : raw;
+}
+
 function marketplaceErrorMessage(error: unknown) {
   const raw = errorMessage(error);
   const messages: Record<string, string> = {
@@ -327,7 +348,7 @@ export async function postReceiptAction(formData: FormData) {
     revalidatePath("/");
   } catch (error) {
     kind = "error";
-    message = errorMessage(error);
+    message = receiptErrorMessage(error);
   }
 
   resultRedirect(kind, message);

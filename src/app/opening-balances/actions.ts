@@ -173,6 +173,10 @@ function errorMessage(error: unknown) {
       "Saldo sellable hanya dapat masuk ke batch aktif.",
     OPENING_BALANCE_SELLABLE_BATCH_EXPIRED:
       "Batch kedaluwarsa tidak dapat menerima saldo sellable.",
+    OPENING_BALANCE_BATCH_EXPIRED:
+      "Batch kedaluwarsa tidak dapat dipakai untuk saldo awal baru.",
+    OPENING_BALANCE_RETURN_BATCH_FORBIDDEN:
+      "Batch retur tidak dapat dipakai sebagai batch saldo awal normal.",
     OPENING_BALANCE_UNIDENTIFIED_BATCH_SCOPE_INVALID:
       "Batch tanpa identitas hanya dapat dicatat sebagai quarantine exception.",
     OPENING_BALANCE_REVERSAL_CONFIRMATION_REQUIRED:

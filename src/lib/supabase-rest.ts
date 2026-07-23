@@ -1331,6 +1331,7 @@ export type EntryCorrectionData = {
 export type DashboardData = {
   products: ProductInventory[];
   batches: BatchInventory[];
+  receiptBatches: ProductBatchMasterRow[];
   ledger: StockLedgerEntry[];
 };
 
@@ -1468,19 +1469,25 @@ export async function getDashboardData(
   const resolvedOrganizationId = await resolveOrganizationId(organizationId);
   const encodedOrganizationId = encodeURIComponent(resolvedOrganizationId);
 
-  const [products, batches, ledger] = await Promise.all([
+  const [products, batches, receiptBatches, ledger] = await Promise.all([
     apiFetch<ProductInventory[]>(
       `product_inventory?organization_id=eq.${encodedOrganizationId}&select=*&order=name.asc`,
     ),
     apiFetch<BatchInventory[]>(
       `batch_inventory?organization_id=eq.${encodedOrganizationId}&select=*&order=expiry_date.asc,batch_code.asc`,
     ),
+    apiFetchAll<ProductBatchMasterRow>(
+      `product_batch_master?organization_id=eq.${encodedOrganizationId}` +
+        "&product_is_active=eq.true&lifecycle_status_code=eq.ACTIVE" +
+        "&is_effectively_expired=eq.false&batch_kind_code=eq.STANDARD" +
+        "&select=*&order=expiry_date.asc,batch_code.asc",
+    ),
     apiFetch<StockLedgerEntry[]>(
       `stock_ledger?organization_id=eq.${encodedOrganizationId}&select=*&order=ledger_seq.desc&limit=20`,
     ),
   ]);
 
-  return { products, batches, ledger };
+  return { products, batches, receiptBatches, ledger };
 }
 
 function manualOutboundMetadata(input: ManualOutboundCommandInput) {
@@ -2499,6 +2506,7 @@ export type OpeningBalanceReversalAudit = {
 
 export type OpeningBalanceData = {
   batches: BatchInventory[];
+  eligibleBatches: ProductBatchMasterRow[];
   cutovers: OpeningBalanceCutover[];
   selectedCutover: OpeningBalanceCutover | null;
   selectedReversal: OpeningBalanceReversalAudit | null;
@@ -2685,12 +2693,19 @@ export async function getOpeningBalanceData(
 
   const [
     batches,
+    eligibleBatches,
     recentCutovers,
     selectedRows,
     selectedReversalRows,
   ] = await Promise.all([
     apiFetchAll<BatchInventory>(
       `batch_inventory?organization_id=eq.${encodedOrganizationId}` +
+        "&select=*&order=product_name.asc,expiry_date.asc,batch_code.asc",
+    ),
+    apiFetchAll<ProductBatchMasterRow>(
+      `product_batch_master?organization_id=eq.${encodedOrganizationId}` +
+        "&product_is_active=eq.true&lifecycle_status_code=neq.ARCHIVED" +
+        "&is_effectively_expired=eq.false&batch_kind_code=neq.RETURN" +
         "&select=*&order=product_name.asc,expiry_date.asc,batch_code.asc",
     ),
     apiFetch<OpeningBalanceCutover[]>(
@@ -2736,6 +2751,7 @@ export async function getOpeningBalanceData(
 
   return {
     batches,
+    eligibleBatches,
     cutovers: [...byId.values()].sort(
       (left, right) =>
         new Date(right.created_at).getTime() -
@@ -3343,3 +3359,173 @@ export async function getMarketplaceListingAdminData(
   };
 }
 // MARKETPLACE_LISTING_ADMIN_UI_END
+
+export type ProductMasterRow = {
+  product_id: string;
+  organization_id: string;
+  sku: string;
+  name: string;
+  unit_code: "UNIT";
+  description: string | null;
+  is_active: boolean;
+  row_version: number;
+  created_at: string;
+  created_by: string | null;
+  updated_at: string;
+  updated_by: string | null;
+  sellable_qty: number;
+  quarantine_qty: number;
+  damaged_qty: number;
+  reserved_qty: number;
+  available_qty: number;
+  last_ledger_seq: number;
+  has_authoritative_history: boolean;
+  batch_count: number;
+  listing_reference_count: number;
+};
+
+export type ProductMasterAuditRow = {
+  audit_id: string;
+  organization_id: string;
+  product_id: string;
+  action_code: "PRODUCT_CREATE" | "PRODUCT_UPDATE" | "PRODUCT_ARCHIVE" | "PRODUCT_REACTIVATE";
+  idempotency_command_id: string;
+  command_scope: string;
+  idempotency_key: string;
+  before_snapshot: Record<string, unknown> | null;
+  after_snapshot: Record<string, unknown> | null;
+  reason: string | null;
+  note: string | null;
+  actor_user_id: string | null;
+  actor_display_name: string | null;
+  process_name: string | null;
+  occurred_at: string;
+  recorded_at: string;
+  schema_version: number;
+};
+
+export type ProductCommandResponse = {
+  status: "CREATED" | "UPDATED" | "ARCHIVED" | "REACTIVATED";
+  productId: string;
+  sku: string;
+  name?: string;
+  unitCode?: "UNIT";
+  description?: string | null;
+  isActive: boolean;
+  rowVersion: number;
+  auditId: string;
+  idempotencyKey: string;
+  stockEffect: "NONE";
+  recordedAt: string;
+};
+
+export type ProductMasterData = {
+  products: ProductMasterRow[];
+  audits: ProductMasterAuditRow[];
+};
+
+export async function createProduct(input: {
+  organizationId?: string;
+  idempotencyKey: string;
+  sku: string;
+  name: string;
+  unitCode?: "UNIT";
+  description?: string | null;
+  note?: string | null;
+}) {
+  const organizationId = await resolveOrganizationId(input.organizationId);
+  return callRpc<ProductCommandResponse>("create_product", {
+    p_organization_id: organizationId,
+    p_idempotency_key: input.idempotencyKey,
+    p_sku: input.sku,
+    p_name: input.name,
+    p_unit_code: input.unitCode ?? "UNIT",
+    p_description: input.description ?? null,
+    p_note: input.note ?? null,
+  });
+}
+
+export async function updateProduct(input: {
+  organizationId?: string;
+  idempotencyKey: string;
+  productId: string;
+  expectedRowVersion: number;
+  sku: string;
+  name: string;
+  unitCode?: "UNIT";
+  description?: string | null;
+  note?: string | null;
+}) {
+  const organizationId = await resolveOrganizationId(input.organizationId);
+  return callRpc<ProductCommandResponse>("update_product", {
+    p_organization_id: organizationId,
+    p_idempotency_key: input.idempotencyKey,
+    p_product_id: input.productId,
+    p_expected_row_version: input.expectedRowVersion,
+    p_sku: input.sku,
+    p_name: input.name,
+    p_unit_code: input.unitCode ?? "UNIT",
+    p_description: input.description ?? null,
+    p_note: input.note ?? null,
+  });
+}
+
+async function changeProductState(input: {
+  organizationId?: string;
+  idempotencyKey: string;
+  productId: string;
+  expectedRowVersion: number;
+  reason?: string | null;
+  command: "archive_product" | "reactivate_product";
+}) {
+  const organizationId = await resolveOrganizationId(input.organizationId);
+  return callRpc<ProductCommandResponse>(input.command, {
+    p_organization_id: organizationId,
+    p_idempotency_key: input.idempotencyKey,
+    p_product_id: input.productId,
+    p_expected_row_version: input.expectedRowVersion,
+    p_reason: input.reason ?? null,
+  });
+}
+
+export async function archiveProduct(input: Omit<Parameters<typeof changeProductState>[0], "command">) {
+  return changeProductState({ ...input, command: "archive_product" });
+}
+
+export async function reactivateProduct(input: Omit<Parameters<typeof changeProductState>[0], "command">) {
+  return changeProductState({ ...input, command: "reactivate_product" });
+}
+
+export async function getProductMasterData(organizationId?: string): Promise<ProductMasterData> {
+  const resolvedOrganizationId = await resolveOrganizationId(organizationId);
+  const encodedOrganizationId = encodeURIComponent(resolvedOrganizationId);
+  const [products, audits] = await Promise.all([
+    apiFetch<ProductMasterRow[]>(
+      `product_master?organization_id=eq.${encodedOrganizationId}&select=*&order=is_active.desc,name.asc&limit=1000`,
+    ),
+    apiFetch<ProductMasterAuditRow[]>(
+      `product_master_audit?organization_id=eq.${encodedOrganizationId}&select=*&order=occurred_at.desc&limit=2000`,
+    ),
+  ]);
+  return { products, audits };
+}
+export type ProductBatchMasterRow = {
+  batch_id:string; organization_id:string; product_id:string; product_sku:string; product_name:string; product_is_active:boolean;
+  batch_code:string; manufactured_date:string|null; expiry_date:string; received_first_at:string|null;
+  lifecycle_status_code:"ACTIVE"|"BLOCKED"|"EXPIRED"|"ARCHIVED"; effective_expiry_state:"CURRENT"|"EXPIRES_TODAY"|"EXPIRED";
+  is_effectively_expired:boolean; days_to_expiry:number; block_reason:string|null; batch_kind_code:"STANDARD"|"RETURN"|"UNIDENTIFIED_RETURN";
+  row_version:number; sellable_qty:number; quarantine_qty:number; damaged_qty:number; reserved_qty:number; available_qty:number;
+  reservation_scope_code:"PRODUCT"; last_ledger_seq:number; has_authoritative_history:boolean; is_fefo_eligible:boolean;
+  local_date:string; safety_buffer_days:number; created_at:string; created_by:string|null; updated_at:string; updated_by:string|null;
+};
+export type ProductBatchMasterAuditRow = { audit_id:string; organization_id:string; batch_id:string; action_code:string; idempotency_command_id:string; command_scope:string; idempotency_key:string; before_snapshot:Record<string,unknown>|null; after_snapshot:Record<string,unknown>|null; reason:string|null; note:string|null; actor_user_id:string|null; actor_display_name:string|null; process_name:string|null; occurred_at:string; recorded_at:string; schema_version:number; };
+export type ProductBatchCommandResponse = { status:"CREATED"|"UPDATED"|"BLOCK"|"UNBLOCK"|"ARCHIVE"|"REACTIVATE"; batchId:string; productId:string; batchCode:string; batchKindCode:"STANDARD"|"RETURN"|"UNIDENTIFIED_RETURN"; lifecycleStatusCode:"ACTIVE"|"BLOCKED"|"EXPIRED"|"ARCHIVED"; expiryDate:string; manufacturedDate:string|null; receivedFirstAt:string|null; rowVersion:number; auditId:string; idempotencyKey:string; stockEffect:"NONE"; recordedAt:string; };
+export type ProductBatchMasterData = { batches:ProductBatchMasterRow[]; audits:ProductBatchMasterAuditRow[]; };
+export async function createProductBatch(input:{organizationId?:string;idempotencyKey:string;productId:string;batchCode:string;expiryDate:string;manufacturedDate?:string|null;receivedFirstAt?:string|null;note?:string|null}) { const organizationId=await resolveOrganizationId(input.organizationId); return callRpc<ProductBatchCommandResponse>("create_product_batch",{p_organization_id:organizationId,p_idempotency_key:input.idempotencyKey,p_product_id:input.productId,p_batch_code:input.batchCode,p_expiry_date:input.expiryDate,p_manufactured_date:input.manufacturedDate??null,p_received_first_at:input.receivedFirstAt??null,p_batch_kind_code:"STANDARD",p_note:input.note??null}); }
+export async function updateProductBatch(input:{organizationId?:string;idempotencyKey:string;batchId:string;expectedRowVersion:number;productId:string;batchCode:string;manufacturedDate?:string|null;expiryDate:string;receivedFirstAt?:string|null;reason?:string|null;note?:string|null}) { const organizationId=await resolveOrganizationId(input.organizationId); return callRpc<ProductBatchCommandResponse>("update_product_batch",{p_organization_id:organizationId,p_idempotency_key:input.idempotencyKey,p_batch_id:input.batchId,p_expected_row_version:input.expectedRowVersion,p_product_id:input.productId,p_batch_kind_code:"STANDARD",p_batch_code:input.batchCode,p_manufactured_date:input.manufacturedDate??null,p_expiry_date:input.expiryDate,p_received_first_at:input.receivedFirstAt??null,p_reason:input.reason??null,p_note:input.note??null}); }
+async function batchLifecycle(input:{organizationId?:string;idempotencyKey:string;batchId:string;expectedRowVersion:number;reason:string;note?:string|null;command:"block_product_batch"|"unblock_product_batch"|"archive_product_batch"|"reactivate_product_batch"}) { const organizationId=await resolveOrganizationId(input.organizationId); return callRpc<ProductBatchCommandResponse>(input.command,{p_organization_id:organizationId,p_idempotency_key:input.idempotencyKey,p_batch_id:input.batchId,p_expected_row_version:input.expectedRowVersion,p_reason:input.reason,p_note:input.note??null}); }
+export const blockProductBatch=(input:Omit<Parameters<typeof batchLifecycle>[0],"command">)=>batchLifecycle({...input,command:"block_product_batch"});
+export const unblockProductBatch=(input:Omit<Parameters<typeof batchLifecycle>[0],"command">)=>batchLifecycle({...input,command:"unblock_product_batch"});
+export const archiveProductBatch=(input:Omit<Parameters<typeof batchLifecycle>[0],"command">)=>batchLifecycle({...input,command:"archive_product_batch"});
+export const reactivateProductBatch=(input:Omit<Parameters<typeof batchLifecycle>[0],"command">)=>batchLifecycle({...input,command:"reactivate_product_batch"});
+export async function getProductBatchMasterData(organizationId?:string):Promise<ProductBatchMasterData>{const id=await resolveOrganizationId(organizationId);const e=encodeURIComponent(id);const [batches,audits]=await Promise.all([apiFetch<ProductBatchMasterRow[]>(`product_batch_master?organization_id=eq.${e}&select=*&order=expiry_date.asc,batch_code.asc&limit=2000`),apiFetch<ProductBatchMasterAuditRow[]>(`product_batch_master_audit?organization_id=eq.${e}&select=*&order=occurred_at.desc&limit=3000`)]);return {batches,audits};}

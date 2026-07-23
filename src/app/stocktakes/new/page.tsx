@@ -337,8 +337,8 @@ export default async function NewStocktakePage({
                 ],
                 [
                   "includeInactiveWithBalance",
-                  "Sertakan produk tidak aktif bersaldo",
-                  "Produk nonaktif hanya masuk bila masih memiliki saldo.",
+                  "Sertakan master tidak aktif bersaldo",
+                  "Produk nonaktif atau batch archived hanya masuk bila masih memiliki saldo fisik.",
                 ],
                 [
                   "includeBlockedBatches",

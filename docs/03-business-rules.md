@@ -205,13 +205,17 @@ available = sellable - reserved
 | BR-BAT-001 | Kombinasi `product_id + batch_code` MUST unik. | `DUPLICATE_PRODUCT_BATCH` |
 | BR-BAT-002 | Tanggal kedaluwarsa MUST diisi sebelum batch menerima saldo sellable. | `EXPIRY_DATE_REQUIRED` |
 | BR-BAT-003 | Membuat batch MUST NOT menambah stok. | `BATCH_CREATED_WITH_BALANCE` |
-| BR-BAT-004 | Batch `BLOCKED`, `QUARANTINED`, `EXPIRED`, atau `ARCHIVED` MUST NOT menjadi kandidat FEFO. | `BATCH_NOT_ALLOCATABLE` |
+| BR-BAT-004 | Batch `BLOCKED`, effectively expired, atau `ARCHIVED` MUST NOT menjadi kandidat FEFO; `QUARANTINE` dan `DAMAGED` adalah bucket fisik, bukan lifecycle. | `BATCH_NOT_ALLOCATABLE` |
 | BR-BAT-005 | Status efektif `EXPIRED` berlaku ketika tanggal operasional lokal telah melewati tanggal kedaluwarsa. | `EXPIRED_STATUS_MISMATCH` |
 | BR-BAT-006 | Batch dengan saldo atau histori MUST NOT dihapus permanen. | `BATCH_DELETE_FORBIDDEN` |
 | BR-BAT-007 | Perubahan status batch MUST menyimpan alasan, actor, dan waktu. | `BATCH_STATUS_AUDIT_REQUIRED` |
 | BR-BAT-008 | Perubahan tanggal kedaluwarsa setelah batch memiliki movement MUST membutuhkan Admin, alasan, dan audit sebelum-sesudah. | `EXPIRY_CHANGE_RESTRICTED` |
 | BR-BAT-009 | Batch archived MUST tetap muncul pada ledger dan laporan historis. | `ARCHIVED_BATCH_HISTORY_HIDDEN` |
 | BR-BAT-010 | Batch tanpa identitas yang dapat diverifikasi MUST diperlakukan sebagai exception/quarantine, bukan digabung ke batch fiktif umum. | `UNVERIFIED_BATCH_MERGE_FORBIDDEN` |
+| BR-BAT-011 | Admin hanya boleh membuat Batch kind `STANDARD`; `RETURN` dibuat return inspection dan `UNIDENTIFIED_RETURN` hanya melalui exception yang sah. | `MANUAL_BATCH_KIND_FORBIDDEN` |
+| BR-BAT-012 | Product linkage dan Batch kind MUST immutable setelah Batch dibuat. | `BATCH_PRODUCT_CHANGE_FORBIDDEN` / `BATCH_KIND_CHANGE_FORBIDDEN` |
+| BR-BAT-013 | Master-data mutation MUST stock-neutral; ledger append-only tetap source of truth. | `MASTER_DATA_STOCK_EFFECT_FORBIDDEN` |
+| BR-BAT-014 | Batch `RETURN` di bawah Product archived tetap historis/terbaca tetapi tidak allocatable sampai Product aktif kembali. | `PRODUCT_INACTIVE_FOR_ALLOCATION` |
 
 ## 11. Saldo Awal dan Cutover
 
@@ -223,6 +227,7 @@ available = sellable - reserved
 | BR-CUT-004 | Kuantitas saldo awal MUST integer nol atau positif. | `INVALID_CUTOVER_QUANTITY` |
 | BR-CUT-005 | Baris nol MAY disimpan pada draft, tetapi MUST NOT menghasilkan movement. | `ZERO_INITIAL_MOVEMENT` |
 | BR-CUT-006 | Barang dengan batch belum terverifikasi MUST masuk quarantine dengan referensi exception. | `UNKNOWN_BATCH_NOT_QUARANTINED` |
+| BR-CUT-006A | Opening Balance baru MUST menolak Product inactive, Batch archived/effectively expired, dan kind `RETURN`; `UNIDENTIFIED_RETURN` hanya sah pada `QUARANTINE` dengan identity unverified serta exception reference. | `OPENING_BALANCE_*` |
 | BR-CUT-007 | Posting cutover MUST menghasilkan `INITIAL_BALANCE` untuk setiap baris positif. | `INITIAL_BALANCE_MOVEMENT_MISSING` |
 | BR-CUT-008 | Posting cutover MUST atomik. | `PARTIAL_CUTOVER_POST` |
 | BR-CUT-009 | Setelah posted, isi cutover MUST read-only. | `POSTED_CUTOVER_EDIT_FORBIDDEN` |
@@ -251,6 +256,7 @@ available = sellable - reserved
 | BR-RCV-007 | Posting penerimaan MUST membuat movement per baris dan seluruh dokumen posted secara atomik. | `PARTIAL_RECEIPT_POST` |
 | BR-RCV-008 | Referensi dokumen sumber SHOULD unik dalam konteks supplier/maklon untuk membantu mendeteksi duplikasi. | `POSSIBLE_DUPLICATE_RECEIPT` |
 | BR-RCV-009 | Penerimaan posted MUST NOT diedit; kesalahan menggunakan reversal. | `POSTED_RECEIPT_EDIT_FORBIDDEN` |
+| BR-RCV-010 | Receipt baru hanya menerima Product aktif dan Batch milik Product tersebut, kind `STANDARD`, lifecycle `ACTIVE`, serta belum effectively expired; Batch `BLOCKED` ditolak sebagai `RECEIPT_BATCH_NOT_ACTIVE`. | `RECEIPT_*` |
 
 ## 13. Bundle
 
@@ -457,6 +463,7 @@ Marketplace hanya memberi informasi bahwa retur terjadi. Kondisi fisik ditentuka
 | BR-RET-013 | Retur parsial MUST mempertahankan status progres, bukan langsung closed. | `PARTIAL_RETURN_CLOSED` |
 | BR-RET-014 | Bukti inspeksi MAY opsional, tetapi actor, waktu, hasil, dan catatan MUST disimpan. | `RETURN_INSPECTION_AUDIT_MISSING` |
 | BR-RET-015 | Retur duplikat MUST idempoten dan tidak membuat movement ganda. | `DUPLICATE_RETURN_EFFECT` |
+| BR-RET-016 | Retur dari transaksi historis tetap dapat diselesaikan setelah Product diarchive; inbound sellable memakai Batch `RETURN` baru yang tetap historis/non-allocatable sampai Product direactivate. | `PRODUCT_INACTIVE_FOR_ALLOCATION` |
 
 ### 20.3 Decision Table Retur
 

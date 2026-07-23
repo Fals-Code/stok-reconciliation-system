@@ -75,6 +75,16 @@ export const APP_NAV_SECTIONS = [
     ],
   },
   {
+    label: "Master Data",
+    items: [
+      {
+        href: "/products",
+        label: "Produk",
+        shortLabel: "PR",
+        description: "Identitas Produk, status, dan audit",
+      },
+    ],
+  },  {
     label: "Monitoring",
     items: [
       {

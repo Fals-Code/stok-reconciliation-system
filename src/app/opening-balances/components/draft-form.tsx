@@ -7,7 +7,10 @@ import {
   type OpeningBalanceBucketCode,
   type OpeningBalanceDraftLine,
 } from "@/app/opening-balances/draft";
-import type { BatchInventory } from "@/lib/supabase-rest";
+import type {
+  BatchInventory,
+  ProductBatchMasterRow,
+} from "@/lib/supabase-rest";
 
 type DraftFormProps = {
   action: (formData: FormData) => void | Promise<void>;
@@ -17,6 +20,7 @@ type DraftFormProps = {
   sourceEstimateRef: string;
   note: string;
   batches: BatchInventory[];
+  eligibleBatches: ProductBatchMasterRow[];
   initialLines: OpeningBalanceDraftLine[];
 };
 
@@ -58,6 +62,7 @@ export default function OpeningBalanceDraftForm({
   sourceEstimateRef,
   note,
   batches,
+  eligibleBatches,
   initialLines,
 }: DraftFormProps) {
   const [lines, setLines] = useState<OpeningBalanceDraftLine[]>(
@@ -73,6 +78,14 @@ export default function OpeningBalanceDraftForm({
         ]),
       ),
     [batches],
+  );
+  const eligibleBatchOptions = useMemo(
+    () =>
+      eligibleBatches.map((batch) => ({
+        ...batch,
+        sku: batch.product_sku,
+      })),
+    [eligibleBatches],
   );
 
   function updateLine(
@@ -231,7 +244,7 @@ export default function OpeningBalanceDraftForm({
                     value={selectedKey}
                   >
                     <option value="">Pilih batch</option>
-                    {batches.map((batch) => (
+                    {eligibleBatchOptions.map((batch) => (
                       <option
                         key={batch.batch_id}
                         value={`${batch.product_id}:${batch.batch_id}`}
