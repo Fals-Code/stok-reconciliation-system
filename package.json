@@ -21,7 +21,8 @@
     "test:marketplace-listing-simulator-ui": "node scripts/test-marketplace-listing-simulator-ui.mjs",
     "test:marketplace-listing-admin-ui": "node scripts/test-marketplace-listing-admin-ui.mjs",
     "test:opening-balance-ui": "node scripts/test-opening-balance-ui.mjs",
-    "test:opening-balance-verification-ui": "node scripts/test-opening-balance-verification-ui.mjs"
+    "test:opening-balance-verification-ui": "node scripts/test-opening-balance-verification-ui.mjs",
+    "test:product-batch-admin-ui": "node scripts/test-product-batch-admin-ui.mjs"
   },
   "dependencies": {
     "next": "16.2.10",

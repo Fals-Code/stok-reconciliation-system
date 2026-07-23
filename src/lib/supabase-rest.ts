@@ -3343,3 +3343,153 @@ export async function getMarketplaceListingAdminData(
   };
 }
 // MARKETPLACE_LISTING_ADMIN_UI_END
+
+export type ProductMasterRow = {
+  product_id: string;
+  organization_id: string;
+  sku: string;
+  name: string;
+  unit_code: "UNIT";
+  description: string | null;
+  is_active: boolean;
+  row_version: number;
+  created_at: string;
+  created_by: string | null;
+  updated_at: string;
+  updated_by: string | null;
+  sellable_qty: number;
+  quarantine_qty: number;
+  damaged_qty: number;
+  reserved_qty: number;
+  available_qty: number;
+  last_ledger_seq: number;
+  has_authoritative_history: boolean;
+  batch_count: number;
+  listing_reference_count: number;
+};
+
+export type ProductMasterAuditRow = {
+  audit_id: string;
+  organization_id: string;
+  product_id: string;
+  action_code: "PRODUCT_CREATE" | "PRODUCT_UPDATE" | "PRODUCT_ARCHIVE" | "PRODUCT_REACTIVATE";
+  idempotency_command_id: string;
+  command_scope: string;
+  idempotency_key: string;
+  before_snapshot: Record<string, unknown> | null;
+  after_snapshot: Record<string, unknown> | null;
+  reason: string | null;
+  note: string | null;
+  actor_user_id: string | null;
+  actor_display_name: string | null;
+  process_name: string | null;
+  occurred_at: string;
+  recorded_at: string;
+  schema_version: number;
+};
+
+export type ProductCommandResponse = {
+  status: "CREATED" | "UPDATED" | "ARCHIVED" | "REACTIVATED";
+  productId: string;
+  sku: string;
+  name?: string;
+  unitCode?: "UNIT";
+  description?: string | null;
+  isActive: boolean;
+  rowVersion: number;
+  auditId: string;
+  idempotencyKey: string;
+  stockEffect: "NONE";
+  recordedAt: string;
+};
+
+export type ProductMasterData = {
+  products: ProductMasterRow[];
+  audits: ProductMasterAuditRow[];
+};
+
+export async function createProduct(input: {
+  organizationId?: string;
+  idempotencyKey: string;
+  sku: string;
+  name: string;
+  unitCode?: "UNIT";
+  description?: string | null;
+  note?: string | null;
+}) {
+  const organizationId = await resolveOrganizationId(input.organizationId);
+  return callRpc<ProductCommandResponse>("create_product", {
+    p_organization_id: organizationId,
+    p_idempotency_key: input.idempotencyKey,
+    p_sku: input.sku,
+    p_name: input.name,
+    p_unit_code: input.unitCode ?? "UNIT",
+    p_description: input.description ?? null,
+    p_note: input.note ?? null,
+  });
+}
+
+export async function updateProduct(input: {
+  organizationId?: string;
+  idempotencyKey: string;
+  productId: string;
+  expectedRowVersion: number;
+  sku: string;
+  name: string;
+  unitCode?: "UNIT";
+  description?: string | null;
+  note?: string | null;
+}) {
+  const organizationId = await resolveOrganizationId(input.organizationId);
+  return callRpc<ProductCommandResponse>("update_product", {
+    p_organization_id: organizationId,
+    p_idempotency_key: input.idempotencyKey,
+    p_product_id: input.productId,
+    p_expected_row_version: input.expectedRowVersion,
+    p_sku: input.sku,
+    p_name: input.name,
+    p_unit_code: input.unitCode ?? "UNIT",
+    p_description: input.description ?? null,
+    p_note: input.note ?? null,
+  });
+}
+
+async function changeProductState(input: {
+  organizationId?: string;
+  idempotencyKey: string;
+  productId: string;
+  expectedRowVersion: number;
+  reason?: string | null;
+  command: "archive_product" | "reactivate_product";
+}) {
+  const organizationId = await resolveOrganizationId(input.organizationId);
+  return callRpc<ProductCommandResponse>(input.command, {
+    p_organization_id: organizationId,
+    p_idempotency_key: input.idempotencyKey,
+    p_product_id: input.productId,
+    p_expected_row_version: input.expectedRowVersion,
+    p_reason: input.reason ?? null,
+  });
+}
+
+export async function archiveProduct(input: Omit<Parameters<typeof changeProductState>[0], "command">) {
+  return changeProductState({ ...input, command: "archive_product" });
+}
+
+export async function reactivateProduct(input: Omit<Parameters<typeof changeProductState>[0], "command">) {
+  return changeProductState({ ...input, command: "reactivate_product" });
+}
+
+export async function getProductMasterData(organizationId?: string): Promise<ProductMasterData> {
+  const resolvedOrganizationId = await resolveOrganizationId(organizationId);
+  const encodedOrganizationId = encodeURIComponent(resolvedOrganizationId);
+  const [products, audits] = await Promise.all([
+    apiFetch<ProductMasterRow[]>(
+      `product_master?organization_id=eq.${encodedOrganizationId}&select=*&order=is_active.desc,name.asc&limit=1000`,
+    ),
+    apiFetch<ProductMasterAuditRow[]>(
+      `product_master_audit?organization_id=eq.${encodedOrganizationId}&select=*&order=occurred_at.desc&limit=2000`,
+    ),
+  ]);
+  return { products, audits };
+}
