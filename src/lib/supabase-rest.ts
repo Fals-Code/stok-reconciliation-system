@@ -1331,6 +1331,7 @@ export type EntryCorrectionData = {
 export type DashboardData = {
   products: ProductInventory[];
   batches: BatchInventory[];
+  receiptBatches: ProductBatchMasterRow[];
   ledger: StockLedgerEntry[];
 };
 
@@ -1468,19 +1469,25 @@ export async function getDashboardData(
   const resolvedOrganizationId = await resolveOrganizationId(organizationId);
   const encodedOrganizationId = encodeURIComponent(resolvedOrganizationId);
 
-  const [products, batches, ledger] = await Promise.all([
+  const [products, batches, receiptBatches, ledger] = await Promise.all([
     apiFetch<ProductInventory[]>(
       `product_inventory?organization_id=eq.${encodedOrganizationId}&select=*&order=name.asc`,
     ),
     apiFetch<BatchInventory[]>(
       `batch_inventory?organization_id=eq.${encodedOrganizationId}&select=*&order=expiry_date.asc,batch_code.asc`,
     ),
+    apiFetchAll<ProductBatchMasterRow>(
+      `product_batch_master?organization_id=eq.${encodedOrganizationId}` +
+        "&product_is_active=eq.true&lifecycle_status_code=eq.ACTIVE" +
+        "&is_effectively_expired=eq.false&batch_kind_code=eq.STANDARD" +
+        "&select=*&order=expiry_date.asc,batch_code.asc",
+    ),
     apiFetch<StockLedgerEntry[]>(
       `stock_ledger?organization_id=eq.${encodedOrganizationId}&select=*&order=ledger_seq.desc&limit=20`,
     ),
   ]);
 
-  return { products, batches, ledger };
+  return { products, batches, receiptBatches, ledger };
 }
 
 function manualOutboundMetadata(input: ManualOutboundCommandInput) {
@@ -2499,6 +2506,7 @@ export type OpeningBalanceReversalAudit = {
 
 export type OpeningBalanceData = {
   batches: BatchInventory[];
+  eligibleBatches: ProductBatchMasterRow[];
   cutovers: OpeningBalanceCutover[];
   selectedCutover: OpeningBalanceCutover | null;
   selectedReversal: OpeningBalanceReversalAudit | null;
@@ -2685,12 +2693,19 @@ export async function getOpeningBalanceData(
 
   const [
     batches,
+    eligibleBatches,
     recentCutovers,
     selectedRows,
     selectedReversalRows,
   ] = await Promise.all([
     apiFetchAll<BatchInventory>(
       `batch_inventory?organization_id=eq.${encodedOrganizationId}` +
+        "&select=*&order=product_name.asc,expiry_date.asc,batch_code.asc",
+    ),
+    apiFetchAll<ProductBatchMasterRow>(
+      `product_batch_master?organization_id=eq.${encodedOrganizationId}` +
+        "&product_is_active=eq.true&lifecycle_status_code=neq.ARCHIVED" +
+        "&is_effectively_expired=eq.false&batch_kind_code=neq.RETURN" +
         "&select=*&order=product_name.asc,expiry_date.asc,batch_code.asc",
     ),
     apiFetch<OpeningBalanceCutover[]>(
@@ -2736,6 +2751,7 @@ export async function getOpeningBalanceData(
 
   return {
     batches,
+    eligibleBatches,
     cutovers: [...byId.values()].sort(
       (left, right) =>
         new Date(right.created_at).getTime() -

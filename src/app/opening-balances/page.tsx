@@ -978,6 +978,7 @@ export default async function OpeningBalancesPage({
                     <OpeningBalanceDraftForm
                       action={saveOpeningBalanceDraftAction}
                       batches={data.batches}
+                      eligibleBatches={data.eligibleBatches}
                       cutoverAt={selected.cutover_at}
                       cutoverId={selected.cutover_id}
                       initialLines={initialDraftLines}
