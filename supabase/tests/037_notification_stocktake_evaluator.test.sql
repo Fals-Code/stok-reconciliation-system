@@ -712,11 +712,40 @@ where recount.id =
   and posting_stocktake.id =
       'e8200000-0000-4000-8000-000000000003'::uuid;
 
+create temporary table stocktake_evaluator_clock (
+  code text primary key,
+  observed_at timestamptz not null
+);
+
+insert into stocktake_evaluator_clock (code, observed_at)
+values (
+  'RECOUNT_INITIAL',
+  '2026-07-25 08:00:00+07'::timestamptz
+);
+
+insert into stocktake_evaluator_clock (code, observed_at)
+select
+  'POST_FAILURE_INITIAL',
+  greatest(
+    exception_stocktake.updated_at,
+    posting_stocktake.updated_at + interval '31 minutes'
+  )
+from operations.stocktakes exception_stocktake
+cross join operations.stocktakes posting_stocktake
+where exception_stocktake.id =
+      'e8200000-0000-4000-8000-000000000002'::uuid
+  and posting_stocktake.id =
+      'e8200000-0000-4000-8000-000000000003'::uuid;
+
 create temporary table recount_initial_evaluation as
 select notification.evaluate_stocktake_recounts(
   '00000000-0000-4000-8000-000000000001'::uuid,
   'stocktake-recount:initial',
-  '2026-07-25 08:00:00+07'::timestamptz,
+  (
+    select observed_at
+    from stocktake_evaluator_clock
+    where code = 'RECOUNT_INITIAL'
+  ),
   'SCHEDULED',
   'e9600000-0000-4000-8000-000000000001'::uuid,
   'pgtap.stocktake_recount_evaluator'
@@ -998,7 +1027,11 @@ create temporary table recount_replay_evaluation as
 select notification.evaluate_stocktake_recounts(
   '00000000-0000-4000-8000-000000000001'::uuid,
   'stocktake-recount:initial',
-  '2026-07-25 09:00:00+07'::timestamptz,
+  (
+    select observed_at
+    from stocktake_evaluator_clock
+    where code = 'RECOUNT_INITIAL'
+  ),
   'MANUAL',
   'e9600000-0000-4000-8000-000000000099'::uuid,
   'pgtap.stocktake_recount_evaluator'
@@ -1035,11 +1068,30 @@ set
 where id =
   'e8300000-0000-4000-8000-000000000001'::uuid;
 
+insert into stocktake_evaluator_clock (code, observed_at)
+select
+  'RECOUNT_RESOLVED',
+  greatest(
+    line.updated_at,
+    (
+      select observed_at
+      from stocktake_evaluator_clock
+      where code = 'RECOUNT_INITIAL'
+    )
+  ) + interval '1 second'
+from operations.stocktake_lines line
+where line.id =
+      'e8300000-0000-4000-8000-000000000001'::uuid;
+
 create temporary table recount_resolved_evaluation as
 select notification.evaluate_stocktake_recounts(
   '00000000-0000-4000-8000-000000000001'::uuid,
   'stocktake-recount:resolved',
-  '2026-07-25 10:00:00+07'::timestamptz,
+  (
+    select observed_at
+    from stocktake_evaluator_clock
+    where code = 'RECOUNT_RESOLVED'
+  ),
   'EVENT_DRIVEN',
   'e9600000-0000-4000-8000-000000000002'::uuid,
   'pgtap.stocktake_recount_evaluator'
@@ -1104,11 +1156,30 @@ set
 where id =
   'e8300000-0000-4000-8000-000000000001'::uuid;
 
+insert into stocktake_evaluator_clock (code, observed_at)
+select
+  'RECOUNT_RECURRENCE',
+  greatest(
+    line.updated_at,
+    (
+      select observed_at
+      from stocktake_evaluator_clock
+      where code = 'RECOUNT_RESOLVED'
+    )
+  ) + interval '1 second'
+from operations.stocktake_lines line
+where line.id =
+      'e8300000-0000-4000-8000-000000000001'::uuid;
+
 create temporary table recount_recurrence_evaluation as
 select notification.evaluate_stocktake_recounts(
   '00000000-0000-4000-8000-000000000001'::uuid,
   'stocktake-recount:recurrence',
-  '2026-07-25 11:00:00+07'::timestamptz,
+  (
+    select observed_at
+    from stocktake_evaluator_clock
+    where code = 'RECOUNT_RECURRENCE'
+  ),
   'EVENT_DRIVEN',
   'e9600000-0000-4000-8000-000000000003'::uuid,
   'pgtap.stocktake_recount_evaluator'
@@ -1198,11 +1269,30 @@ set
 where id =
   'e8200000-0000-4000-8000-000000000001'::uuid;
 
+insert into stocktake_evaluator_clock (code, observed_at)
+select
+  'RECOUNT_CANCELLED',
+  greatest(
+    stocktake.updated_at,
+    (
+      select observed_at
+      from stocktake_evaluator_clock
+      where code = 'RECOUNT_RECURRENCE'
+    )
+  ) + interval '1 second'
+from operations.stocktakes stocktake
+where stocktake.id =
+      'e8200000-0000-4000-8000-000000000001'::uuid;
+
 create temporary table recount_cancelled_evaluation as
 select notification.evaluate_stocktake_recounts(
   '00000000-0000-4000-8000-000000000001'::uuid,
   'stocktake-recount:cancelled',
-  '2026-07-25 12:00:00+07'::timestamptz,
+  (
+    select observed_at
+    from stocktake_evaluator_clock
+    where code = 'RECOUNT_CANCELLED'
+  ),
   'SCHEDULED',
   'e9600000-0000-4000-8000-000000000004'::uuid,
   'pgtap.stocktake_recount_evaluator'
@@ -1236,7 +1326,11 @@ create temporary table post_failure_initial_evaluation as
 select notification.evaluate_stocktake_post_failures(
   '00000000-0000-4000-8000-000000000001'::uuid,
   'stocktake-post-failure:initial',
-  '2026-07-25 13:00:00+07'::timestamptz,
+  (
+    select observed_at
+    from stocktake_evaluator_clock
+    where code = 'POST_FAILURE_INITIAL'
+  ),
   'SCHEDULED',
   'e9700000-0000-4000-8000-000000000001'::uuid,
   'pgtap.stocktake_post_failure_evaluator'
@@ -1485,7 +1579,11 @@ create temporary table post_failure_replay_evaluation as
 select notification.evaluate_stocktake_post_failures(
   '00000000-0000-4000-8000-000000000001'::uuid,
   'stocktake-post-failure:initial',
-  '2026-07-25 14:00:00+07'::timestamptz,
+  (
+    select observed_at
+    from stocktake_evaluator_clock
+    where code = 'POST_FAILURE_INITIAL'
+  ),
   'MANUAL',
   'e9700000-0000-4000-8000-000000000099'::uuid,
   'pgtap.stocktake_post_failure_evaluator'
@@ -1518,11 +1616,30 @@ set
 where id =
   'e8200000-0000-4000-8000-000000000002'::uuid;
 
+insert into stocktake_evaluator_clock (code, observed_at)
+select
+  'POST_FAILURE_RECONCILIATION',
+  greatest(
+    stocktake.updated_at,
+    (
+      select observed_at
+      from stocktake_evaluator_clock
+      where code = 'POST_FAILURE_INITIAL'
+    )
+  ) + interval '1 second'
+from operations.stocktakes stocktake
+where stocktake.id =
+      'e8200000-0000-4000-8000-000000000002'::uuid;
+
 create temporary table post_reconciliation_failed_evaluation as
 select notification.evaluate_stocktake_post_failures(
   '00000000-0000-4000-8000-000000000001'::uuid,
   'stocktake-post-failure:reconciliation-failed',
-  '2026-07-25 15:00:00+07'::timestamptz,
+  (
+    select observed_at
+    from stocktake_evaluator_clock
+    where code = 'POST_FAILURE_RECONCILIATION'
+  ),
   'EVENT_DRIVEN',
   'e9700000-0000-4000-8000-000000000002'::uuid,
   'pgtap.stocktake_post_failure_evaluator'
@@ -1635,11 +1752,38 @@ set
 where id =
   'e8200000-0000-4000-8000-000000000003'::uuid;
 
+insert into stocktake_evaluator_clock (code, observed_at)
+select
+  'POST_FAILURE_RECOVERY',
+  greatest(
+    reconciliation_run.updated_at,
+    exception_stocktake.updated_at,
+    posting_stocktake.updated_at,
+    (
+      select observed_at
+      from stocktake_evaluator_clock
+      where code = 'POST_FAILURE_RECONCILIATION'
+    )
+  ) + interval '1 second'
+from reconciliation.runs reconciliation_run
+cross join operations.stocktakes exception_stocktake
+cross join operations.stocktakes posting_stocktake
+where reconciliation_run.id =
+      'e8500000-0000-4000-8000-000000000001'::uuid
+  and exception_stocktake.id =
+      'e8200000-0000-4000-8000-000000000002'::uuid
+  and posting_stocktake.id =
+      'e8200000-0000-4000-8000-000000000003'::uuid;
+
 create temporary table post_failure_recovered_evaluation as
 select notification.evaluate_stocktake_post_failures(
   '00000000-0000-4000-8000-000000000001'::uuid,
   'stocktake-post-failure:recovered',
-  '2026-07-25 16:00:00+07'::timestamptz,
+  (
+    select observed_at
+    from stocktake_evaluator_clock
+    where code = 'POST_FAILURE_RECOVERY'
+  ),
   'SCHEDULED',
   'e9700000-0000-4000-8000-000000000003'::uuid,
   'pgtap.stocktake_post_failure_evaluator'
@@ -1716,11 +1860,30 @@ set
 where id =
   'e8200000-0000-4000-8000-000000000002'::uuid;
 
+insert into stocktake_evaluator_clock (code, observed_at)
+select
+  'POST_FAILURE_RECURRENCE',
+  greatest(
+    stocktake.updated_at,
+    (
+      select observed_at
+      from stocktake_evaluator_clock
+      where code = 'POST_FAILURE_RECOVERY'
+    )
+  ) + interval '1 second'
+from operations.stocktakes stocktake
+where stocktake.id =
+      'e8200000-0000-4000-8000-000000000002'::uuid;
+
 create temporary table post_failure_recurrence_evaluation as
 select notification.evaluate_stocktake_post_failures(
   '00000000-0000-4000-8000-000000000001'::uuid,
   'stocktake-post-failure:recurrence',
-  '2026-07-25 17:00:00+07'::timestamptz,
+  (
+    select observed_at
+    from stocktake_evaluator_clock
+    where code = 'POST_FAILURE_RECURRENCE'
+  ),
   'EVENT_DRIVEN',
   'e9700000-0000-4000-8000-000000000004'::uuid,
   'pgtap.stocktake_post_failure_evaluator'
@@ -1856,11 +2019,40 @@ where organization_id =
   '00000000-0000-4000-8000-000000000001'::uuid
   and code = 'STOCKTAKE_POST_FAILED';
 
+insert into stocktake_evaluator_clock (code, observed_at)
+select
+  'RECOUNT_INVALID_CONFIG',
+  greatest(
+    (
+      select observed_at
+      from stocktake_evaluator_clock
+      where code = 'RECOUNT_CANCELLED'
+    ),
+    (
+      select observed_at
+      from stocktake_evaluator_clock
+      where code = 'POST_FAILURE_RECURRENCE'
+    )
+  ) + interval '1 second';
+
+insert into stocktake_evaluator_clock (code, observed_at)
+select
+  'POST_FAILURE_INVALID_CONFIG',
+  (
+    select observed_at
+    from stocktake_evaluator_clock
+    where code = 'RECOUNT_INVALID_CONFIG'
+  ) + interval '1 second';
+
 create temporary table invalid_post_config_evaluation as
 select notification.evaluate_stocktake_post_failures(
   '00000000-0000-4000-8000-000000000001'::uuid,
   'stocktake-post-failure:invalid-config',
-  '2026-07-25 18:00:00+07'::timestamptz,
+  (
+    select observed_at
+    from stocktake_evaluator_clock
+    where code = 'POST_FAILURE_INVALID_CONFIG'
+  ),
   'SCHEDULED',
   'e9700000-0000-4000-8000-000000000005'::uuid,
   'pgtap.stocktake_post_failure_evaluator'
