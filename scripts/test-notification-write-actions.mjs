@@ -6,7 +6,7 @@ import { randomUUID } from "node:crypto";
 
 const DEFAULTS = {
   baseUrl: "http://127.0.0.1:3000",
-  email: "smoke.notification.admin@glowlab.invalid",
+  email: "demo.admin@glowlab.invalid",
   password: "LocalSmoke123!",
   displayName: "Notification Smoke Admin",
   startupTimeoutSeconds: 90,
