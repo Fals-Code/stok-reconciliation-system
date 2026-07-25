@@ -204,6 +204,9 @@ export type ReturnItem = {
   lost_qty: number;
   pending_arrival_qty: number;
   pending_inspection_qty: number;
+  gross_lost_qty?: number;
+  late_arrival_qty?: number;
+  net_lost_qty?: number;
   created_at: string;
   updated_at: string;
 };
@@ -1353,6 +1356,119 @@ export type ReturnData = {
   inspectionAllocations: ReturnInspectionAllocation[];
 };
 
+export type ReturnClaimHeader = {
+  id: string;
+  organization_id: string;
+  return_id: string;
+  claim_type_code: string;
+  status_code: string;
+  resolution_code: string | null;
+  external_claim_ref: string | null;
+  claim_basis_code: string;
+  claim_basis_at: string;
+  window_days_snapshot: number;
+  timezone_snapshot: string;
+  deadline_source_code: string;
+  deadline_at: string;
+  policy_version_snapshot: string;
+  schema_version: number;
+  created_at: string;
+  submitted_at: string | null;
+  resolved_at: string | null;
+  cancelled_at: string | null;
+  actor_user_id: string | null;
+  process_name: string | null;
+  idempotency_command_id: string;
+  request_hash: string;
+  stock_effect_code: "NONE";
+  derived_deadline_stage: string;
+};
+
+export type ReturnClaimItem = {
+  id: string;
+  organization_id: string;
+  claim_id: string;
+  return_item_id: string;
+  quantity: number;
+  eligible_lost_qty_snapshot: number;
+  product_id: string;
+  product_sku_snapshot: string;
+  source_line_ref_snapshot: string;
+  canonical_components_snapshot: Record<string, unknown>[];
+  created_at: string;
+};
+
+export type ReturnClaimEvent = {
+  id: string;
+  organization_id: string;
+  claim_id: string;
+  event_type_code: string;
+  occurred_at: string;
+  recorded_at: string;
+  actor_user_id: string | null;
+  process_name: string | null;
+  idempotency_command_id: string;
+  note: string | null;
+  snapshot: Record<string, unknown>;
+};
+
+export type ReturnLateArrival = {
+  late_arrival_id: string;
+  organization_id: string;
+  return_id: string;
+  receipt_id: string;
+  event_id: string;
+  late_arrival_reference: string;
+  occurred_at: string;
+  note: string | null;
+  actor_user_id: string | null;
+  process_name: string | null;
+  idempotency_command_id: string;
+  request_hash: string;
+  schema_version: number;
+  rule_version: string;
+  created_at: string;
+  receipt_ref: string;
+  stock_effect_code: "NONE";
+};
+
+export type ReturnLateArrivalLine = {
+  late_arrival_line_id: string;
+  organization_id: string;
+  late_arrival_id: string;
+  return_item_id: string;
+  lost_event_line_id: string;
+  allocation_no: number;
+  request_line_no: number;
+  quantity: number;
+  product_id: string;
+  product_sku_snapshot: string;
+  source_line_ref: string;
+  created_at: string;
+  receipt_line_id: string | null;
+};
+
+export type ReturnLateArrivalClaimLink = {
+  late_arrival_claim_link_id: string;
+  organization_id: string;
+  late_arrival_id: string;
+  claim_id: string;
+  claim_status_snapshot: string;
+  warning_required: boolean;
+  detected_at: string;
+  created_at: string;
+};
+
+export type ReturnClaimData = {
+  claims: ReturnClaimHeader[];
+  claimItems: ReturnClaimItem[];
+  claimEvents: ReturnClaimEvent[];
+  lateArrivals: ReturnLateArrival[];
+  lateArrivalLines: ReturnLateArrivalLine[];
+  lateArrivalClaimLinks: ReturnLateArrivalClaimLink[];
+  notifications: NotificationListItem[];
+};
+
 function getConfig() {
   const url = (process.env.NEXT_PUBLIC_SUPABASE_URL ?? DEFAULT_LOCAL_URL).replace(/\/$/, "");
   const publishableKey = process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY;
@@ -1958,6 +2074,147 @@ export async function getReturnData(
     receiptLines,
     inspectionAllocations,
   };
+}
+
+export async function getReturnClaimData(
+  organizationId?: string,
+): Promise<ReturnClaimData> {
+  const resolvedOrganizationId = await resolveOrganizationId(organizationId);
+  const encodedOrganizationId = encodeURIComponent(resolvedOrganizationId);
+  const org = `organization_id=eq.${encodedOrganizationId}`;
+  const [claims, claimItems, claimEvents, lateArrivals, lateArrivalLines, lateArrivalClaimLinks, notifications] =
+    await Promise.all([
+      apiFetch<ReturnClaimHeader[]>(`return_claim_master?${org}&select=*&order=deadline_at.asc,created_at.asc,id.asc&limit=500`),
+      apiFetch<ReturnClaimItem[]>(`return_claim_items?${org}&select=*&order=created_at.asc,id.asc&limit=1000`),
+      apiFetch<ReturnClaimEvent[]>(`return_claim_events?${org}&select=*&order=occurred_at.asc,recorded_at.asc,id.asc&limit=2000`),
+      apiFetch<ReturnLateArrival[]>(`return_late_arrivals?${org}&select=*&order=occurred_at.desc,created_at.desc,late_arrival_id.desc&limit=500`),
+      apiFetch<ReturnLateArrivalLine[]>(`return_late_arrival_lines?${org}&select=*&order=created_at.asc,allocation_no.asc,late_arrival_line_id.asc&limit=2000`),
+      apiFetch<ReturnLateArrivalClaimLink[]>(`return_late_arrival_claim_links?${org}&select=*&order=detected_at.desc,created_at.desc,late_arrival_claim_link_id.desc&limit=2000`),
+      getNotificationList({ includeArchived: true, limit: 100 }),
+    ]);
+
+  return {
+    claims,
+    claimItems,
+    claimEvents,
+    lateArrivals,
+    lateArrivalLines,
+    lateArrivalClaimLinks,
+    notifications,
+  };
+}
+
+export type TikTokClaimCommandResponse = {
+  claimId: string;
+  status?: string;
+  deadlineAt?: string;
+  stockEffectCode: "NONE";
+};
+
+export type LateArrivalCommandResponse = {
+  lateArrivalId: string;
+  receiptId: string;
+  eventId: string;
+  returnId: string;
+  returnRef: string;
+  stockEffectCode: "NONE";
+  totalQuantity: number;
+  lines: Array<Record<string, unknown>>;
+};
+
+export async function createTikTokReturnClaim(input: {
+  organizationId?: string;
+  idempotencyKey: string;
+  returnId: string;
+  claimTypeCode: string;
+  items: Array<{ returnItemId: string; quantity: number }>;
+  occurredAt: string;
+}) {
+  const organizationId = await resolveOrganizationId(input.organizationId);
+  return callRpc<TikTokClaimCommandResponse>("create_tiktok_return_claim", {
+    p_organization_id: organizationId,
+    p_idempotency_key: input.idempotencyKey,
+    p_return_id: input.returnId,
+    p_claim_type_code: input.claimTypeCode,
+    p_items: input.items,
+    p_occurred_at: input.occurredAt,
+  });
+}
+
+export async function submitTikTokReturnClaim(input: {
+  organizationId?: string;
+  idempotencyKey: string;
+  claimId: string;
+  externalClaimRef: string;
+  occurredAt: string;
+}) {
+  const organizationId = await resolveOrganizationId(input.organizationId);
+  return callRpc<TikTokClaimCommandResponse>("submit_tiktok_return_claim", {
+    p_organization_id: organizationId,
+    p_idempotency_key: input.idempotencyKey,
+    p_claim_id: input.claimId,
+    p_external_claim_ref: input.externalClaimRef,
+    p_occurred_at: input.occurredAt,
+  });
+}
+
+export async function resolveTikTokReturnClaim(input: {
+  organizationId?: string;
+  idempotencyKey: string;
+  claimId: string;
+  resolutionCode: string;
+  occurredAt: string;
+}) {
+  const organizationId = await resolveOrganizationId(input.organizationId);
+  return callRpc<TikTokClaimCommandResponse>("resolve_tiktok_return_claim", {
+    p_organization_id: organizationId,
+    p_idempotency_key: input.idempotencyKey,
+    p_claim_id: input.claimId,
+    p_resolution_code: input.resolutionCode,
+    p_occurred_at: input.occurredAt,
+  });
+}
+
+export async function cancelTikTokReturnClaim(input: {
+  organizationId?: string;
+  idempotencyKey: string;
+  claimId: string;
+  reason: string;
+  occurredAt: string;
+}) {
+  const organizationId = await resolveOrganizationId(input.organizationId);
+  return callRpc<TikTokClaimCommandResponse>("cancel_tiktok_return_claim", {
+    p_organization_id: organizationId,
+    p_idempotency_key: input.idempotencyKey,
+    p_claim_id: input.claimId,
+    p_reason: input.reason,
+    p_occurred_at: input.occurredAt,
+  });
+}
+
+export async function confirmLateReturnArrival(input: {
+  organizationId?: string;
+  idempotencyKey: string;
+  returnRef: string;
+  lateArrivalReference: string;
+  receiptRef: string;
+  occurredAt: string;
+  lines: Array<{ returnItemId: string; quantity: number }>;
+  note?: string | null;
+  metadata?: Record<string, unknown>;
+}) {
+  const organizationId = await resolveOrganizationId(input.organizationId);
+  return callRpc<LateArrivalCommandResponse>("confirm_late_return_arrival", {
+    p_organization_id: organizationId,
+    p_idempotency_key: input.idempotencyKey,
+    p_return_ref: input.returnRef,
+    p_late_arrival_reference: input.lateArrivalReference,
+    p_receipt_ref: input.receiptRef,
+    p_occurred_at: input.occurredAt,
+    p_lines: input.lines,
+    p_note: input.note ?? null,
+    p_metadata: input.metadata ?? {},
+  });
 }
 export async function getReconciliationData(
   organizationId?: string,

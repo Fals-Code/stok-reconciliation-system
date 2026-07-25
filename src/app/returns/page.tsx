@@ -1,5 +1,6 @@
 import Link from "next/link";
 import PageSectionNav from "@/app/app-shell/page-section-nav";
+import { ReturnClaimWorkflow } from "@/app/returns/claim-workflow";
 
 import {
   confirmReturnReceiptAction,
@@ -16,6 +17,7 @@ import {
 } from "@/app/returns/return-selects";
 import {
   getMarketplaceData,
+  getReturnClaimData,
   getReturnData,
   type ReturnHeader,
   type ReturnItem,
@@ -140,6 +142,9 @@ export default async function ReturnsPage({
   searchParams: Promise<{
     status?: string;
     returnId?: string;
+    claimId?: string;
+    claimStatus?: string;
+    claimStage?: string;
     success?: string;
     error?: string;
   }>;
@@ -147,11 +152,13 @@ export default async function ReturnsPage({
   const params = await searchParams;
   let returnData;
   let marketplace;
+  let claimData;
 
   try {
-    [returnData, marketplace] = await Promise.all([
+    [returnData, marketplace, claimData] = await Promise.all([
       getReturnData(),
       getMarketplaceData(),
+      getReturnClaimData(),
     ]);
   } catch (error) {
     return (
@@ -336,6 +343,7 @@ export default async function ReturnsPage({
         items={[
           { href: "#overview", label: "Ringkasan" },
           { href: "#actions", label: "Actions" },
+          { href: "#claims", label: "TikTok claims" },
           { href: "#returns", label: "Returns" },
           { href: "#timeline", label: "Timeline" },
         ]}
@@ -654,6 +662,16 @@ export default async function ReturnsPage({
             </form>
           </div>
         </section>
+
+        <ReturnClaimWorkflow
+          returns={returns}
+          items={items}
+          data={claimData}
+          selectedReturn={selectedReturn}
+          claimId={params.claimId}
+          claimStatus={params.claimStatus}
+          claimStage={params.claimStage}
+        />
 
         <section id="returns" className="mt-10 scroll-mt-24">
           <div className="mb-5 flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
