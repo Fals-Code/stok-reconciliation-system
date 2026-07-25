@@ -605,11 +605,19 @@ pnpm lint
 pnpm test --run
 supabase db reset
 supabase test db
+npm run test:tiktok-return-claim-ui
+npm run test:notification-write-actions
+npm run test:notification-admin-operations
 pnpm build
 pnpm playwright test --grep @demo
 ```
 
 Perintah final disesuaikan `package.json`.
+
+Focused return/claim smoke membuat organization, Admin, inventory, shipment,
+receipt, dan claim fixture unik per run. Setelah `supabase db reset`, buat
+kembali Admin lokal melalui `npm run demo:admin` sebelum menjalankan smoke UI;
+jangan memakai fixture output run sebelumnya.
 
 Catat:
 

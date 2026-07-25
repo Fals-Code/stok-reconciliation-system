@@ -2454,3 +2454,16 @@ Migration `202607230018_product_batch_integration_guardrails.sql` menambahkan tr
 `operations.resolve_stocktake_scope(uuid, jsonb, date, bigint)` tetap menghitung bucket fisik `SELLABLE`, `QUARANTINE`, dan `DAMAGED` secara terpisah. Resolver memasukkan master archived yang masih memiliki saldo fisik, tetapi tidak memasukkan master archived bersaldo nol ke scope baru. FEFO eligibility bukan syarat untuk menghitung fisik.
 
 Helper dan trigger internal memakai fixed `search_path`; grant dibuka hanya pada read model/RPC yang diperlukan dan internal helper direvoke dari `PUBLIC`, `anon`, `authenticated`, serta `service_role` sesuai migration. RLS dan trusted caller menjaga organization scoping. Exact reversal, transaksi historis, dan return historis tidak memakai jalur transaksi baru sehingga histori tetap dapat diselesaikan tanpa direct write ke ledger atau projection.
+
+## Kontrak TikTok Return Claim dan Late Arrival yang Telah Diimplementasikan
+
+Migration `202607230019` sampai `202607250031` menambahkan lifecycle claim TikTok, evaluator deadline/notifikasi, late-arrival correction, provenance bundle, dan guardrail batch return. Migration `202607250032` memperbaiki boundary PostgREST wrapper agar named parameter `p_*` cocok dengan signature SQL; migration ini tidak mengubah body domain transition helper.
+
+Kontrak runtime yang harus dipertahankan:
+
+- claim deadline disnapshot tepat 40 hari kalender dari `operations.returns.created_at` dalam `Asia/Jakarta`;
+- create/submit/resolve/cancel/evaluate claim, receipt operasional, dan late arrival tidak membuat stock transaction, ledger entry, atau projection delta;
+- late arrival menambah correction append-only dan receipt `stock_effect_code = NONE`, tanpa menghapus LOST atau claim history;
+- inspeksi `SELLABLE` memakai provenance shipment terverifikasi dan membuat satu inbound ke batch baru `RETURN`; `DAMAGED` hanya audit kondisi;
+- command replay identik mengembalikan response tersimpan, sedangkan payload berbeda dengan key sama ditolak;
+- seluruh read model, RPC, RLS, dan actor memakai organization aktif Admin.

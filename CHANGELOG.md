@@ -87,6 +87,11 @@ YYYY-MM-DD
 - `[Implemented][Demo]` Mengubah simulator marketplace agar menerima external listing code dan listing quantity, kemudian memakai normalized event contract yang sama dengan adapter CSV/API/webhook masa depan.
 - `[Testing]` Menambahkan pgTAP `049` sampai `052`, smoke `test:marketplace-listing-admin-ui`, dan regression smoke `test:marketplace-listing-simulator-ui`.
 
+- `[Migration][Implemented]` Menambahkan lifecycle TikTok return claim dan late arrival pada migration `202607230019`–`202607250031`: deadline snapshot 40 hari dari `operations.returns.created_at`, claim events, evaluator deadline, notification deep link, late-arrival correction, provenance, dan batch `RETURN`.
+- `[Migration][Implemented]` Menambahkan migration `202607250032_tiktok_claim_postgrest_wrapper_parameter_names.sql` untuk named parameter wrapper PostgREST dengan grants dan fixed `search_path` yang tetap membatasi boundary trusted.
+- `[Implemented]` Menambahkan Admin `/returns` claim worklist/detail, submit/resolve/cancel, late-arrival workflow, stock-neutral receipt, exact provenance, dan persistent feedback.
+- `[Testing]` Menambahkan focused smoke `npm run test:tiktok-return-claim-ui` serta pgTAP `055`–`058`; fixture organisasi, Auth, inventory, dan receipt-line dibuat deterministic/terisolasi.
+
 ### Changed
 
 - `[Specification]` Menetapkan `ACTIVE`/`BLOCKED`/`EXPIRED`/`ARCHIVED` sebagai lifecycle Batch; `SELLABLE`/`QUARANTINE`/`DAMAGED` sebagai bucket fisik; dan `STANDARD`/`RETURN`/`UNIDENTIFIED_RETURN` sebagai kind yang terpisah.
@@ -97,6 +102,8 @@ YYYY-MM-DD
 - `[Specification]` Menetapkan adapter marketplace memakai external listing identity, sedangkan mapping dan bundle expansion dilakukan oleh domain sebelum reservasi atau efek stok.
 - `[Specification]` Menetapkan order lama mempertahankan recipe version, mapping fingerprint, dan component snapshot yang dipakai saat ingestion; perubahan recipe hanya berlaku untuk event pada effective period baru.
 - `[Specification]` Menetapkan bundle tidak pernah memiliki stok, batch, reservation, allocation, transaction, ledger entry, atau projection sendiri.
+- `[Specification]` Menegaskan bahwa claim, expected return, physical receipt, dan late arrival tidak mengubah stok; hanya inspeksi `SELLABLE` yang membuat satu inbound ke batch baru `RETURN`, sedangkan `DAMAGED` dan `LOST` tetap audit-only.
+- `[Testing]` Shared notification smokes memakai Admin demo stabil `demo.admin@glowlab.invalid` agar bootstrap profile `DEMO-ADMIN` dapat di-reuse tanpa collision employee code.
 
 ### Deprecated
 

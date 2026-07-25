@@ -2,8 +2,8 @@
 File: 09-return-and-claim-flow.md
 Project: Sistem Rekonsiliasi Stok
 Status: Approved design baseline for Phase 1
-Version: 1.0.0
-Last updated: 2026-07-12
+Version: 1.1.0
+Last updated: 2026-07-26
 Language: id-ID
 Timezone: Asia/Jakarta
 Role model: ADMIN only
@@ -1712,7 +1712,8 @@ Bila hasil menyebut parcel ditemukan:
 
 - jangan otomatis receive;
 - buat task physical verification;
-- hanya physical receipt yang menambah quarantine.
+- physical receipt dicatat sebagai receipt operasional `stock_effect_code = NONE`;
+- hanya inspeksi `SELLABLE` yang membuat inbound ke batch `RETURN` baru.
 
 ---
 
@@ -2869,7 +2870,11 @@ Per receipt:
 ```text
 receipt_line_qty
 =
-quarantine inbound ledger qty
+operational received quantity
+
+stock transaction = 0
+ledger entry = 0
+projection delta = 0
 ```
 
 Per inspection:
@@ -2877,9 +2882,9 @@ Per inspection:
 ```text
 inspection_qty
 =
-abs(quarantine outbound)
-=
-destination bucket inbound
+sellable inbound to new RETURN batch
+
+damaged quantity = audit-only
 ```
 
 Per claim:
@@ -3112,8 +3117,8 @@ Test:
 ### Receipt
 
 - `RET-AC-005`: Physical receipt is explicit.
-- `RET-AC-006`: Receipt enters quarantine.
-- `RET-AC-007`: Receipt generates ledger.
+- `RET-AC-006`: Receipt operasional menyimpan quantity received dan tetap stock-neutral (`stock_effect_code = NONE`).
+- `RET-AC-007`: Receipt tidak membuat transaction, ledger entry, atau projection delta.
 - `RET-AC-008`: Partial receipts supported.
 - `RET-AC-009`: Concurrent over-receipt prevented.
 - `RET-AC-010`: Receipt posted immutable.
@@ -3121,8 +3126,8 @@ Test:
 ### Inspection
 
 - `RET-AC-011`: Only received quantity inspected.
-- `RET-AC-012`: Sellable transfers quarantine to sellable.
-- `RET-AC-013`: Damaged transfers quarantine to damaged.
+- `RET-AC-012`: Sellable membuat tepat satu inbound ke batch baru `RETURN` setelah provenance terverifikasi.
+- `RET-AC-013`: Damaged hanya menjadi audit kondisi tanpa movement stok kedua.
 - `RET-AC-014`: Mixed result supported.
 - `RET-AC-015`: Inspection has actor/time/note.
 - `RET-AC-016`: Unknown batch cannot become sellable.
@@ -3157,8 +3162,8 @@ Test:
 ### Reconciliation
 
 - `RET-AC-035`: Return quantities balance.
-- `RET-AC-036`: Receipt equals quarantine inbound.
-- `RET-AC-037`: Inspection transfer net zero.
+- `RET-AC-036`: Receipt operasional tetap stock-neutral dan dapat direkonsiliasi dengan return item.
+- `RET-AC-037`: Inspection hanya mem-posting quantity `SELLABLE`; `DAMAGED` tetap audit-only.
 - `RET-AC-038`: Closed return has no obligation.
 - `RET-AC-039`: Duplicate effect detected.
 - `RET-AC-040`: Claim deadline check works.
@@ -3171,7 +3176,7 @@ Do not release if:
 
 - expected return changes stock;
 - source received auto-adds sellable;
-- receipt bypasses quarantine;
+- receipt membuat transaction/ledger/projection effect;
 - lost creates inbound;
 - claim changes stock;
 - returnable quantity not enforced;
@@ -3399,3 +3404,19 @@ calculated deadline
 Marketplace event memberi informasi. Gudang memberi keputusan fisik. Ledger hanya mencatat dampak stok yang sah. Rekonsiliasi memastikan setiap quantity memiliki jejak operasional dan efek stok yang dapat dibuktikan.
 
 Barang retur tidak kembali menjadi sellable hanya karena status marketplace berubah. Barang harus diterima secara operasional, diperiksa, lalu quantity layak jual diposting sebagai inbound ke batch baru bertanda `RETURN`. Quantity rusak atau hilang tetap tercatat untuk audit dan klaim tanpa movement stok kedua.
+
+### Runtime amendment — 2026-07-26
+
+Implementasi migration `202607230019`–`202607250032` dan test `055`–`058`
+menjadi referensi runtime untuk kontrak di atas. Pada runtime saat ini:
+
+- receipt fisik dan late arrival memiliki `stock_effect_code = NONE`;
+- claim lifecycle dan notification evaluation tidak menulis stok;
+- late arrival mempertahankan event LOST serta claim history dan menambah
+  correction/link audit append-only;
+- `SELLABLE` membutuhkan provenance batch shipment terverifikasi dan membuat
+  satu batch `RETURN`; `DAMAGED` tidak membuat transaction atau ledger kedua;
+- replay identik mengembalikan response tersimpan, sedangkan payload berbeda
+  dengan idempotency key sama ditolak;
+- UI Admin `/returns` adalah jalur mutation resmi; API marketplace asli,
+  harga, uang, email/WA, multi-warehouse, dan barcode tetap non-goal.
