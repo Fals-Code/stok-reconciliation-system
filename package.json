@@ -31,6 +31,7 @@
     "test:csv-import-parallel": "node scripts/test-csv-import-parallel.mjs",
     "test:manual-outbound-parallel": "node scripts/test-manual-outbound-parallel.mjs",
     "test:inventory-mutations-parallel": "node scripts/test-inventory-mutations-parallel.mjs",
+    "test:stocktake-opening-balance-parallel": "node scripts/test-stocktake-opening-balance-parallel.mjs",
     "test:today-control-center-ui": "node scripts/test-today-control-center-ui.mjs"
   },
   "dependencies": {
