@@ -30,6 +30,7 @@
     "test:csv-import-ui": "node scripts/test-csv-import-ui.mjs",
     "test:csv-import-parallel": "node scripts/test-csv-import-parallel.mjs",
     "test:manual-outbound-parallel": "node scripts/test-manual-outbound-parallel.mjs",
+    "test:inventory-mutations-parallel": "node scripts/test-inventory-mutations-parallel.mjs",
     "test:today-control-center-ui": "node scripts/test-today-control-center-ui.mjs"
   },
   "dependencies": {
