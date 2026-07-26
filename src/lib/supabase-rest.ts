@@ -65,6 +65,96 @@ export type StockLedgerEntry = {
   correlation_id: string;
 };
 
+export type LedgerExplorerRow = {
+  ledger_seq: number;
+  ledger_entry_id: string;
+  organization_id: string;
+  transaction_id: string;
+  transaction_no: string;
+  transaction_type_code: string;
+  reason_id: string;
+  reason_code_snapshot: string;
+  channel_id: string;
+  channel_code_snapshot: string;
+  source_type_code: string;
+  source_id: string | null;
+  source_ref_snapshot: string;
+  line_no: number;
+  product_id: string;
+  batch_id: string;
+  product_sku_snapshot: string;
+  batch_code_snapshot: string;
+  expiry_date_snapshot: string;
+  bucket_code: "SELLABLE" | "QUARANTINE" | "DAMAGED";
+  quantity_delta: number;
+  quantity_direction: "IN" | "OUT";
+  entry_role_code: string;
+  pair_no: number | null;
+  source_line_ref: string | null;
+  occurred_at: string;
+  recorded_at: string;
+  actor_user_id: string | null;
+  process_name: string | null;
+  created_by_role_code: string;
+  correlation_id: string;
+  idempotency_command_id: string;
+  reversal_of_transaction_id: string | null;
+  note: string | null;
+  metadata: Record<string, unknown>;
+  reversal_state: "NOT_REVERSED" | "PARTIALLY_REVERSED" | "FULLY_REVERSED" | "REVERSAL";
+};
+
+export type LedgerExplorerFilters = {
+  occurredFrom?: string;
+  occurredTo?: string;
+  recordedFrom?: string;
+  recordedTo?: string;
+  productId?: string;
+  productSku?: string;
+  batchId?: string;
+  batchCode?: string;
+  transactionType?: string;
+  reason?: string;
+  channel?: string;
+  sourceType?: string;
+  sourceRef?: string;
+  actorProcess?: string;
+  bucket?: string;
+  quantityDirection?: "IN" | "OUT";
+  reversalState?: LedgerExplorerRow["reversal_state"];
+  cursor?: string;
+  direction?: "next" | "previous";
+  pageSize?: number;
+};
+
+export type LedgerExplorerPage = {
+  rows: LedgerExplorerRow[];
+  pageSize: number;
+  nextCursor: string | null;
+  previousCursor: string | null;
+  hasNextPage: boolean;
+  hasPreviousPage: boolean;
+};
+
+export type LedgerReversalLink = {
+  reversal_application_id: string;
+  organization_id: string;
+  original_transaction_id: string;
+  original_transaction_no: string;
+  original_entry_id: string;
+  reversal_transaction_id: string;
+  reversal_transaction_no: string;
+  reversal_entry_id: string;
+  quantity_applied: number;
+  created_at: string;
+};
+
+export type LedgerTransactionDetail = {
+  transactionId: string;
+  rows: LedgerExplorerRow[];
+  reversalLinks: LedgerReversalLink[];
+};
+
 export type MarketplaceOrder = {
   order_id: string;
   organization_id: string;
@@ -3878,3 +3968,177 @@ export const unblockProductBatch=(input:Omit<Parameters<typeof batchLifecycle>[0
 export const archiveProductBatch=(input:Omit<Parameters<typeof batchLifecycle>[0],"command">)=>batchLifecycle({...input,command:"archive_product_batch"});
 export const reactivateProductBatch=(input:Omit<Parameters<typeof batchLifecycle>[0],"command">)=>batchLifecycle({...input,command:"reactivate_product_batch"});
 export async function getProductBatchMasterData(organizationId?:string):Promise<ProductBatchMasterData>{const id=await resolveOrganizationId(organizationId);const e=encodeURIComponent(id);const [batches,audits]=await Promise.all([apiFetch<ProductBatchMasterRow[]>(`product_batch_master?organization_id=eq.${e}&select=*&order=expiry_date.asc,batch_code.asc&limit=2000`),apiFetch<ProductBatchMasterAuditRow[]>(`product_batch_master_audit?organization_id=eq.${e}&select=*&order=occurred_at.desc&limit=3000`)]);return {batches,audits};}
+
+const LEDGER_UUID_PATTERN =
+  /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+
+function normalizeLedgerText(value: string | undefined) {
+  const normalized = value?.trim() ?? "";
+  return normalized || null;
+}
+
+function normalizeLedgerDate(value: string | undefined) {
+  const normalized = normalizeLedgerText(value);
+
+  if (!normalized) return null;
+
+  const date = new Date(normalized);
+  if (Number.isNaN(date.getTime())) {
+    throw new Error("INVALID_LEDGER_DATE_FILTER");
+  }
+
+  return date.toISOString();
+}
+
+function addLedgerFilter(parts: string[], column: string, operator: string, value: string | null) {
+  if (value) {
+    parts.push(`${column}=${operator}.${encodeURIComponent(value)}`);
+  }
+}
+
+function normalizeLedgerPageSize(value: number | undefined) {
+  const pageSize = Number.isFinite(value) ? Math.trunc(value as number) : 20;
+  return Math.min(Math.max(pageSize, 10), 50);
+}
+
+function normalizeLedgerCursor(value: string | undefined) {
+  const normalized = normalizeLedgerText(value);
+
+  if (!normalized) return null;
+
+  if (!/^\d+$/.test(normalized) || BigInt(normalized) <= BigInt(0)) {
+    throw new Error("INVALID_LEDGER_CURSOR");
+  }
+
+  return normalized;
+}
+
+function ledgerIdFilter(value: string | undefined, errorCode: string) {
+  const normalized = normalizeLedgerText(value);
+
+  if (!normalized) return null;
+
+  if (!LEDGER_UUID_PATTERN.test(normalized)) {
+    throw new Error(errorCode);
+  }
+
+  return normalized;
+}
+
+export async function getLedgerExplorerPage(
+  filters: LedgerExplorerFilters = {},
+): Promise<LedgerExplorerPage> {
+  const session = await getAdminSession();
+
+  if (!session) {
+    throw new Error("AUTH_SESSION_REQUIRED");
+  }
+
+  const organizationId = encodeURIComponent(session.profile.organization_id);
+  const pageSize = normalizeLedgerPageSize(filters.pageSize);
+  const direction = filters.direction === "previous" ? "previous" : "next";
+  const cursor = normalizeLedgerCursor(filters.cursor);
+  const productId = ledgerIdFilter(filters.productId, "INVALID_LEDGER_PRODUCT_ID");
+  const batchId = ledgerIdFilter(filters.batchId, "INVALID_LEDGER_BATCH_ID");
+  const occurredFrom = normalizeLedgerDate(filters.occurredFrom);
+  const occurredTo = normalizeLedgerDate(filters.occurredTo);
+  const recordedFrom = normalizeLedgerDate(filters.recordedFrom);
+  const recordedTo = normalizeLedgerDate(filters.recordedTo);
+  const parts = [`organization_id=eq.${organizationId}`];
+
+  addLedgerFilter(parts, "occurred_at", "gte", occurredFrom);
+  addLedgerFilter(parts, "occurred_at", "lte", occurredTo);
+  addLedgerFilter(parts, "recorded_at", "gte", recordedFrom);
+  addLedgerFilter(parts, "recorded_at", "lte", recordedTo);
+  addLedgerFilter(parts, "product_id", "eq", productId);
+  addLedgerFilter(parts, "product_sku_snapshot", "ilike", normalizeLedgerText(filters.productSku) ? `*${normalizeLedgerText(filters.productSku)}*` : null);
+  addLedgerFilter(parts, "batch_id", "eq", batchId);
+  addLedgerFilter(parts, "batch_code_snapshot", "ilike", normalizeLedgerText(filters.batchCode) ? `*${normalizeLedgerText(filters.batchCode)}*` : null);
+  addLedgerFilter(parts, "transaction_type_code", "eq", normalizeLedgerText(filters.transactionType));
+  addLedgerFilter(parts, "reason_code_snapshot", "eq", normalizeLedgerText(filters.reason));
+  addLedgerFilter(parts, "channel_code_snapshot", "eq", normalizeLedgerText(filters.channel));
+  addLedgerFilter(parts, "source_type_code", "eq", normalizeLedgerText(filters.sourceType));
+  addLedgerFilter(parts, "source_ref_snapshot", "ilike", normalizeLedgerText(filters.sourceRef) ? `*${normalizeLedgerText(filters.sourceRef)}*` : null);
+  addLedgerFilter(parts, "bucket_code", "eq", normalizeLedgerText(filters.bucket));
+  addLedgerFilter(parts, "quantity_direction", "eq", filters.quantityDirection ?? null);
+  addLedgerFilter(parts, "reversal_state", "eq", filters.reversalState ?? null);
+
+  const actorProcess = normalizeLedgerText(filters.actorProcess);
+  if (actorProcess) {
+    const processFilter = `process_name.ilike.*${encodeURIComponent(actorProcess)}*`;
+    const actorFilter = LEDGER_UUID_PATTERN.test(actorProcess)
+      ? `actor_user_id.eq.${encodeURIComponent(actorProcess)}`
+      : null;
+    parts.push(`or=(${[processFilter, actorFilter].filter(Boolean).join(",")})`);
+  }
+
+  if (cursor) {
+    parts.push(
+      `ledger_seq=${direction === "previous" ? "gt" : "lt"}.${encodeURIComponent(cursor)}`,
+    );
+  }
+
+  const order = direction === "previous"
+    ? "ledger_seq.asc,ledger_entry_id.asc"
+    : "ledger_seq.desc,ledger_entry_id.desc";
+  const rows = await apiFetch<LedgerExplorerRow[]>(
+    `ledger_explorer?${parts.join("&")}&select=*&order=${order}&limit=${pageSize + 1}`,
+  );
+  const hasExtraRow = rows.length > pageSize;
+  const visibleRows = (hasExtraRow ? rows.slice(0, pageSize) : rows).slice();
+
+  if (direction === "previous") {
+    visibleRows.reverse();
+  }
+
+  return {
+    rows: visibleRows,
+    pageSize,
+    nextCursor: visibleRows.length && (hasExtraRow || direction === "previous")
+      ? String(visibleRows[visibleRows.length - 1].ledger_seq)
+      : null,
+    previousCursor: visibleRows.length && (Boolean(cursor) || direction === "previous")
+      ? String(visibleRows[0].ledger_seq)
+      : null,
+    hasNextPage: direction === "previous" ? visibleRows.length > 0 : hasExtraRow,
+    hasPreviousPage: direction === "previous" ? visibleRows.length > 0 : Boolean(cursor),
+  };
+}
+
+export async function getLedgerTransactionDetail(
+  transactionId: string,
+): Promise<LedgerTransactionDetail | null> {
+  const session = await getAdminSession();
+
+  if (!session) {
+    throw new Error("AUTH_SESSION_REQUIRED");
+  }
+
+  const normalizedTransactionId = transactionId.trim();
+  if (!LEDGER_UUID_PATTERN.test(normalizedTransactionId)) {
+    return null;
+  }
+
+  const organizationId = encodeURIComponent(session.profile.organization_id);
+  const encodedTransactionId = encodeURIComponent(normalizedTransactionId);
+  const [rows, reversalLinks] = await Promise.all([
+    apiFetch<LedgerExplorerRow[]>(
+      `ledger_transaction_detail?organization_id=eq.${organizationId}&transaction_id=eq.${encodedTransactionId}&select=*&order=line_no.asc,ledger_seq.asc`,
+    ),
+    apiFetch<LedgerReversalLink[]>(
+      `ledger_reversal_links?organization_id=eq.${organizationId}` +
+        `&or=(original_transaction_id.eq.${encodedTransactionId},reversal_transaction_id.eq.${encodedTransactionId})` +
+        "&select=*&order=created_at.asc,reversal_application_id.asc",
+    ),
+  ]);
+
+  if (rows.length === 0) {
+    return null;
+  }
+
+  return {
+    transactionId: normalizedTransactionId,
+    rows,
+    reversalLinks,
+  };
+}
