@@ -10,7 +10,6 @@ import {
 import { CurrentDateTimeInput } from "@/app/returns/current-date-time-input";
 import type {
   ReturnClaimData,
-  ReturnClaimHeader,
   ReturnHeader,
   ReturnItem,
 } from "@/lib/supabase-rest";
@@ -40,11 +39,10 @@ function tone(status: string) {
   return "border-amber-400/20 bg-amber-400/10 text-amber-200";
 }
 
-function committedByItem(claims: ReturnClaimHeader[], claimItems: ReturnClaimData["claimItems"]) {
+function committedByItem(claimItems: ReturnClaimData["activeClaimItems"]) {
   const totals = new Map<string, number>();
   for (const item of claimItems) {
-    const claim = claims.find((candidate) => candidate.id === item.claim_id);
-    if (claim?.status_code !== "CANCELLED") totals.set(item.return_item_id, (totals.get(item.return_item_id) ?? 0) + Number(item.quantity));
+    totals.set(item.return_item_id, (totals.get(item.return_item_id) ?? 0) + Number(item.quantity));
   }
   return totals;
 }
@@ -54,6 +52,7 @@ export function ReturnClaimWorkflow({
   items,
   data,
   selectedReturn,
+  lateArrivalSources,
   claimId,
   claimStatus,
   claimStage,
@@ -62,11 +61,16 @@ export function ReturnClaimWorkflow({
   items: ReturnItem[];
   data: ReturnClaimData;
   selectedReturn: ReturnHeader | null;
+  lateArrivalSources: Array<{
+    returnItemId: string;
+    marketplaceShipAllocationId: string | null;
+    label: string;
+  }>;
   claimId?: string;
   claimStatus?: string;
   claimStage?: string;
 }) {
-  const committed = committedByItem(data.claims, data.claimItems);
+  const committed = committedByItem(data.activeClaimItems);
   const claimedByClaim = new Map<string, number>();
   for (const item of data.claimItems) claimedByClaim.set(item.claim_id, (claimedByClaim.get(item.claim_id) ?? 0) + Number(item.quantity));
   const returnById = new Map(returns.map((item) => [item.return_id, item]));
@@ -76,7 +80,7 @@ export function ReturnClaimWorkflow({
     if (claimStage && !["DUE_SOON"].includes(claimStage) && claim.derived_deadline_stage !== claimStage) return false;
     return true;
   });
-  const selectedClaim = claimId ? data.claims.find((claim) => claim.id === claimId) ?? null : filtered[0] ?? null;
+  const selectedClaim = claimId ? data.selectedClaim : filtered[0] ?? null;
   const claimReturn = selectedClaim ? returnById.get(selectedClaim.return_id) ?? null : null;
   const claimItems = selectedClaim ? data.claimItems.filter((item) => item.claim_id === selectedClaim.id) : [];
   const selectedReturnItems = selectedReturn ? items.filter((item) => item.return_id === selectedReturn.return_id) : [];
@@ -88,6 +92,13 @@ export function ReturnClaimWorkflow({
   const links = selectedClaim ? data.lateArrivalClaimLinks.filter((link) => link.claim_id === selectedClaim.id) : [];
   const audit = selectedClaim ? data.claimEvents.filter((event) => event.claim_id === selectedClaim.id) : [];
   const noResult = claimId && !selectedClaim;
+  const worklistHref = (page: number) => {
+    const query = new URLSearchParams();
+    if (claimStatus) query.set("claimStatus", claimStatus);
+    if (claimStage) query.set("claimStage", claimStage);
+    if (page > 0) query.set("claimPage", String(page));
+    return `/returns?${query.toString()}#claims`;
+  };
 
   return (
     <section id="claims" className="mt-10 scroll-mt-24">
@@ -105,6 +116,7 @@ export function ReturnClaimWorkflow({
       <div className="grid gap-5 xl:grid-cols-[0.85fr_1.55fr]">
         <div className="panel-card p-0">
           {filtered.length === 0 ? <div className="p-7 text-sm text-slate-400">Tidak ada klaim yang cocok dengan filter ini.</div> : <div className="divide-y divide-white/10">{filtered.map((claim) => { const source = returnById.get(claim.return_id); return <Link key={claim.id} href={`/returns?returnId=${claim.return_id}&claimId=${claim.id}#claim-detail`} className={`block p-5 transition hover:bg-white/[0.03] ${selectedClaim?.id === claim.id ? "bg-emerald-400/[0.05]" : ""}`}><div className="flex items-start justify-between gap-3"><div><p className="font-mono text-sm text-white">{source?.external_return_ref ?? "Retur tidak ditemukan"}</p><p className="mt-1 text-xs text-slate-500">{source?.marketplace_order_ref ?? "—"} / {label(claim.claim_type_code)}</p></div><span className={`rounded-full border px-2.5 py-1 text-xs ${tone(claim.derived_deadline_stage === "OVERDUE" ? "OVERDUE" : claim.status_code)}`}>{label(claim.status_code)}</span></div><div className="mt-4 flex flex-wrap gap-3 text-xs text-slate-400"><span>stage {label(claim.derived_deadline_stage)}</span><span>batas {fmt(claim.deadline_at)}</span><span>claimed {claimedByClaim.get(claim.id) ?? 0}</span><span>{claim.stock_effect_code}</span></div></Link>; })}</div>}
+          {data.hasPreviousPage || data.hasNextPage ? <div className="flex items-center justify-between border-t border-white/10 p-4 text-sm"><span className="text-slate-400">Halaman {data.page + 1}</span><div className="flex gap-2">{data.hasPreviousPage ? <Link className="secondary-button" href={worklistHref(data.page - 1)}>Sebelumnya</Link> : null}{data.hasNextPage ? <Link className="secondary-button" href={worklistHref(data.page + 1)}>Berikutnya</Link> : null}</div></div> : null}
         </div>
 
         <article id="claim-detail" className="panel-card scroll-mt-24">
@@ -121,7 +133,7 @@ export function ReturnClaimWorkflow({
       </div>
 
       {selectedReturn ? <div className="mt-5 grid gap-5 lg:grid-cols-2"><form action={createTikTokReturnClaimAction} className="panel-card"><h3 className="text-lg font-semibold">Buat klaim TikTok</h3>{selectedReturn.channel_code !== "TIKTOK_SHOP" ? <p className="mt-3 text-sm text-slate-400">Form hanya tersedia untuk retur TikTok Shop.</p> : eligibleItems.length === 0 ? <p className="mt-3 text-sm text-amber-200">Tidak ada net lost quantity yang masih dapat diklaim.</p> : <><input type="hidden" name="returnId" value={selectedReturn.return_id}/><input type="hidden" name="claimTypeCode" value="LOST_RETURN"/><label className="field-label mt-4">Referensi proses/idempotency<input name="idempotencyKey" required placeholder="CLAIM-RET-1001"/></label><fieldset className="mt-4"><legend className="text-sm font-medium text-slate-200">Pilih item dan quantity</legend><div className="mt-3 space-y-3">{eligibleItems.map((item) => <label key={item.return_item_id} className="flex items-center gap-3 rounded-2xl border border-white/10 p-3 text-sm"><input type="checkbox" name="claimItemId" value={item.return_item_id}/><span className="min-w-0 flex-1"><span className="block text-white">{item.product_sku_snapshot}</span><span className="text-xs text-slate-500">sisa dapat diklaim {item.remaining}</span></span><input className="w-24" name={`quantity_${item.return_item_id}`} type="number" min="1" max={item.remaining} step="1" defaultValue="1" aria-label={`Quantity ${item.product_sku_snapshot}`}/></label>)}</div></fieldset><label className="field-label mt-4">Waktu dibuat<CurrentDateTimeInput/></label><label className="mt-4 flex items-start gap-2 text-sm text-slate-300"><input type="checkbox" name="confirmation" required/> Saya mengonfirmasi quantity klaim ini tidak mengubah stok.</label><button className="primary-button mt-4" type="submit">Buat claim</button></>}</form>
-        <form action={confirmLateReturnArrivalAction} className="panel-card"><h3 className="text-lg font-semibold">Konfirmasi kedatangan terlambat</h3>{lateItems.length === 0 ? <p className="mt-3 text-sm text-slate-400">Tidak ada quantity lost yang menunggu koreksi.</p> : <><input type="hidden" name="returnId" value={selectedReturn.return_id}/><input type="hidden" name="returnRef" value={selectedReturn.external_return_ref}/><label className="field-label mt-4">Referensi kedatangan<input name="lateArrivalReference" required placeholder="LATE-RET-1001"/></label><label className="field-label mt-3">Referensi receipt<input name="receiptRef" required placeholder="RECEIPT-RET-1001"/></label><fieldset className="mt-4"><legend className="text-sm font-medium text-slate-200">Item lost yang datang</legend><div className="mt-3 space-y-3">{lateItems.map((item) => <label key={item.return_item_id} className="flex items-center gap-3 rounded-2xl border border-white/10 p-3 text-sm"><input type="checkbox" name="lateReturnItemId" value={item.return_item_id}/><span className="min-w-0 flex-1"><span className="block text-white">{item.product_sku_snapshot}</span><span className="text-xs text-slate-500">sisa koreksi {Number(item.lost_qty) - Number(item.late_arrival_qty ?? 0)}</span></span><input className="w-24" name={`lateQuantity_${item.return_item_id}`} type="number" min="1" max={Number(item.lost_qty) - Number(item.late_arrival_qty ?? 0)} step="1" defaultValue="1" aria-label={`Quantity kedatangan ${item.product_sku_snapshot}`}/></label>)}</div></fieldset><label className="field-label mt-3">Source line reference<input name="sourceLineRef" required placeholder="LATE-LINE-1"/></label><label className="field-label mt-3">Waktu datang<CurrentDateTimeInput/></label><label className="field-label mt-3">Catatan<textarea name="note" rows={2}/></label><label className="mt-4 flex items-start gap-2 text-sm text-slate-300"><input type="checkbox" name="confirmation" required/> Saya mengonfirmasi receipt ini stock-neutral.</label><button className="primary-button mt-4" type="submit">Catat kedatangan</button></>}</form></div> : null}
+        <form action={confirmLateReturnArrivalAction} className="panel-card"><h3 className="text-lg font-semibold">Konfirmasi kedatangan terlambat</h3>{lateItems.length === 0 ? <p className="mt-3 text-sm text-slate-400">Tidak ada quantity lost yang menunggu koreksi.</p> : <><input type="hidden" name="returnId" value={selectedReturn.return_id}/><input type="hidden" name="returnRef" value={selectedReturn.external_return_ref}/><label className="field-label mt-4">Referensi kedatangan<input name="lateArrivalReference" required placeholder="LATE-RET-1001"/></label><label className="field-label mt-3">Referensi receipt<input name="receiptRef" required placeholder="RECEIPT-RET-1001"/></label><fieldset className="mt-4"><legend className="text-sm font-medium text-slate-200">Item lost dan provenance shipment yang datang</legend><div className="mt-3 space-y-3">{lateItems.flatMap((item) => { const options = lateArrivalSources.filter((source) => source.returnItemId === item.return_item_id); return options.length ? options : [{ returnItemId: item.return_item_id, marketplaceShipAllocationId: null, label: "Batch asal belum teridentifikasi — receipt tetap stock-neutral; SELLABLE diblokir, DAMAGED tetap dapat dicatat tanpa movement stok." }]; }).map((option) => { const lineKey = `${option.returnItemId}:${option.marketplaceShipAllocationId ?? "UNVERIFIED"}`; const item = lateItems.find((candidate) => candidate.return_item_id === option.returnItemId)!; return <label key={lineKey} className="flex items-start gap-3 rounded-2xl border border-white/10 p-3 text-sm"><input type="checkbox" name="lateReturnLineKey" value={lineKey}/><span className="min-w-0 flex-1"><span className="block text-white">{item.product_sku_snapshot}</span><span className="block text-xs text-slate-400">{option.label}</span><span className="text-xs text-slate-500">sisa koreksi {Number(item.lost_qty) - Number(item.late_arrival_qty ?? 0)}; provenance bukan pemilihan batch FEFO outbound</span></span><input className="w-24" name={`lateQuantity_${lineKey}`} type="number" min="1" max={Number(item.lost_qty) - Number(item.late_arrival_qty ?? 0)} step="1" defaultValue="1" aria-label={`Quantity kedatangan ${item.product_sku_snapshot}`}/></label>; })}</div></fieldset><label className="field-label mt-3">Source line reference<input name="sourceLineRef" required placeholder="LATE-LINE-1"/></label><label className="field-label mt-3">Waktu datang<CurrentDateTimeInput/></label><label className="field-label mt-3">Catatan<textarea name="note" rows={2}/></label><label className="mt-4 flex items-start gap-2 text-sm text-slate-300"><input type="checkbox" name="confirmation" required/> Saya mengonfirmasi receipt ini stock-neutral.</label><button className="primary-button mt-4" type="submit">Catat kedatangan</button></>}</form></div> : null}
     </section>
   );
 }

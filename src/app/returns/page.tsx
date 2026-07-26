@@ -145,6 +145,7 @@ export default async function ReturnsPage({
     claimId?: string;
     claimStatus?: string;
     claimStage?: string;
+    claimPage?: string;
     success?: string;
     error?: string;
   }>;
@@ -155,10 +156,16 @@ export default async function ReturnsPage({
   let claimData;
 
   try {
-    [returnData, marketplace, claimData] = await Promise.all([
-      getReturnData(),
+    claimData = await getReturnClaimData({
+      claimId: params.claimId,
+      claimStatus: params.claimStatus,
+      claimStage: params.claimStage,
+      page: Math.max(0, Number.parseInt(params.claimPage ?? "0", 10) || 0),
+    });
+    const effectiveReturnId = claimData.selectedClaim?.return_id ?? params.returnId;
+    [returnData, marketplace] = await Promise.all([
+      getReturnData(undefined, effectiveReturnId),
       getMarketplaceData(),
-      getReturnClaimData(),
     ]);
   } catch (error) {
     return (
@@ -183,11 +190,13 @@ export default async function ReturnsPage({
       ? returns
       : returns.filter((returnHeader) => returnHeader.status_code === statusFilter);
 
-  const selectedReturn =
-    returns.find((returnHeader) => returnHeader.return_id === params.returnId) ??
-    filteredReturns[0] ??
-    returns[0] ??
-    null;
+  const effectiveReturnId = claimData.selectedClaim?.return_id ?? params.returnId;
+  const selectedReturn = params.claimId?.trim() && !claimData.selectedClaim
+    ? null
+    : returns.find((returnHeader) => returnHeader.return_id === effectiveReturnId) ??
+      filteredReturns[0] ??
+      returns[0] ??
+      null;
 
   const selectedItems = selectedReturn
     ? items.filter((item) => item.return_id === selectedReturn.return_id)
@@ -255,6 +264,11 @@ export default async function ReturnsPage({
   }
 
   const receiptSources: ReturnReceiptSourceOption[] = [];
+  const lateArrivalSources: Array<{
+    returnItemId: string;
+    marketplaceShipAllocationId: string | null;
+    label: string;
+  }> = [];
   if (selectedReturn) {
     for (const item of selectedItems.filter(
       (candidate) => Number(candidate.pending_arrival_qty) > 0,
@@ -281,7 +295,18 @@ export default async function ReturnsPage({
           returnItemId: item.return_item_id,
           marketplaceShipAllocationId: allocation.allocation_id,
         });
+        lateArrivalSources.push({
+          returnItemId: item.return_item_id,
+          marketplaceShipAllocationId: allocation.allocation_id,
+          label: `${allocation.batch_code_snapshot} / kedaluwarsa ${allocation.expiry_date_snapshot} / referensi shipment ${allocation.source_line_ref}`,
+        });
       }
+
+      lateArrivalSources.push({
+        returnItemId: item.return_item_id,
+        marketplaceShipAllocationId: null,
+        label: "Belum teridentifikasi — SELLABLE akan diblokir sampai batch asal diverifikasi",
+      });
 
       receiptSources.push({
         id: `${item.return_item_id}:UNKNOWN`,
@@ -668,6 +693,7 @@ export default async function ReturnsPage({
           items={items}
           data={claimData}
           selectedReturn={selectedReturn}
+          lateArrivalSources={lateArrivalSources}
           claimId={params.claimId}
           claimStatus={params.claimStatus}
           claimStage={params.claimStage}

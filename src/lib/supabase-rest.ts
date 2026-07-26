@@ -1461,6 +1461,12 @@ export type ReturnLateArrivalClaimLink = {
 
 export type ReturnClaimData = {
   claims: ReturnClaimHeader[];
+  selectedClaim: ReturnClaimHeader | null;
+  activeClaimItems: ReturnClaimItem[];
+  page: number;
+  pageSize: number;
+  hasNextPage: boolean;
+  hasPreviousPage: boolean;
   claimItems: ReturnClaimItem[];
   claimEvents: ReturnClaimEvent[];
   lateArrivals: ReturnLateArrival[];
@@ -2044,6 +2050,7 @@ export async function getMarketplaceData(
 
 export async function getReturnData(
   organizationId?: string,
+  selectedReturnId?: string,
 ): Promise<ReturnData> {
   const resolvedOrganizationId = await resolveOrganizationId(organizationId);
   const encodedOrganizationId = encodeURIComponent(resolvedOrganizationId);
@@ -2067,34 +2074,115 @@ export async function getReturnData(
       ),
     ]);
 
+  const normalizedReturnId = selectedReturnId?.trim() ?? "";
+  if (!UUID_PATTERN.test(normalizedReturnId) || returns.some((row) => row.return_id === normalizedReturnId)) {
+    return { returns, items, events, receiptLines, inspectionAllocations };
+  }
+
+  const selected = await Promise.all([
+    apiFetch<ReturnHeader[]>(`returns?organization_id=eq.${encodedOrganizationId}&return_id=eq.${encodeURIComponent(normalizedReturnId)}&select=*&limit=1`),
+    apiFetch<ReturnItem[]>(`return_items?organization_id=eq.${encodedOrganizationId}&return_id=eq.${encodeURIComponent(normalizedReturnId)}&select=*&order=line_no.asc`),
+    apiFetch<ReturnEvent[]>(`return_events?organization_id=eq.${encodedOrganizationId}&return_id=eq.${encodeURIComponent(normalizedReturnId)}&select=*&order=occurred_at.desc,event_id.desc`),
+    apiFetch<ReturnReceiptLine[]>(`return_receipt_lines?organization_id=eq.${encodedOrganizationId}&return_id=eq.${encodeURIComponent(normalizedReturnId)}&select=*&order=occurred_at.desc,line_no.asc,receipt_line_id.asc`),
+    apiFetch<ReturnInspectionAllocation[]>(`return_inspection_allocations?organization_id=eq.${encodedOrganizationId}&return_id=eq.${encodeURIComponent(normalizedReturnId)}&select=*&order=occurred_at.desc,allocation_no.asc,inspection_allocation_id.asc`),
+  ]);
+  const merge = <T extends Record<string, unknown>>(rows: T[], exact: T[], key: keyof T) => [
+    ...exact,
+    ...rows.filter((row) => !exact.some((candidate) => candidate[key] === row[key])),
+  ];
+
   return {
-    returns,
-    items,
-    events,
-    receiptLines,
-    inspectionAllocations,
+    returns: merge(returns, selected[0], "return_id"),
+    items: merge(items, selected[1], "return_item_id"),
+    events: merge(events, selected[2], "event_id"),
+    receiptLines: merge(receiptLines, selected[3], "receipt_line_id"),
+    inspectionAllocations: merge(inspectionAllocations, selected[4], "inspection_allocation_id"),
   };
 }
 
+export type ReturnClaimQuery = {
+  organizationId?: string;
+  claimId?: string;
+  claimStatus?: string;
+  claimStage?: string;
+  page?: number;
+  pageSize?: number;
+  returnId?: string;
+};
+
 export async function getReturnClaimData(
-  organizationId?: string,
+  query: ReturnClaimQuery = {},
 ): Promise<ReturnClaimData> {
-  const resolvedOrganizationId = await resolveOrganizationId(organizationId);
+  const resolvedOrganizationId = await resolveOrganizationId(query.organizationId);
   const encodedOrganizationId = encodeURIComponent(resolvedOrganizationId);
   const org = `organization_id=eq.${encodedOrganizationId}`;
-  const [claims, claimItems, claimEvents, lateArrivals, lateArrivalLines, lateArrivalClaimLinks, notifications] =
-    await Promise.all([
-      apiFetch<ReturnClaimHeader[]>(`return_claim_master?${org}&select=*&order=deadline_at.asc,created_at.asc,id.asc&limit=500`),
-      apiFetch<ReturnClaimItem[]>(`return_claim_items?${org}&select=*&order=created_at.asc,id.asc&limit=1000`),
-      apiFetch<ReturnClaimEvent[]>(`return_claim_events?${org}&select=*&order=occurred_at.asc,recorded_at.asc,id.asc&limit=2000`),
-      apiFetch<ReturnLateArrival[]>(`return_late_arrivals?${org}&select=*&order=occurred_at.desc,created_at.desc,late_arrival_id.desc&limit=500`),
-      apiFetch<ReturnLateArrivalLine[]>(`return_late_arrival_lines?${org}&select=*&order=created_at.asc,allocation_no.asc,late_arrival_line_id.asc&limit=2000`),
-      apiFetch<ReturnLateArrivalClaimLink[]>(`return_late_arrival_claim_links?${org}&select=*&order=detected_at.desc,created_at.desc,late_arrival_claim_link_id.desc&limit=2000`),
-      getNotificationList({ includeArchived: true, limit: 100 }),
-    ]);
+  const pageSize = Math.min(100, Math.max(10, query.pageSize ?? 25));
+  const page = Math.max(0, query.page ?? 0);
+  const offset = page * pageSize;
+  const claimId = query.claimId?.trim() ?? "";
+  const validClaimId = UUID_PATTERN.test(claimId);
+  const filters = [org];
+  if (query.claimStatus) filters.push(`status_code=eq.${encodeURIComponent(query.claimStatus)}`);
+  if (query.claimStage === "DUE_SOON") {
+    filters.push("derived_deadline_stage=in.(D14,D7,D3,D1,DUE_TODAY)");
+  } else if (query.claimStage && query.claimStage !== "ALL") {
+    filters.push(`derived_deadline_stage=eq.${encodeURIComponent(query.claimStage)}`);
+  }
+  const worklistRows = await apiFetch<ReturnClaimHeader[]>(
+    `return_claim_master?${filters.join("&")}&select=*&order=deadline_at.asc,created_at.asc,id.asc&limit=${pageSize + 1}&offset=${offset}`,
+  );
+  const claims = worklistRows.slice(0, pageSize);
+  const selectedClaimRows = validClaimId
+    ? await apiFetch<ReturnClaimHeader[]>(
+        `return_claim_master?${org}&id=eq.${encodeURIComponent(claimId)}&select=*&limit=1`,
+      )
+    : [];
+  const selectedClaim = validClaimId
+    ? selectedClaimRows[0] ?? null
+    : claims[0] ?? null;
+  const selectedClaimId = selectedClaim?.id ?? null;
+  const requestedReturnId = query.returnId?.trim() ?? "";
+  const capacityReturnId = selectedClaim?.return_id ?? (UUID_PATTERN.test(requestedReturnId) ? requestedReturnId : null);
+  const activeClaims = capacityReturnId
+    ? await apiFetch<ReturnClaimHeader[]>(
+        `return_claim_master?${org}&return_id=eq.${encodeURIComponent(capacityReturnId)}&status_code=neq.CANCELLED&select=id&order=created_at.asc,id.asc`,
+      )
+    : [];
+  const activeClaimItems = activeClaims.length
+    ? await apiFetch<ReturnClaimItem[]>(
+        `return_claim_items?${org}&claim_id=in.(${activeClaims.map((claim) => encodeURIComponent(claim.id)).join(",")})&select=*&order=created_at.asc,id.asc`,
+      )
+    : [];
+  const [claimItems, claimEvents, lateArrivalClaimLinks, notifications] = selectedClaimId
+    ? await Promise.all([
+        apiFetch<ReturnClaimItem[]>(`return_claim_items?${org}&claim_id=eq.${encodeURIComponent(selectedClaimId)}&select=*&order=created_at.asc,id.asc`),
+        apiFetch<ReturnClaimEvent[]>(`return_claim_events?${org}&claim_id=eq.${encodeURIComponent(selectedClaimId)}&select=*&order=occurred_at.asc,recorded_at.asc,id.asc`),
+        apiFetch<ReturnLateArrivalClaimLink[]>(`return_late_arrival_claim_links?${org}&claim_id=eq.${encodeURIComponent(selectedClaimId)}&select=*&order=detected_at.desc,created_at.desc,late_arrival_claim_link_id.desc`),
+        callRpc<NotificationListItem[]>("return_claim_notification_list", {
+          p_claim_id: selectedClaimId,
+          p_include_archived: true,
+        }),
+      ])
+    : [[], [], [], []] as [ReturnClaimItem[], ReturnClaimEvent[], ReturnLateArrivalClaimLink[], NotificationListItem[]];
+  const lateIds = lateArrivalClaimLinks.map((link) => link.late_arrival_id);
+  const lateIdFilter = lateIds.length
+    ? `&late_arrival_id=in.(${lateIds.map(encodeURIComponent).join(",")})`
+    : "";
+  const [lateArrivals, lateArrivalLines] = lateIds.length
+    ? await Promise.all([
+        apiFetch<ReturnLateArrival[]>(`return_late_arrivals?${org}${lateIdFilter}&select=*&order=occurred_at.desc,created_at.desc,late_arrival_id.desc`),
+        apiFetch<ReturnLateArrivalLine[]>(`return_late_arrival_lines?${org}${lateIdFilter}&select=*&order=created_at.asc,allocation_no.asc,late_arrival_line_id.asc`),
+      ])
+    : [[], []] as [ReturnLateArrival[], ReturnLateArrivalLine[]];
 
   return {
     claims,
+    selectedClaim,
+    activeClaimItems,
+    page,
+    pageSize,
+    hasNextPage: worklistRows.length > pageSize,
+    hasPreviousPage: page > 0,
     claimItems,
     claimEvents,
     lateArrivals,
@@ -2199,7 +2287,11 @@ export async function confirmLateReturnArrival(input: {
   lateArrivalReference: string;
   receiptRef: string;
   occurredAt: string;
-  lines: Array<{ returnItemId: string; quantity: number }>;
+  lines: Array<{
+    returnItemId: string;
+    quantity: number;
+    marketplaceShipAllocationId: string | null;
+  }>;
   note?: string | null;
   metadata?: Record<string, unknown>;
 }) {

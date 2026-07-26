@@ -69,6 +69,8 @@ function message(error: unknown) {
     RETURN_LATE_ARRIVAL_ALREADY_POSTED: "Referensi kedatangan atau receipt sudah pernah diproses.",
     RETURN_ITEM_NOT_FOUND: "Item retur tidak ditemukan.",
     RETURN_LATE_ARRIVAL_EXCEEDS_NET_LOST: "Kedatangan terlambat melebihi quantity lost yang belum dikoreksi.",
+    RETURN_LATE_ARRIVAL_ALLOCATION_INVALID: "Batch asal kiriman tidak cocok dengan item retur.",
+    RETURN_LATE_ARRIVAL_ALLOCATION_CAPACITY_EXCEEDED: "Quantity melebihi kapasitas shipment yang masih dapat direferensikan.",
   };
   const match = Object.entries(map).find(([code]) => raw.includes(code));
   return match?.[1] ?? raw;
@@ -168,14 +170,19 @@ export async function confirmLateReturnArrivalAction(form: FormData) {
     const returnRef = required(form, "returnRef");
     const lateArrivalReference = required(form, "lateArrivalReference");
     const receiptRef = required(form, "receiptRef");
-    const selected = form.getAll("lateReturnItemId").filter((v): v is string => typeof v === "string");
-    if (!selected.length) throw new Error("Pilih minimal satu item lost.");
+    const selected = form.getAll("lateReturnLineKey").filter((v): v is string => typeof v === "string");
+    if (!selected.length) throw new Error("Pilih minimal satu line item lost.");
     const seen = new Set<string>();
-    const lines = selected.map((itemId) => {
-      if (!UUID.test(itemId) || seen.has(itemId)) throw new Error("Item kedatangan duplikat atau tidak valid.");
-      seen.add(itemId);
-      return { returnItemId: itemId, quantity: positive(required(form, `lateQuantity_${itemId}`), "Quantity kedatangan") };
-    });
+    const lines = selected.map((lineKey) => {
+      const separator = lineKey.indexOf(":");
+      const itemId = separator > 0 ? lineKey.slice(0, separator) : lineKey;
+      const allocationToken = separator > 0 ? lineKey.slice(separator + 1) : "UNVERIFIED";
+      const allocationId = allocationToken === "UNVERIFIED" ? null : allocationToken;
+      const compositeKey = `${itemId}:${allocationId ?? "UNVERIFIED"}`;
+      if (!UUID.test(itemId) || (allocationId && !UUID.test(allocationId)) || seen.has(compositeKey)) throw new Error("Line kedatangan duplikat atau tidak valid.");
+      seen.add(compositeKey);
+      return { returnItemId: itemId, quantity: positive(required(form, `lateQuantity_${lineKey}`), "Quantity kedatangan"), marketplaceShipAllocationId: allocationId };
+    }).sort((left, right) => `${left.returnItemId}:${left.marketplaceShipAllocationId ?? "UNVERIFIED"}`.localeCompare(`${right.returnItemId}:${right.marketplaceShipAllocationId ?? "UNVERIFIED"}`));
     const sourceLineRef = required(form, "sourceLineRef");
     const result = await confirmLateReturnArrival({
       organizationId: session.profile.organization_id,
