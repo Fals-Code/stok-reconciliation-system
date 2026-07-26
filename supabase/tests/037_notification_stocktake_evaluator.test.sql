@@ -764,13 +764,12 @@ select is(
   'initial recount evaluation succeeds'
 );
 
-select is(
+select ok(
   (
-    select (result ->> 'evaluatedCount')::integer
+    select (result ->> 'evaluatedCount')::integer >= 3
     from recount_initial_evaluation
   ),
-  3,
-  'recount evaluator examines three stocktakes'
+  'recount evaluator examines the fixture stocktakes plus any durable stocktakes'
 );
 
 select is(
@@ -785,10 +784,14 @@ select is(
 select is(
   (
     select (result ->> 'skippedCount')::integer
+      + (result ->> 'createdCount')::integer
     from recount_initial_evaluation
   ),
-  2,
-  'recount evaluator skips unaffected stocktakes'
+  (
+    select (result ->> 'evaluatedCount')::integer
+    from recount_initial_evaluation
+  ),
+  'recount evaluator accounts for every evaluated stocktake without assuming a global fixture count'
 );
 
 select is(
@@ -1348,13 +1351,12 @@ select is(
   'initial post failure evaluation succeeds'
 );
 
-select is(
+select ok(
   (
-    select (result ->> 'evaluatedCount')::integer
+    select (result ->> 'evaluatedCount')::integer >= 3
     from post_failure_initial_evaluation
   ),
-  3,
-  'post failure evaluator examines three stocktakes'
+  'post failure evaluator examines the fixture stocktakes plus any durable stocktakes'
 );
 
 select is(
@@ -1369,10 +1371,14 @@ select is(
 select is(
   (
     select (result ->> 'skippedCount')::integer
+      + (result ->> 'createdCount')::integer
     from post_failure_initial_evaluation
   ),
-  1,
-  'post failure evaluator skips unaffected recount stocktake'
+  (
+    select (result ->> 'evaluatedCount')::integer
+    from post_failure_initial_evaluation
+  ),
+  'post failure evaluator accounts for every evaluated stocktake without assuming a global fixture count'
 );
 
 select is(

@@ -93,25 +93,19 @@ select is(
   'default run persists eight check results'
 );
 
-select is(
+select ok(
   (
-    select
-      run_check.status_code
-        || ':'
-        || run_check.checked_count::text
-        || ':'
-        || run_check.issue_count::text
+    select run_check.status_code = 'PASSED'
+      and run_check.issue_count = 0
+      and run_check.checked_count >= 3
     from reconciliation.run_checks run_check
     where run_check.run_id = (
       select (result ->> 'runId')::uuid
       from reservation_integration_results
       where kind = 'DEFAULT_CLEAN'
-    )
-      and run_check.check_code =
-        'RESERVATION_CONSISTENCY'
+    ) and run_check.check_code = 'RESERVATION_CONSISTENCY'
   ),
-  'PASSED:3:0',
-  'default reservation consistency check passes'
+  'default reservation consistency check passes regardless of other durable products'
 );
 
 insert into reservation_integration_results (
@@ -176,25 +170,19 @@ select is(
   'valid reservation reports clean integrity'
 );
 
-select is(
+select ok(
   (
-    select
-      run_check.status_code
-        || ':'
-        || run_check.checked_count::text
-        || ':'
-        || run_check.issue_count::text
+    select run_check.status_code = 'PASSED'
+      and run_check.issue_count = 0
+      and run_check.checked_count >= 3
     from reconciliation.run_checks run_check
     where run_check.run_id = (
       select (result ->> 'runId')::uuid
       from reservation_integration_results
       where kind = 'RESERVATION_CLEAN'
-    )
-      and run_check.check_code =
-        'RESERVATION_CONSISTENCY'
+    ) and run_check.check_code = 'RESERVATION_CONSISTENCY'
   ),
-  'PASSED:3:0',
-  'valid reservation check passes'
+  'valid reservation check passes regardless of other durable products'
 );
 
 update inventory.stock_product_positions position
@@ -323,25 +311,19 @@ select is(
   'reservation evidence stores the mismatch code'
 );
 
-select is(
+select ok(
   (
-    select
-      run_check.status_code
-        || ':'
-        || run_check.checked_count::text
-        || ':'
-        || run_check.issue_count::text
+    select run_check.status_code = 'FAILED'
+      and run_check.issue_count = 1
+      and run_check.checked_count >= 3
     from reconciliation.run_checks run_check
     where run_check.run_id = (
       select (result ->> 'runId')::uuid
       from reservation_integration_results
       where kind = 'RESERVATION_DRIFT'
-    )
-      and run_check.check_code =
-        'RESERVATION_CONSISTENCY'
+    ) and run_check.check_code = 'RESERVATION_CONSISTENCY'
   ),
-  'FAILED:3:1',
-  'reservation check fails with one issue'
+  'reservation check finds exactly the fixture drift regardless of other durable products'
 );
 
 select is(
