@@ -73,6 +73,7 @@ if ($ExpectedBranch -and $branch -ne $ExpectedBranch) {
 
 $npmCommand = (Get-Command npm.cmd -ErrorAction Stop).Source
 $npxCommand = (Get-Command npx.cmd -ErrorAction Stop).Source
+$nodeCommand = (Get-Command node.exe -ErrorAction Stop).Source
 
 if (-not $Password) {
   $Password = Read-Host `
@@ -242,6 +243,7 @@ function detectMojibake(text) {
 
 test("Admin reconciliation smoke flow", async ({ page }) => {
   const consoleErrors = [];
+  const failedHttpResponses = [];
   const pageErrors = [];
   const mojibakeFindings = [];
 
@@ -251,9 +253,17 @@ test("Admin reconciliation smoke flow", async ({ page }) => {
       text.includes("/_next/webpack-hmr") &&
       text.includes("WebSocket connection") &&
       text.includes("ERR_INVALID_HTTP_RESPONSE");
+    const isGenericResourceError =
+      /^Failed to load resource: the server responded with a status of \d+/.test(text);
 
-    if (message.type() === "error" && !isDevHmrNoise) {
+    if (message.type() === "error" && !isDevHmrNoise && !isGenericResourceError) {
       consoleErrors.push(text);
+    }
+  });
+
+  page.on("response", (response) => {
+    if (response.status() >= 400) {
+      failedHttpResponses.push(`${response.status()} ${response.url()}`);
     }
   });
 
@@ -449,6 +459,14 @@ test("Admin reconciliation smoke flow", async ({ page }) => {
     );
   }
 
+  if (failedHttpResponses.length > 0) {
+    failures.push(
+      `HTTP resource failures:\n${failedHttpResponses
+        .map((response) => `- ${response}`)
+        .join("\n")}`
+    );
+  }
+
   if (pageErrors.length > 0) {
     failures.push(
       `Unhandled page errors:\n${pageErrors
@@ -486,6 +504,7 @@ module.exports = {
   outputDir: process.env.SMOKE_ARTIFACT_DIR,
   use: {
     baseURL: process.env.SMOKE_BASE_URL,
+    channel: process.env.SMOKE_PLAYWRIGHT_CHANNEL || undefined,
     headless: true,
     trace: "retain-on-failure",
     screenshot: "only-on-failure",
@@ -502,12 +521,13 @@ module.exports = {
   $env:SMOKE_ADMIN_EMAIL = $Email
   $env:SMOKE_ADMIN_PASSWORD = $plainPassword
   $env:SMOKE_ARTIFACT_DIR = $artifactDirectory
+  $env:SMOKE_PLAYWRIGHT_CHANNEL = if ($SkipBrowserInstall) { "chrome" } else { $null }
 
   Write-Step "Running reconciliation smoke test"
 
   Push-Location $ProjectRoot
   try {
-    & $npxCommand playwright test `
+    & $nodeCommand (Join-Path $ProjectRoot "node_modules\@playwright\test\cli.js") test `
       --config $configFile
 
     $testExitCode = $LASTEXITCODE
@@ -533,6 +553,7 @@ finally {
   $env:SMOKE_ADMIN_EMAIL = $null
   $env:SMOKE_BASE_URL = $null
   $env:SMOKE_ARTIFACT_DIR = $null
+  $env:SMOKE_PLAYWRIGHT_CHANNEL = $null
 
   Remove-Variable plainPassword -ErrorAction SilentlyContinue
   Remove-Variable Password -ErrorAction SilentlyContinue

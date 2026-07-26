@@ -12,6 +12,14 @@ Sistem dirancang untuk mencatat setiap pergerakan barang, mengalokasikan batch s
 
 Admin dapat mengunggah CSV `MARKETPLACE_RESERVATION_V1` melalui menu Import CSV. CSV ini hanya adapter ORDER/RESERVE: file privat divalidasi dan dipreview secara canonical sebelum konfirmasi atomic. Invalid row menghasilkan error report yang organization-scoped; commit memakai idempotency dan boundary reservasi canonical tanpa direct write ke ledger atau projection. Shipment, cancellation, return, API marketplace asli, dan scheduler production bukan bagian dari fitur ini.
 
+### Pusat Kendali Hari Ini
+
+Route `/today` menyediakan antrean kerja Admin yang read-only dari sinyal operasional aktif: issue dan kegagalan reconciliation, deadline claim TikTok, return menunggu inspeksi, expiry batch, recount atau kegagalan posting stocktake, serta kegagalan notification outbox/rule-run. Setiap work item organization-scoped, memiliki identity deterministik, severity **Kritis**/**Segera**/**Perhatian**/**Rutin**, dan hanya menawarkan deep-link internal exact bila route sumber tersedia.
+
+Daftar memakai keyset pagination server-side; filter severity, work type, dan cursor tersimpan di URL. Ringkasan hanya menghitung item pada halaman saat ini. Sumber yang sudah selesai/tertutup tidak lagi tampil aktif, sedangkan item tanpa route ditandai sebagai detail tindakan yang belum tersedia tanpa membuat link palsu. Membuka atau menyaring antrean tidak melakukan acknowledge, retry, evaluasi, atau mutation bisnis apa pun.
+
+Marketplace stalled evaluator, stocktake scheduled/due evaluator, kegagalan CSV Import sebagai work signal, scheduler/cron production, optional realtime refresh, serta API/webhook marketplace asli tetap deferred.
+
 ---
 
 ## Daftar Isi
@@ -963,6 +971,9 @@ npm run test:tiktok-return-claim-ui
 # Shared notification UI/action smokes
 npm run test:notification-write-actions
 npm run test:notification-admin-operations
+
+# Focused Today Control Center smoke
+npm run test:today-control-center-ui
 ```
 
 Contoh script yang direkomendasikan:
@@ -1419,16 +1430,17 @@ Status berikut menggambarkan source pada branch saat ini. Status ini bukan pengg
 |---|---|---|---|
 | Identitas dan Admin Auth | **Implemented** | Login/logout, session server-only, validasi profil aktif `ADMIN`, proteksi route, dan audit actor individual | UI pengelolaan akun Admin |
 | Shared Admin shell | **Implemented** | Sidebar desktop, navigasi mobile, active route, organisasi, mode aplikasi, akun, logout, serta unread badge Notification Center berbasis data live | Status rekonsiliasi global berbasis data live |
-| Produk dan batch | **Implemented** | `/products` menyediakan list/search/filter dan detail; Product create/update/archive/reactivate; Batch `STANDARD` create/update/block/unblock/archive/reactivate; optimistic `row_version`, idempotency, immutable audit, balance read model, dan guardrail transaksi baru | CSV import, barcode, pricing, dan multi-warehouse tidak termasuk scope |
-| Ledger dan projection | **Implemented** | Ledger append-only, idempotent posting, bucket fisik, projection produk dan batch, serta read-only Ledger/Audit Explorer dengan exact transaction detail, reversal linkage, filter, keyset pagination, dan Product/Batch stock story | Deep-link source yang belum memiliki route exact, CSV import, dan penyempurnaan laporan |
-| Opening balance cutover | **Implemented** | Cutover draft/review/post, preview authoritative, `INITIAL_BALANCE` atomik, status `UNVERIFIED` sampai first-stocktake evidence, zero-variance verification, per-line audit linkage, exact reversal, dan replacement control melalui Admin UI | CSV import opsional dan penyempurnaan laporan cutover |
+| Produk dan batch | **Implemented** | `/products` menyediakan list/search/filter dan detail; Product create/update/archive/reactivate; Batch `STANDARD` create/update/block/unblock/archive/reactivate; optimistic `row_version`, idempotency, immutable audit, balance read model, dan guardrail transaksi baru | Barcode, pricing, dan multi-warehouse tidak termasuk scope |
+| Ledger dan projection | **Implemented** | Ledger append-only, idempotent posting, bucket fisik, projection produk dan batch, serta read-only Ledger/Audit Explorer dengan exact transaction detail, reversal linkage, filter, keyset pagination, dan Product/Batch stock story | Deep-link source yang belum memiliki route exact dan penyempurnaan laporan |
+| Opening balance cutover | **Implemented** | Cutover draft/review/post, preview authoritative, `INITIAL_BALANCE` atomik, status `UNVERIFIED` sampai first-stocktake evidence, zero-variance verification, per-line audit linkage, exact reversal, dan replacement control melalui Admin UI | Penyempurnaan laporan cutover |
 | Receipt dan manual outbound | **Implemented** | Receipt dari maklon, outbound manual dengan reason/channel, dan alokasi FEFO | Preview/reversal receipt dan workflow disposal khusus |
-| Marketplace lifecycle | **Implemented** | Registry listing `SINGLE`/`BUNDLE`, recipe versioned, normalisasi external listing menjadi snapshot komponen kanonis sebelum reservasi, FEFO shipment, partial cancellation, exact linked reversal, lifecycle Admin, dan simulator normalized | CSV import serta integrasi API/webhook Shopee dan TikTok Shop |
+| Marketplace lifecycle | **Implemented** | Registry listing `SINGLE`/`BUNDLE`, recipe versioned, normalisasi external listing menjadi snapshot komponen kanonis sebelum reservasi, FEFO shipment, partial cancellation, exact linked reversal, lifecycle Admin, simulator normalized, dan adapter CSV ORDER/RESERVE | Integrasi API/webhook Shopee dan TikTok Shop |
 | Return dan claim | **Implemented** | Expected return dan receipt stock-neutral, claim TikTok end-to-end dengan deadline snapshot 40 hari, submit/resolve/cancel, notification deep link exact return/claim, late arrival yang mempertahankan lost/claim history dan menyimpan allocation shipment exact per line, inspeksi sellable idempoten ke batch `RETURN` baru, damaged/lost tanpa movement kedua, partial item, dan provenance batch asal | Integrasi API/webhook marketplace, scheduler production, dan penyempurnaan UX lanjutan |
 | Stocktake | **Implemented** | Create, prepare, continuous count, blind/non-blind count, review, approval immutable, posting adjustment, dan audit linkage | Frozen mode dan penyempurnaan UX lanjutan |
 | Reconciliation | **Implemented** | Manual run, delapan integrity checks, issue, evidence, history, Admin UI, serta alert Notification Center untuk issue dan run failure | Scheduled daily run production |
 | Notification Center | **Implemented** | Lifecycle OPEN/ACKNOWLEDGED/RESOLVED, per-Admin read state, unread badge aktif, evaluator expiry/return/claim-deadline/reconciliation/stocktake, dedup episode, transactional outbox, retry, RLS, detail/history, deep link, dan Admin Operations UI | Import failure, marketplace stalled evaluator, production scheduler/cron, dan optional realtime refresh |
-| CSV import | **Not started** | Contract kanonis telah didokumentasikan | Upload privat, parsing, validation, preview, commit, error report, dan idempotency |
+| CSV import | **Implemented** | Admin CSV `MARKETPLACE_RESERVATION_V1`: private upload, staging, validation/parser, canonical SINGLE/BUNDLE preview, error report organization-scoped, serta commit atomic/idempoten melalui pipeline reservasi kanonis tanpa direct write ke ledger/projection | Shipment/cancellation/return CSV, API/webhook marketplace asli, dan scheduler production |
+| Pusat Kendali Hari Ini | **Implemented** | `/today` adalah antrean kerja Admin read-only dari sinyal aktif reconciliation, claim, return inspection, expiry, stocktake, outbox, dan rule-run; identity deterministik, filter URL, keyset pagination, deep-link exact, serta blocked state tanpa link palsu | Marketplace stalled, stocktake scheduled/due, dan CSV import failure sebagai work signal; scheduler/cron production dan optional realtime refresh |
 | Release engineering | **Partial** | Lint, typecheck, build, pgTAP, seed, dan demo bootstrap tersedia secara lokal | GitHub Actions, deployment live, smoke test production, dan final golden demo |
 
 Keterangan:
@@ -1465,9 +1477,10 @@ Minimum:
 - [x] Reconciliation.
 - [x] Drill-down ledger read-only dengan organization scope, exact transaction detail, reversal linkage, deterministic keyset pagination, dan Product/Batch stock story.
 - [x] Simulator.
-- [ ] CSV import.
+- [x] CSV import ORDER/reservation: private upload, staging/preview canonical, error report organization-scoped, dan commit atomic/idempoten melalui boundary kanonis tanpa direct ledger/projection write.
+- [x] Pusat Kendali Hari Ini read-only: work item organization-scoped, pagination/filter URL, deep-link exact bila tersedia, serta tanpa mutation bisnis.
 - [x] RLS dan security tests.
-- [ ] Concurrency tests. **Partial:** idempotency dan duplicate-effect guardrail tersedia; pengujian race condition paralel masih menjadi release gate.
+- [ ] Concurrency tests. **Partial:** harness paralel CSV untuk replay dan external-event identity tersedia; pengujian concurrency final lintas capability masih menjadi release gate.
 - [ ] Deployment live.
 - [ ] Demo script lulus.
 - [ ] Tidak ada unexpected critical reconciliation issue. **Release gate:** harus dibuktikan dari clean reconciliation run sebelum rilis.

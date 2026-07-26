@@ -155,6 +155,69 @@ export type LedgerTransactionDetail = {
   reversalLinks: LedgerReversalLink[];
 };
 
+export const TODAY_CONTROL_CENTER_SEVERITIES = [
+  "CRITICAL",
+  "HIGH",
+  "WARNING",
+  "INFO",
+] as const;
+
+export const TODAY_CONTROL_CENTER_WORK_TYPES = [
+  "RECONCILIATION_ISSUE",
+  "RECONCILIATION_RUN_FAILED",
+  "TIKTOK_CLAIM_DEADLINE",
+  "RETURN_INSPECTION_PENDING",
+  "BATCH_EXPIRY",
+  "STOCKTAKE_RECOUNT_REQUIRED",
+  "STOCKTAKE_POST_FAILED",
+  "NOTIFICATION_OUTBOX_FAILURE",
+  "NOTIFICATION_RULE_RUN_FAILURE",
+] as const;
+
+export type TodayControlCenterSeverity =
+  (typeof TODAY_CONTROL_CENTER_SEVERITIES)[number];
+export type TodayControlCenterWorkType =
+  (typeof TODAY_CONTROL_CENTER_WORK_TYPES)[number];
+
+export type TodayControlCenterWorkItem = {
+  work_item_id: string;
+  organization_id: string;
+  work_type_code: TodayControlCenterWorkType;
+  severity_code: TodayControlCenterSeverity;
+  title: string;
+  summary: string;
+  source_entity_type_code: string;
+  source_entity_id: string;
+  source_reference: string | null;
+  occurred_at: string;
+  due_at: string | null;
+  route_path: string | null;
+  notification_id: string | null;
+  resolution_status: string;
+  sort_severity_rank: number;
+  sort_at: string;
+};
+
+export type TodayControlCenterCursor = {
+  severityRank: number;
+  sortAt: string;
+  workItemId: string;
+};
+
+export type TodayControlCenterFilters = {
+  severityCode?: TodayControlCenterSeverity;
+  workTypeCode?: TodayControlCenterWorkType;
+  cursor?: string;
+  pageSize?: number;
+};
+
+export type TodayControlCenterPage = {
+  rows: TodayControlCenterWorkItem[];
+  pageSize: number;
+  nextCursor: string | null;
+  hasNextPage: boolean;
+};
+
 export type MarketplaceOrder = {
   order_id: string;
   organization_id: string;
@@ -4153,5 +4216,125 @@ export async function getLedgerTransactionDetail(
     transactionId: normalizedTransactionId,
     rows,
     reversalLinks,
+  };
+}
+
+function normalizeTodayControlCenterPageSize(value: number | undefined) {
+  const pageSize = Number.isFinite(value) ? Math.trunc(value as number) : 20;
+  return Math.min(Math.max(pageSize, 10), 50);
+}
+
+function todayControlCenterAllowed<T extends string>(
+  value: string | undefined,
+  allowed: readonly T[],
+  errorCode: string,
+) {
+  const normalized = value?.trim().toUpperCase() ?? "";
+
+  if (!normalized) return undefined;
+  if (!allowed.includes(normalized as T)) {
+    throw new Error(errorCode);
+  }
+
+  return normalized as T;
+}
+
+export function decodeTodayControlCenterCursor(
+  value: string | undefined,
+): TodayControlCenterCursor | null {
+  const normalized = value?.trim() ?? "";
+
+  if (!normalized) return null;
+  if (!/^[A-Za-z0-9_-]{1,512}$/.test(normalized)) {
+    throw new Error("INVALID_TODAY_CONTROL_CENTER_CURSOR");
+  }
+
+  try {
+    const parsed = JSON.parse(
+      Buffer.from(normalized, "base64url").toString("utf8"),
+    ) as Partial<TodayControlCenterCursor>;
+    const sortAt = typeof parsed.sortAt === "string" ? parsed.sortAt : "";
+    const workItemId =
+      typeof parsed.workItemId === "string" ? parsed.workItemId.trim() : "";
+
+    if (
+      !Number.isInteger(parsed.severityRank) ||
+      !parsed.severityRank ||
+      parsed.severityRank < 1 ||
+      parsed.severityRank > 4 ||
+      !sortAt ||
+      Number.isNaN(new Date(sortAt).getTime()) ||
+      !workItemId ||
+      workItemId.length > 400
+    ) {
+      throw new Error("INVALID_TODAY_CONTROL_CENTER_CURSOR");
+    }
+
+    return {
+      severityRank: parsed.severityRank,
+      sortAt: new Date(sortAt).toISOString(),
+      workItemId,
+    };
+  } catch (error) {
+    if (error instanceof Error && error.message === "INVALID_TODAY_CONTROL_CENTER_CURSOR") {
+      throw error;
+    }
+
+    throw new Error("INVALID_TODAY_CONTROL_CENTER_CURSOR");
+  }
+}
+
+function encodeTodayControlCenterCursor(row: TodayControlCenterWorkItem) {
+  return Buffer.from(
+    JSON.stringify({
+      severityRank: row.sort_severity_rank,
+      sortAt: row.sort_at,
+      workItemId: row.work_item_id,
+    } satisfies TodayControlCenterCursor),
+  ).toString("base64url");
+}
+
+export async function getTodayControlCenterWorkItems(
+  filters: TodayControlCenterFilters = {},
+): Promise<TodayControlCenterPage> {
+  const session = await getAdminSession();
+
+  if (!session) {
+    throw new Error("AUTH_SESSION_REQUIRED");
+  }
+
+  const severityCode = todayControlCenterAllowed(
+    filters.severityCode,
+    TODAY_CONTROL_CENTER_SEVERITIES,
+    "INVALID_TODAY_CONTROL_CENTER_SEVERITY",
+  );
+  const workTypeCode = todayControlCenterAllowed(
+    filters.workTypeCode,
+    TODAY_CONTROL_CENTER_WORK_TYPES,
+    "INVALID_TODAY_CONTROL_CENTER_WORK_TYPE",
+  );
+  const pageSize = normalizeTodayControlCenterPageSize(filters.pageSize);
+  const cursor = decodeTodayControlCenterCursor(filters.cursor);
+  const rows = await callRpc<TodayControlCenterWorkItem[]>(
+    "today_control_center_work_items",
+    {
+      p_severity_code: severityCode ?? null,
+      p_work_type_code: workTypeCode ?? null,
+      p_limit: pageSize + 1,
+      p_after_severity_rank: cursor?.severityRank ?? null,
+      p_after_sort_at: cursor?.sortAt ?? null,
+      p_after_work_item_id: cursor?.workItemId ?? null,
+    },
+  );
+  const hasNextPage = rows.length > pageSize;
+  const visibleRows = hasNextPage ? rows.slice(0, pageSize) : rows;
+
+  return {
+    rows: visibleRows,
+    pageSize,
+    hasNextPage,
+    nextCursor: hasNextPage && visibleRows.length > 0
+      ? encodeTodayControlCenterCursor(visibleRows[visibleRows.length - 1])
+      : null,
   };
 }

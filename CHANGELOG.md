@@ -76,6 +76,9 @@ YYYY-MM-DD
 
 - `[Implemented]` Admin CSV Import v1 untuk marketplace ORDER/RESERVE dengan upload private, preview canonical, row-level validation, atomic commit confirmation, dan error report organization-scoped.
 - `[Testing]` Durable UI smoke dan parallel commit harness untuk memastikan replay/idempotency tidak menggandakan domain effect.
+- `[Migration][Implemented]` Menambahkan read model Today Control Center yang organization-scoped, read-only, dan deterministic untuk sinyal reconciliation, deadline claim, return inspection, expiry batch, stocktake, kegagalan outbox, serta rule-run.
+- `[Implemented]` Menambahkan Admin `/today` sebagai antrean kerja read-only dengan severity operasional, filter severity/work type dan keyset pagination yang tersimpan di URL, exact deep-link internal, serta blocked state tanpa link palsu.
+- `[Testing]` Menambahkan pgTAP `063_today_control_center_read_model.test.sql` dan focused smoke `npm run test:today-control-center-ui`; membuka atau menyaring antrean tidak membuat stock atau domain mutation.
 
 ### Fixed
 
@@ -106,6 +109,7 @@ YYYY-MM-DD
 
 ### Changed
 
+- `[Implemented]` Menyelaraskan README: CSV Import v1 kini berstatus implemented; shipment/cancellation/return CSV, API/webhook marketplace asli, dan scheduler production tetap di luar capability ini.
 - `[Specification]` Menetapkan `ACTIVE`/`BLOCKED`/`EXPIRED`/`ARCHIVED` sebagai lifecycle Batch; `SELLABLE`/`QUARANTINE`/`DAMAGED` sebagai bucket fisik; dan `STANDARD`/`RETURN`/`UNIDENTIFIED_RETURN` sebagai kind yang terpisah.
 - `[Testing]` Validation baseline bersih untuk perubahan Product/Batch mencatat 23 Product checks, 30 Batch checks, Product/Batch smoke 53, Opening Balance smoke 51, Manual Outbound smoke 48, Marketplace Listing Admin smoke 50, serta pgTAP 54 files/2933 tests. Angka ini bertambah bila coverage bertambah; seluruh suite tetap wajib PASS.
 - `[Specification]` Menetapkan saldo awal estimasi tetap `UNVERIFIED` sampai stok opname pertama yang memenuhi exact organization/product/batch/bucket scope diposting.
