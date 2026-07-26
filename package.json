@@ -23,7 +23,8 @@
     "test:opening-balance-ui": "node scripts/test-opening-balance-ui.mjs",
     "test:opening-balance-verification-ui": "node scripts/test-opening-balance-verification-ui.mjs",
     "test:product-batch-admin-ui": "node scripts/test-product-batch-admin-ui.mjs",
-    "test:tiktok-return-claim-ui": "node scripts/test-tiktok-return-claim-ui.mjs"
+    "test:tiktok-return-claim-ui": "node scripts/test-tiktok-return-claim-ui.mjs",
+    "test:ledger-explorer-ui": "node scripts/test-ledger-explorer-ui.mjs"
   },
   "dependencies": {
     "next": "16.2.10",

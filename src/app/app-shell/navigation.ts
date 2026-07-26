@@ -72,6 +72,12 @@ export const APP_NAV_SECTIONS = [
         shortLabel: "RK",
         description: "Pemeriksaan integritas stok",
       },
+      {
+        href: "/ledger",
+        label: "Ledger Explorer",
+        shortLabel: "LG",
+        description: "Audit movement dan saldo",
+      },
     ],
   },
   {

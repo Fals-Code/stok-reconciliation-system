@@ -79,6 +79,8 @@ YYYY-MM-DD
 
 ### Added
 
+- `[Implemented]` Menambahkan read-only Ledger/Audit Explorer pada `/ledger` dan exact transaction detail dengan organization scope, deterministic keyset pagination, filter, reversal linkage, Product/Batch stock story, serta source link hanya untuk route exact yang tersedia. Smoke fixture durable memakai identity tetap dan tidak menambah domain effect pada pengulangan.
+
 - `[Migration][Implemented]` Menambahkan migration `202607230017_product_batch_master_data.sql`: normalisasi SKU/kode Batch, lifecycle Product dan Batch, `row_version`, trusted RPC, read model/audit Product-Batch, serta audit immutable `catalog.master_data_audit_events` yang stock-neutral.
 - `[Migration][Implemented]` Menambahkan migration `202607230018_product_batch_integration_guardrails.sql`: guardrail trusted untuk Receipt dan Opening Balance, serta resolver scope Stocktake yang membedakan Batch `BLOCKED` dari `ARCHIVED` dan tetap menghitung saldo fisik historis.
 - `[Implemented]` Menambahkan workflow Admin `/products`, detail Product, dan detail Batch untuk create/update/archive/reactivate Product serta create/update/block/unblock/archive/reactivate Batch `STANDARD`, dengan feedback persisten dan optimistic concurrency.
