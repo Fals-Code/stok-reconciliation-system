@@ -24,8 +24,9 @@ function config() {
   const url = (process.env.NEXT_PUBLIC_SUPABASE_URL ?? DEFAULT_LOCAL_URL).replace(/\/$/, "");
   const publishableKey = process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY;
   const secretKey = process.env.SUPABASE_SECRET_KEY;
-  if (!publishableKey || !secretKey) throw new Error("SUPABASE_SERVER_CONFIGURATION_REQUIRED");
-  return { url, publishableKey, secretKey };
+  const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY ?? secretKey;
+  if (!publishableKey || !secretKey || !serviceRoleKey) throw new Error("SUPABASE_SERVER_CONFIGURATION_REQUIRED");
+  return { url, publishableKey, secretKey, serviceRoleKey };
 }
 
 async function responseError(response: Response) {
@@ -76,7 +77,7 @@ function objectPathSegments(path: string) {
   return path.split("/").map((segment) => encodeURIComponent(segment)).join("/");
 }
 
-async function storageUpload(path: string, bytes: Uint8Array, mime: string, token: string) {
+async function storageUpload(path: string, bytes: Uint8Array, mime: string, token: string, upsert = false) {
   const { url, secretKey } = config();
   const response = await fetch(`${url}/storage/v1/object/imports/${objectPathSegments(path)}`, {
     method: "POST",
@@ -84,7 +85,7 @@ async function storageUpload(path: string, bytes: Uint8Array, mime: string, toke
       apikey: secretKey,
       Authorization: `Bearer ${secretKey}`,
       "Content-Type": mime,
-      "x-upsert": "false",
+      "x-upsert": upsert ? "true" : "false",
       "cache-control": "no-store",
     },
     body: Buffer.from(bytes),
@@ -143,7 +144,7 @@ export async function uploadAndValidateMarketplaceCsv(file: File): Promise<CsvIm
     return { status: "VALIDATION_FAILED", jobId: null, parse: parsed, summary: null };
   }
 
-  const { publishableKey, secretKey } = config();
+  const { publishableKey, serviceRoleKey } = config();
   const jobCommandKey = `csv-import:${CSV_IMPORT_TEMPLATE_VERSION}:${parsed.fileSha256}`;
   const created = await rpc<{ status: string; jobId?: string; objectPath?: string }>(
     "create_marketplace_csv_import_job",
@@ -159,16 +160,28 @@ export async function uploadAndValidateMarketplaceCsv(file: File): Promise<CsvIm
     publishableKey,
   );
 
-  if (created.status !== "CREATED" || !created.jobId || !created.objectPath) {
+  if (created.status === "DUPLICATE_FILE" || !created.jobId || !created.objectPath) {
     return { status: created.status, jobId: created.jobId ?? null, parse: parsed, summary: created };
   }
 
+  if (created.status === "EXACT_REPLAY") {
+    const existing = await readApi<CsvImportJobReadModel[]>(
+      `import_job_read_model?organization_id=eq.${encodeURIComponent(session.profile.organization_id)}&id=eq.${encodeURIComponent(created.jobId)}&select=status_code&limit=1`,
+      session,
+    );
+    const existingStatus = existing[0]?.status_code;
+    if (existingStatus === "COMPLETED" || existingStatus === "COMMIT_FAILED" || existingStatus === "VALIDATION_FAILED") {
+      return { status: "EXACT_REPLAY", jobId: created.jobId, parse: parsed, summary: { status: existingStatus } };
+    }
+  }
+
   let uploaded = false;
+  const ownsObject = created.status === "CREATED";
   try {
-    await storageUpload(created.objectPath, bytes, parsed.detectedMime, session.accessToken);
+    await storageUpload(created.objectPath, bytes, parsed.detectedMime, session.accessToken, created.status === "EXACT_REPLAY");
     uploaded = true;
     const summary = await rpc<Record<string, unknown>>(
-      "validate_marketplace_csv_import_job",
+      "validate_marketplace_csv_import_job_trusted",
       {
         p_organization_id: session.profile.organization_id,
         p_job_id: created.jobId,
@@ -176,12 +189,12 @@ export async function uploadAndValidateMarketplaceCsv(file: File): Promise<CsvIm
         p_rows: parsed.rows,
         p_parse_errors: parsed.errors,
       },
-      secretKey,
-      secretKey,
+      serviceRoleKey,
+      serviceRoleKey,
     );
     return { status: String(summary.status ?? "VALIDATION_FAILED"), jobId: created.jobId, parse: parsed, summary };
   } catch (error) {
-    if (uploaded || created.objectPath) await storageDelete(created.objectPath);
+    if (ownsObject && uploaded) await storageDelete(created.objectPath);
     throw error;
   }
 }
@@ -233,18 +246,18 @@ export async function commitMarketplaceCsvImportJob(
   if (!session || !/^[0-9a-f-]{36}$/i.test(jobId)) throw new Error("CSV_IMPORT_JOB_NOT_FOUND");
   if (!confirmation) throw new Error("CSV_IMPORT_COMMIT_CONFIRMATION_REQUIRED");
   if (!/^[A-Za-z0-9:_-]{1,200}$/.test(commitIdempotencyKey)) throw new Error("CSV_IMPORT_COMMIT_KEY_INVALID");
-  const { secretKey } = config();
+  const { serviceRoleKey } = config();
   try {
     return await rpc<CsvImportCommitResult>(
-      "commit_marketplace_csv_import_job",
+      "commit_marketplace_csv_import_job_trusted",
       {
         p_organization_id: session.profile.organization_id,
         p_import_job_id: jobId,
         p_commit_idempotency_key: commitIdempotencyKey,
         p_confirmation: true,
       },
-      secretKey,
-      secretKey,
+      serviceRoleKey,
+      serviceRoleKey,
     );
   } catch (error) {
     throw safeCommitError(error);
@@ -275,4 +288,38 @@ export async function getMarketplaceCsvImportEventResults(jobId: string, limit =
   );
   const pageRows = rows.slice(0, boundedLimit);
   return { rows: pageRows, nextCursor: rows.length > boundedLimit ? pageRows.at(-1)?.created_at ?? null : null, hasMore: rows.length > boundedLimit };
+}
+
+export async function getMarketplaceCsvImportErrorReport(jobId: string) {
+  const session = await getAdminSession();
+  if (!session || !/^[0-9a-f-]{36}$/i.test(jobId)) return null;
+  const collected: CsvImportRowReadModel[] = [];
+  let cursor: number | null = null;
+  do {
+    const page = await getMarketplaceCsvImportRows(jobId, 200, cursor, null);
+    collected.push(...page.rows);
+    cursor = page.hasMore && typeof page.nextCursor === "number" ? page.nextCursor : null;
+  } while (cursor !== null);
+  const csvCell = (value: unknown) => {
+    const text = String(value ?? "").replace(/[\r\n]+/g, " ").trim();
+    const safe = /^[=+\-@]/.test(text) ? `'${text}` : text;
+    return `"${safe.replaceAll('"', '""')}"`;
+  };
+  const lines = [
+    ["row_number", "external_event_ref", "field", "error_code", "message", "remediation", "blocking"].join(","),
+  ];
+  for (const row of collected) {
+    for (const item of row.validation_errors ?? []) {
+      lines.push([
+        row.row_number,
+        row.external_event_ref,
+        item.field,
+        item.code,
+        item.message,
+        item.remediation,
+        item.severity === "BLOCKING" ? "true" : "false",
+      ].map(csvCell).join(","));
+    }
+  }
+  return lines.join("\r\n") + "\r\n";
 }

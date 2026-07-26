@@ -72,6 +72,11 @@ YYYY-MM-DD
 
 ## [Unreleased]
 
+### Added
+
+- `[Implemented]` Admin CSV Import v1 untuk marketplace ORDER/RESERVE dengan upload private, preview canonical, row-level validation, atomic commit confirmation, dan error report organization-scoped.
+- `[Testing]` Durable UI smoke dan parallel commit harness untuk memastikan replay/idempotency tidak menggandakan domain effect.
+
 ### Fixed
 
 - Detail klaim retur TikTok kini mengambil claim exact secara organization-scoped dan tidak bergantung pada limit atau filter worklist; notification membawa konteks return dan claim.

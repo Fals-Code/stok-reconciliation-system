@@ -8,6 +8,10 @@ Tujuan utamanya sederhana, tetapi tidak boleh dinegosiasikan:
 
 Sistem dirancang untuk mencatat setiap pergerakan barang, mengalokasikan batch secara otomatis dengan FEFO, membedakan reservasi dari barang yang benar-benar keluar, menangani retur berdasarkan hasil inspeksi gudang, serta menjelaskan selisih stok sampai ke sumber transaksinya.
 
+### CSV Import marketplace
+
+Admin dapat mengunggah CSV `MARKETPLACE_RESERVATION_V1` melalui menu Import CSV. CSV ini hanya adapter ORDER/RESERVE: file privat divalidasi dan dipreview secara canonical sebelum konfirmasi atomic. Invalid row menghasilkan error report yang organization-scoped; commit memakai idempotency dan boundary reservasi canonical tanpa direct write ke ledger atau projection. Shipment, cancellation, return, API marketplace asli, dan scheduler production bukan bagian dari fitur ini.
+
 ---
 
 ## Daftar Isi

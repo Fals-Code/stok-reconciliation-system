@@ -38,6 +38,12 @@ export const APP_NAV_SECTIONS = [
         description: "Listing, reservasi, dan shipment",
       },
       {
+        href: "/marketplace/import",
+        label: "Import CSV",
+        shortLabel: "CSV",
+        description: "Preview dan reservasi marketplace",
+      },
+      {
         href: "/returns",
         label: "Retur",
         shortLabel: "RT",
