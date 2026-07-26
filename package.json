@@ -34,6 +34,7 @@
     "test:stocktake-opening-balance-parallel": "node scripts/test-stocktake-opening-balance-parallel.mjs",
     "test:marketplace-lifecycle-parallel": "node scripts/test-marketplace-lifecycle-parallel.mjs",
     "test:marketplace-external-event-parallel": "node scripts/test-marketplace-external-event-parallel.mjs",
+    "test:marketplace-version-snapshot-parallel": "node scripts/test-marketplace-version-snapshot-parallel.mjs",
     "test:today-control-center-ui": "node scripts/test-today-control-center-ui.mjs"
   },
   "dependencies": {
