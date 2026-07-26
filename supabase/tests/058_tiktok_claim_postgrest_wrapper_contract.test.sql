@@ -37,7 +37,7 @@ select is((select p.pronargdefaults::integer from pg_proc p where p.oid = 'api.e
 select ok(has_function_privilege('authenticated', 'api.submit_tiktok_return_claim(uuid,text,uuid,text,timestamp with time zone)', 'EXECUTE'), 'authenticated can execute submit wrapper');
 select ok(has_function_privilege('authenticated', 'api.resolve_tiktok_return_claim(uuid,text,uuid,text,timestamp with time zone)', 'EXECUTE'), 'authenticated can execute resolve wrapper');
 select ok(has_function_privilege('authenticated', 'api.cancel_tiktok_return_claim(uuid,text,uuid,text,timestamp with time zone)', 'EXECUTE'), 'authenticated can execute cancel wrapper');
-select ok(has_function_privilege('authenticated', 'api.evaluate_tiktok_return_claim_deadline(uuid,text,uuid,timestamp with time zone)', 'EXECUTE'), 'authenticated can execute evaluate wrapper');
+select ok(not has_function_privilege('authenticated', 'api.evaluate_tiktok_return_claim_deadline(uuid,text,uuid,timestamp with time zone)', 'EXECUTE'), 'authenticated cannot execute trusted-worker expiry wrapper');
 select ok(has_function_privilege('service_role', 'api.submit_tiktok_return_claim(uuid,text,uuid,text,timestamp with time zone)', 'EXECUTE'), 'service role can execute submit wrapper');
 select ok(has_function_privilege('service_role', 'api.resolve_tiktok_return_claim(uuid,text,uuid,text,timestamp with time zone)', 'EXECUTE'), 'service role can execute resolve wrapper');
 select ok(has_function_privilege('service_role', 'api.cancel_tiktok_return_claim(uuid,text,uuid,text,timestamp with time zone)', 'EXECUTE'), 'service role can execute cancel wrapper');
