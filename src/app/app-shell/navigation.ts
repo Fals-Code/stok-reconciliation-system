@@ -100,6 +100,12 @@ export const APP_NAV_SECTIONS = [
     label: "Monitoring",
     items: [
       {
+        href: "/today",
+        label: "Pusat Kendali Hari Ini",
+        shortLabel: "HK",
+        description: "Antrean tindakan operasional",
+      },
+      {
         href: "/notifications/operations",
         label: "Notification Operations",
         shortLabel: "NO",
