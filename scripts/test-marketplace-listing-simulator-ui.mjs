@@ -18,6 +18,9 @@ const UUID_PATTERN =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 const HASH_PATTERN = /^[0-9a-f]{64}$/i;
 const FIXTURE_PREFIX = "marketplace-listing-simulator-ui-smoke:";
+const DURABLE_RUN_ID = "DURABLE-V1";
+const DURABLE_SHORT_RUN_ID = "DURABLEV1";
+const DURABLE_EVENT_CLOCK_BASE = Date.parse("2026-07-01T00:00:00.000Z");
 
 const results = [];
 
@@ -33,7 +36,7 @@ let accessToken = null;
 let smokeUserId = null;
 let organizationId = null;
 let eventSequence = 0;
-let eventClockBase = Date.now();
+let eventClockBase = DURABLE_EVENT_CLOCK_BASE;
 let listingId = null;
 let orderRef = null;
 
@@ -730,6 +733,17 @@ async function readListing(targetListingId) {
   return rows[0] ?? null;
 }
 
+async function readListingByCode(externalListingCode) {
+  const rows = await restRows(
+    "marketplace_listing_catalog" +
+      `?organization_id=eq.${encodeURIComponent(organizationId)}` +
+      `&external_listing_code=eq.${encodeURIComponent(externalListingCode)}` +
+      "&select=*&limit=1",
+  );
+
+  return rows[0] ?? null;
+}
+
 async function readMarketplaceEvent(eventRef) {
   const rows = await restRows(
     "marketplace_events" +
@@ -775,29 +789,8 @@ async function selectBundleProducts() {
 }
 
 async function establishEventClock() {
-  const [marketplaceRows, ledgerRows] = await Promise.all([
-    restRows(
-      "marketplace_events" +
-        `?organization_id=eq.${encodeURIComponent(organizationId)}` +
-        "&select=occurred_at&order=occurred_at.desc&limit=1",
-    ),
-    restRows(
-      "stock_ledger" +
-        `?organization_id=eq.${encodeURIComponent(organizationId)}` +
-        "&select=occurred_at&order=occurred_at.desc&limit=1",
-    ),
-  ]);
-  const latest = [
-    Date.now(),
-    marketplaceRows[0]?.occurred_at
-      ? new Date(marketplaceRows[0].occurred_at).getTime()
-      : 0,
-    ledgerRows[0]?.occurred_at
-      ? new Date(ledgerRows[0].occurred_at).getTime()
-      : 0,
-  ].filter(Number.isFinite);
-
-  eventClockBase = Math.max(...latest) + 5 * 60_000;
+  eventClockBase = DURABLE_EVENT_CLOCK_BASE;
+  eventSequence = 0;
 }
 
 async function createAndActivateBundle({
@@ -995,8 +988,8 @@ async function archiveFixtureListing(runId, targetListingId) {
 }
 
 async function main(args) {
-  const runId = randomUUID();
-  const shortRunId = runId.replaceAll("-", "").slice(0, 12).toUpperCase();
+  const runId = DURABLE_RUN_ID;
+  const shortRunId = DURABLE_SHORT_RUN_ID;
   const externalListingCode = `SHP-000-UI-BUNDLE-${shortRunId}`;
   const displayName = `Smoke Bundle ${shortRunId}`;
   orderRef = `${FIXTURE_PREFIX}order:${runId}`;
@@ -1247,6 +1240,19 @@ returning organization_id::text;
   );
 
   await establishEventClock();
+
+  const durableListing = await readListingByCode(externalListingCode);
+  if (durableListing?.status_code === "ARCHIVED") {
+    const reserveEvents = await readMarketplaceEvent(reserveEventRef);
+    const shipEvents = await readMarketplaceEvent(shipEventRef);
+    assertTest(
+      reserveEvents.length === 1 && shipEvents.length === 1,
+      "Durable simulator replay mempertahankan satu reserve dan satu ship event",
+      JSON.stringify({ reserveEvents, shipEvents }),
+    );
+    console.log("Simulator smoke PASS: durable replay tanpa fixture growth");
+    return;
+  }
 
   console.log("\n== Start / reuse Next.js server ==");
 

@@ -845,15 +845,15 @@ select is(
     from operations.marketplace_events
     where organization_id = '00000000-0000-4000-8000-000000000001'::uuid
       and ((
-      event_type_code = 'SHIP'
-      and transaction_id is not null
-    ) or (
-      event_type_code in ('RESERVE', 'RELEASE')
-      and transaction_id is null
-    ))
+        event_type_code = 'SHIP'
+        and transaction_id is null
+      ) or (
+        event_type_code in ('RESERVE', 'RELEASE')
+        and transaction_id is not null
+      ))
   ),
-  3::bigint,
-  'all applied events obey the physical transaction rule'
+  0::bigint,
+  'no applied event violates the physical transaction rule'
 );
 
 select * from finish();
