@@ -64,7 +64,9 @@ function filtersFromParams(params: LedgerSearchParams): LedgerExplorerFilters {
     occurredTo: textParam(params, "occurredTo") || undefined,
     recordedFrom: textParam(params, "recordedFrom") || undefined,
     recordedTo: textParam(params, "recordedTo") || undefined,
+    productId: textParam(params, "productId") || undefined,
     productSku: textParam(params, "productSku") || undefined,
+    batchId: textParam(params, "batchId") || undefined,
     batchCode: textParam(params, "batchCode") || undefined,
     transactionType: textParam(params, "transactionType") || undefined,
     reason: textParam(params, "reason") || undefined,
@@ -95,7 +97,9 @@ function queryForState(
     "occurredTo",
     "recordedFrom",
     "recordedTo",
+    "productId",
     "productSku",
+    "batchId",
     "batchCode",
     "transactionType",
     "reason",
@@ -162,6 +166,10 @@ function FilterForm({ params }: { params: LedgerSearchParams }) {
 
   return (
     <form method="get" className="panel-card" data-testid="ledger-filter-form">
+      {(["productId", "batchId"] as const).map((name) => {
+        const value = textParam(params, name);
+        return value ? <input key={name} type="hidden" name={name} value={value} /> : null;
+      })}
       <div className="flex flex-wrap items-start justify-between gap-4">
         <div>
           <p className="section-kicker">Filter read-only</p>

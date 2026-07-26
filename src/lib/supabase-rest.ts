@@ -4025,7 +4025,8 @@ function ledgerIdFilter(value: string | undefined, errorCode: string) {
   return normalized;
 }
 
-export async function getLedgerExplorerPage(
+async function getLedgerPageFromView(
+  view: "ledger_explorer" | "ledger_stock_story",
   filters: LedgerExplorerFilters = {},
 ): Promise<LedgerExplorerPage> {
   const session = await getAdminSession();
@@ -4082,7 +4083,7 @@ export async function getLedgerExplorerPage(
     ? "ledger_seq.asc,ledger_entry_id.asc"
     : "ledger_seq.desc,ledger_entry_id.desc";
   const rows = await apiFetch<LedgerExplorerRow[]>(
-    `ledger_explorer?${parts.join("&")}&select=*&order=${order}&limit=${pageSize + 1}`,
+    `${view}?${parts.join("&")}&select=*&order=${order}&limit=${pageSize + 1}`,
   );
   const hasExtraRow = rows.length > pageSize;
   const visibleRows = (hasExtraRow ? rows.slice(0, pageSize) : rows).slice();
@@ -4103,6 +4104,18 @@ export async function getLedgerExplorerPage(
     hasNextPage: direction === "previous" ? visibleRows.length > 0 : hasExtraRow,
     hasPreviousPage: direction === "previous" ? visibleRows.length > 0 : Boolean(cursor),
   };
+}
+
+export async function getLedgerExplorerPage(
+  filters: LedgerExplorerFilters = {},
+): Promise<LedgerExplorerPage> {
+  return getLedgerPageFromView("ledger_explorer", filters);
+}
+
+export async function getLedgerStockStoryPage(
+  filters: LedgerExplorerFilters = {},
+): Promise<LedgerExplorerPage> {
+  return getLedgerPageFromView("ledger_stock_story", filters);
 }
 
 export async function getLedgerTransactionDetail(

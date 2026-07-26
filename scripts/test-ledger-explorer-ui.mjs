@@ -2,7 +2,6 @@ import { readFile } from "node:fs/promises";
 import path from "node:path";
 import process from "node:process";
 import { spawn, spawnSync } from "node:child_process";
-import { randomUUID } from "node:crypto";
 
 const baseUrl = process.env.LEDGER_EXPLORER_SMOKE_BASE_URL ?? "http://127.0.0.1:3000";
 const password = process.env.LEDGER_EXPLORER_SMOKE_PASSWORD ?? "LocalSmoke123!";
@@ -17,6 +16,7 @@ let serviceKey = "";
 let organizationId = "";
 const fixtureTransactionIds = [];
 const fixtureReversedIds = new Set();
+const FIXTURE_SOURCE_PREFIX = "ledger-explorer-ui-smoke:pagination:v1:";
 let ownedServer = null;
 let serverOutput = "";
 
@@ -108,36 +108,44 @@ async function provisionReadFixture() {
   check("Admin profile has organization authority", UUID.test(organizationId));
 
   let rows = await restRows("ledger_explorer?select=*&order=ledger_seq.desc&limit=1000");
-  if (rows.length >= 21 && rows.some((row) => row.reversal_state === "REVERSAL" || row.reversal_state === "FULLY_REVERSED")) return rows;
+  const stableFixtureRows = rows.filter((row) => String(row.source_ref_snapshot ?? "").startsWith(FIXTURE_SOURCE_PREFIX));
+  if (stableFixtureRows.length >= 12 && stableFixtureRows.some((row) => row.reversal_state === "FULLY_REVERSED")) return rows;
 
   const batches = await restRows(`product_batch_master?organization_id=eq.${encodeURIComponent(organizationId)}&batch_kind_code=eq.STANDARD&lifecycle_status_code=eq.ACTIVE&is_effectively_expired=eq.false&select=product_id,batch_id&order=expiry_date.asc,batch_code.asc&limit=2`);
   check("Temporary read fixture has active batches", batches.length > 0);
-  const fixtureCount = Math.max(1, Math.ceil((21 - rows.length) / Math.max(batches.length * 2, 1)));
-  for (let fixtureIndex = 0; fixtureIndex < fixtureCount; fixtureIndex += 1) {
-    const runId = randomUUID();
-    const posted = await rpc("post_receipt", {
-      p_organization_id: organizationId,
-      p_idempotency_key: `ledger-explorer-ui-smoke:receipt:${runId}`,
-      p_source_ref: `ledger-explorer-ui-smoke:${runId}`,
-      p_occurred_at: new Date(Date.now() + fixtureIndex * 1000).toISOString(),
-      p_lines: batches.map((batch, index) => ({ productId: batch.product_id, batchId: batch.batch_id, quantity: 1, sourceLineRef: `LEDGER-EXPLORER-SMOKE-${fixtureIndex + 1}-${index + 1}` })),
-      p_note: "Temporary Ledger Explorer UI smoke receipt.",
-      p_metadata: { source: "ledger-explorer-ui-smoke", runId, temporary: true },
-    });
-    const transactionId = String(posted?.transactionId ?? "");
-    fixtureTransactionIds.push(transactionId);
-    check("Temporary read fixture receipt created", UUID.test(transactionId));
-
+  for (let fixtureIndex = 1; fixtureIndex <= 6; fixtureIndex += 1) {
+    const sourceRef = `${FIXTURE_SOURCE_PREFIX}${fixtureIndex}`;
+    const existing = rows.find((row) => row.source_ref_snapshot === sourceRef);
+    let transactionId = String(existing?.transaction_id ?? "");
+    if (!transactionId) {
+      const posted = await rpc("post_receipt", {
+        p_organization_id: organizationId,
+        p_idempotency_key: `ledger-explorer-ui-smoke:receipt:v1:${fixtureIndex}`,
+        p_source_ref: sourceRef,
+        p_occurred_at: "2026-01-01T00:00:00.000Z",
+        p_lines: batches.map((batch, index) => ({ productId: batch.product_id, batchId: batch.batch_id, quantity: 1, sourceLineRef: `LEDGER-EXPLORER-SMOKE-V1-${fixtureIndex}-${index + 1}` })),
+        p_note: "Durable Ledger Explorer UI smoke read fixture.",
+        p_metadata: { source: "ledger-explorer-ui-smoke", fixtureVersion: 1, fixtureIndex, readOnly: true },
+      });
+      transactionId = String(posted?.transactionId ?? "");
+      check("Stable read fixture receipt created", UUID.test(transactionId));
+    }
+    if (!fixtureTransactionIds.includes(transactionId)) fixtureTransactionIds.push(transactionId);
+    const alreadyReversed = rows.some((row) => row.transaction_id === transactionId && (row.reversal_state === "FULLY_REVERSED" || row.reversal_state === "PARTIALLY_REVERSED"));
+    if (alreadyReversed) {
+      fixtureReversedIds.add(transactionId);
+      continue;
+    }
     const preview = await rpc("preview_stock_transaction_reversal", { p_organization_id: organizationId, p_original_transaction_id: transactionId });
-    check("Temporary read fixture reversal preview is eligible", preview?.eligible === true && typeof preview?.basisHash === "string");
+    check("Stable read fixture reversal preview is eligible", preview?.eligible === true && typeof preview?.basisHash === "string");
     await rpc("reverse_stock_transaction", {
       p_organization_id: organizationId,
-      p_idempotency_key: `ledger-explorer-ui-smoke:reversal:${runId}`,
+      p_idempotency_key: `ledger-explorer-ui-smoke:reversal:v1:${fixtureIndex}`,
       p_original_transaction_id: transactionId,
       p_preview_basis_hash: preview.basisHash,
       p_confirmation: true,
-      p_note: "Temporary Ledger Explorer UI smoke reversal.",
-      p_metadata: { source: "ledger-explorer-ui-smoke", runId, temporary: true },
+      p_note: "Durable Ledger Explorer UI smoke reversal.",
+      p_metadata: { source: "ledger-explorer-ui-smoke", fixtureVersion: 1, fixtureIndex, readOnly: true },
     });
     fixtureReversedIds.add(transactionId);
   }
@@ -222,6 +230,11 @@ async function main() {
   const refreshed = await page(filtered.uri);
   check("Filter survives refresh", refreshed.uri.includes("productSku=") && contains(refreshed.html, sku));
 
+  const productDetail = await page(`${baseUrl}/products/${multi.product_id}`);
+  check("Product entry point opens exact ledger context", contains(productDetail.html, "Lihat Jejak Stok") && contains(productDetail.html, "Stock story read-only"));
+  const batchDetail = await page(`${baseUrl}/products/${multi.product_id}/batches/${multi.batch_id}`);
+  check("Batch entry point opens exact ledger context", contains(batchDetail.html, "Lihat Jejak Batch") && contains(batchDetail.html, "Stock story read-only"));
+
   const detail = await page(`${baseUrl}/ledger/${multi.transaction_id}?productSku=${encodeURIComponent(sku)}`);
   check("Exact transaction detail opens", contains(detail.html, "Exact transaction detail") && contains(detail.html, "Ledger entries"));
   check("Multi-entry detail renders all rows", (detail.html.match(/data-testid=\"ledger-detail-entries\"/g) ?? []).length === 1 && contains(detail.html, String(multi.transaction_no)));
@@ -230,6 +243,7 @@ async function main() {
   if (reversal) {
     const reversalPage = await page(`${baseUrl}/ledger/${reversal.transaction_id}`);
     check("Reversal detail exposes linkage section", contains(reversalPage.html, "Original") && contains(reversalPage.html, "reversal"));
+    check("Unsupported or exact source is handled honestly", contains(reversalPage.html, "Buka sumber exact") || contains(reversalPage.html, "Detail sumber belum tersedia"));
   } else {
     check("Reversal detail fixture is available", false, "Durable ledger has no reversal row");
   }

@@ -30,6 +30,33 @@ function labelFromCode(value: string) {
   return value.toLowerCase().split("_").map((part) => part.charAt(0).toUpperCase() + part.slice(1)).join(" ");
 }
 
+function sourceHref(row: LedgerExplorerRow) {
+  if (!row.source_id) return null;
+  const id = encodeURIComponent(row.source_id);
+  switch (row.source_type_code) {
+    case "MANUAL_OUTBOUND": return `/manual-outbounds?outboundId=${id}`;
+    case "DISPOSAL": return `/stock-disposals?disposalId=${id}`;
+    case "STOCKTAKE": return `/stocktakes/${id}`;
+    case "OPENING_BALANCE_CUTOVER": return `/opening-balances?cutoverId=${id}`;
+    case "RETURN": return `/returns?returnId=${id}`;
+    case "REVERSAL": return `/entry-corrections?transactionId=${id}`;
+    default: return null;
+  }
+}
+
+function SourceEvidence({ row }: { row: LedgerExplorerRow }) {
+  const href = sourceHref(row);
+  return (
+    <div className="panel-card mt-6" data-testid="ledger-source-evidence">
+      <p className="section-kicker">Source evidence</p>
+      <h2 className="section-title">Sumber movement</h2>
+      <p className="mt-3 text-sm text-slate-300">{row.source_type_code} · {row.source_ref_snapshot}</p>
+      {href ? <Link className="nav-link mt-4 inline-flex" href={href}>Buka sumber exact</Link> : <p className="mt-4 text-sm text-slate-400">Detail sumber belum tersedia sebagai route exact. Tidak ada link spekulatif.</p>}
+      <p className="mt-3 text-xs text-slate-500">Reconciliation issue tidak disimpulkan dari product/batch atau source reference; link hanya ditampilkan bila evidence exact tersedia.</p>
+    </div>
+  );
+}
+
 function backHref(searchParams: Record<string, SearchParamValue>) {
   const query = new URLSearchParams();
   for (const [key, value] of Object.entries(searchParams)) {
@@ -144,6 +171,8 @@ export default async function LedgerTransactionPage({
           {relatedLinks.length ? <ul className="mt-4 space-y-3">{relatedLinks.map((link) => <RelatedReversal key={link.reversal_application_id} link={link} transactionId={detail.transactionId} />)}</ul> : <p className="mt-4 text-sm text-slate-400" data-testid="ledger-no-reversal">Tidak ada reversal yang tertaut pada transaction ini.</p>}
           <p className="mt-5 text-xs leading-5 text-slate-500">Source reference ditampilkan apa adanya dari ledger. Link entity yang belum tersedia tidak dibuat secara spekulatif.</p>
         </section>
+
+        <SourceEvidence row={firstRow} />
       </div>
     </main>
   );
