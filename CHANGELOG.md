@@ -72,6 +72,11 @@ YYYY-MM-DD
 
 ## [Unreleased]
 
+### Fixed
+
+- Detail klaim retur TikTok kini mengambil claim exact secara organization-scoped dan tidak bergantung pada limit atau filter worklist; notification membawa konteks return dan claim.
+- Late arrival menyimpan allocation shipment exact per line untuk provenance split-batch, tanpa menebak batch saat provenance belum teridentifikasi.
+
 ### Added
 
 - `[Migration][Implemented]` Menambahkan migration `202607230017_product_batch_master_data.sql`: normalisasi SKU/kode Batch, lifecycle Product dan Batch, `row_version`, trusted RPC, read model/audit Product-Batch, serta audit immutable `catalog.master_data_audit_events` yang stock-neutral.

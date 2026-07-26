@@ -948,6 +948,7 @@ Admin memilih hasil per item:
 **Acceptance criteria:**
 
 - `SELLABLE` membuat tepat satu `RETURN_SELLABLE_INBOUND` ke batch baru dengan `batch_kind_code = RETURN`.
+- Untuk late arrival split-batch, operator memilih allocation pengiriman asal yang exact per return item; sistem tidak menebak batch pertama. Provenance belum teridentifikasi tetap stock-neutral, memblokir `SELLABLE`, dan tetap mengizinkan `DAMAGED` sebagai audit-only.
 - Batch `RETURN` baru bukan batch outbound asal dan menyimpan provenance retur, produk, item order, serta hasil inspeksi.
 - `DAMAGED` mencatat kondisi fisik untuk audit/klaim tanpa stock transaction, ledger entry, atau projection delta kedua.
 - `LOST` tetap terpisah dari `DAMAGED` dan tidak menambah stok fisik.

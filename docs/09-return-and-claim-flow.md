@@ -3418,5 +3418,10 @@ menjadi referensi runtime untuk kontrak di atas. Pada runtime saat ini:
   satu batch `RETURN`; `DAMAGED` tidak membuat transaction atau ledger kedua;
 - replay identik mengembalikan response tersimpan, sedangkan payload berbeda
   dengan idempotency key sama ditolak;
+- deep link klaim membawa `returnId` dan `claimId`; URL lama yang hanya berisi
+  `claimId` tetap mengambil return dari claim exact, bukan dari worklist;
+- late arrival membawa `marketplaceShipAllocationId` opsional per line. Allocation
+  exact menyimpan snapshot batch asal; pilihan belum teridentifikasi tetap
+  stock-neutral, memblokir `SELLABLE`, dan tidak memblokir audit `DAMAGED`;
 - UI Admin `/returns` adalah jalur mutation resmi; API marketplace asli,
   harga, uang, email/WA, multi-warehouse, dan barcode tetap non-goal.

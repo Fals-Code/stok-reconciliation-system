@@ -2872,3 +2872,5 @@ Database suite                  54 files, 2933 tests, PASS
 ```
 
 Angka tersebut adalah snapshot baseline, bukan batas permanen. Coverage boleh bertambah; seluruh smoke terkait dan database suite wajib PASS pada state setelah smoke.
+
+Return-claim smoke mencakup claim-only deep link di luar worklist, route notification `returnId + claimId`, allocation shipment exact per receipt/late-arrival line, conflict idempotency saat allocation berubah, serta provenance unknown yang stock-neutral dan tidak sellable.
