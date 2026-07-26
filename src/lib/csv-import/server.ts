@@ -6,6 +6,10 @@ import { getAdminSession } from "@/lib/auth";
 
 import { parseMarketplaceCsv } from "./parser";
 import {
+  safeMarketplaceCsvCommitErrorCode,
+  safeMarketplaceCsvUploadErrorCode,
+} from "./safe-errors";
+import {
   CSV_IMPORT_TEMPLATE_VERSION,
   type CsvImportJobReadModel,
   type CsvImportCommitReadModel,
@@ -118,13 +122,6 @@ function requestHash(result: CsvImportParseResult, fileName: string) {
     })),
   });
   return createHash("sha256").update(payload, "utf8").digest("hex");
-}
-
-function safeCommitError(error: unknown) {
-  const message = error instanceof Error ? error.message : "";
-  const code = message.split("|")[0]?.trim() ?? "";
-  if (/^(CSV_|MARKETPLACE_|IDEMPOTENCY_)[A-Z0-9_]*$/.test(code)) return new Error(code);
-  return new Error("CSV_IMPORT_COMMIT_FAILED");
 }
 
 export type CsvImportUploadResult = {
@@ -260,9 +257,11 @@ export async function commitMarketplaceCsvImportJob(
       serviceRoleKey,
     );
   } catch (error) {
-    throw safeCommitError(error);
+    throw new Error(safeMarketplaceCsvCommitErrorCode(error));
   }
 }
+
+export { safeMarketplaceCsvCommitErrorCode, safeMarketplaceCsvUploadErrorCode };
 
 export async function getMarketplaceCsvImportCommit(jobId: string, commandId: string): Promise<CsvImportCommitReadModel | null> {
   const session = await getAdminSession();

@@ -1,7 +1,11 @@
 "use server";
 
-import { uploadAndValidateMarketplaceCsv } from "@/lib/csv-import/server";
-import { commitMarketplaceCsvImportJob } from "@/lib/csv-import/server";
+import {
+  commitMarketplaceCsvImportJob,
+  safeMarketplaceCsvCommitErrorCode,
+  safeMarketplaceCsvUploadErrorCode,
+  uploadAndValidateMarketplaceCsv,
+} from "@/lib/csv-import/server";
 import { redirect } from "next/navigation";
 
 export async function stageMarketplaceCsvAction(formData: FormData) {
@@ -9,16 +13,16 @@ export async function stageMarketplaceCsvAction(formData: FormData) {
   if (!(file instanceof File)) {
     throw new Error("CSV_FILE_REQUIRED");
   }
-  let target = "/marketplace/import?error=CSV_IMPORT_FAILED";
+  let target = "/marketplace/import?errorCode=CSV_IMPORT_UPLOAD_FAILED";
   try {
     const result = await uploadAndValidateMarketplaceCsv(file);
     if (!result.jobId) {
-      target = `/marketplace/import?error=${encodeURIComponent(result.parse.errors[0]?.code ?? result.status)}`;
+      target = `/marketplace/import?errorCode=${encodeURIComponent(safeMarketplaceCsvUploadErrorCode(result.parse.errors[0]?.code ?? result.status))}`;
     } else {
       target = `/marketplace/import/${result.jobId}?status=${encodeURIComponent(result.status)}`;
     }
   } catch (error) {
-    target = `/marketplace/import?error=${encodeURIComponent(error instanceof Error ? error.message : "CSV_IMPORT_FAILED")}`;
+    target = `/marketplace/import?errorCode=${encodeURIComponent(safeMarketplaceCsvUploadErrorCode(error))}`;
   }
   redirect(target);
 }
@@ -32,7 +36,7 @@ export async function commitMarketplaceCsvImportAction(formData: FormData) {
     const result = await commitMarketplaceCsvImportJob(jobId, key, confirmation);
     target = `/marketplace/import/${jobId}?commit=${encodeURIComponent(result.status)}`;
   } catch (error) {
-    target = `/marketplace/import/${jobId}?commitError=${encodeURIComponent(error instanceof Error ? error.message : "CSV_IMPORT_COMMIT_FAILED")}`;
+    target = `/marketplace/import/${jobId}?commitError=${encodeURIComponent(safeMarketplaceCsvCommitErrorCode(error))}`;
   }
   redirect(target);
 }
