@@ -952,6 +952,13 @@ pnpm test:demo
 
 # Focused Product/Batch Admin smoke
 npm run test:product-batch-admin-ui
+
+# Focused TikTok return-claim and late-arrival smoke
+npm run test:tiktok-return-claim-ui
+
+# Shared notification UI/action smokes
+npm run test:notification-write-actions
+npm run test:notification-admin-operations
 ```
 
 Contoh script yang direkomendasikan:
@@ -1413,10 +1420,10 @@ Status berikut menggambarkan source pada branch saat ini. Status ini bukan pengg
 | Opening balance cutover | **Implemented** | Cutover draft/review/post, preview authoritative, `INITIAL_BALANCE` atomik, status `UNVERIFIED` sampai first-stocktake evidence, zero-variance verification, per-line audit linkage, exact reversal, dan replacement control melalui Admin UI | CSV import opsional dan penyempurnaan laporan cutover |
 | Receipt dan manual outbound | **Implemented** | Receipt dari maklon, outbound manual dengan reason/channel, dan alokasi FEFO | Preview/reversal receipt dan workflow disposal khusus |
 | Marketplace lifecycle | **Implemented** | Registry listing `SINGLE`/`BUNDLE`, recipe versioned, normalisasi external listing menjadi snapshot komponen kanonis sebelum reservasi, FEFO shipment, partial cancellation, exact linked reversal, lifecycle Admin, dan simulator normalized | CSV import serta integrasi API/webhook Shopee dan TikTok Shop |
-| Return dan claim | **Partial** | Expected return stock-neutral, receipt operasional tanpa ledger, inspeksi sellable sebagai inbound idempoten ke batch `RETURN` baru, damaged/lost tanpa movement kedua, partial item, provenance batch asal, dan lost return | Claim reminder, overdue, late-arrival administration, dan claim lifecycle lengkap |
+| Return dan claim | **Implemented** | Expected return dan receipt stock-neutral, claim TikTok end-to-end dengan deadline snapshot 40 hari, submit/resolve/cancel, notification deep link exact return/claim, late arrival yang mempertahankan lost/claim history dan menyimpan allocation shipment exact per line, inspeksi sellable idempoten ke batch `RETURN` baru, damaged/lost tanpa movement kedua, partial item, dan provenance batch asal | Integrasi API/webhook marketplace, scheduler production, dan penyempurnaan UX lanjutan |
 | Stocktake | **Implemented** | Create, prepare, continuous count, blind/non-blind count, review, approval immutable, posting adjustment, dan audit linkage | Frozen mode dan penyempurnaan UX lanjutan |
 | Reconciliation | **Implemented** | Manual run, delapan integrity checks, issue, evidence, history, Admin UI, serta alert Notification Center untuk issue dan run failure | Scheduled daily run production |
-| Notification Center | **Implemented** | Lifecycle OPEN/ACKNOWLEDGED/RESOLVED, per-Admin read state, unread badge aktif, evaluator expiry/return/reconciliation/stocktake, dedup episode, transactional outbox, retry, RLS, detail/history, deep link, dan Admin Operations UI | Claim deadline, import failure, marketplace stalled evaluator, production scheduler/cron, dan optional realtime refresh |
+| Notification Center | **Implemented** | Lifecycle OPEN/ACKNOWLEDGED/RESOLVED, per-Admin read state, unread badge aktif, evaluator expiry/return/claim-deadline/reconciliation/stocktake, dedup episode, transactional outbox, retry, RLS, detail/history, deep link, dan Admin Operations UI | Import failure, marketplace stalled evaluator, production scheduler/cron, dan optional realtime refresh |
 | CSV import | **Not started** | Contract kanonis telah didokumentasikan | Upload privat, parsing, validation, preview, commit, error report, dan idempotency |
 | Release engineering | **Partial** | Lint, typecheck, build, pgTAP, seed, dan demo bootstrap tersedia secara lokal | GitHub Actions, deployment live, smoke test production, dan final golden demo |
 
@@ -1448,7 +1455,7 @@ Minimum:
 - [x] Return expected.
 - [x] Return receipt operasional tanpa perubahan stok.
 - [x] Return inspection: sellable inbound ke batch `RETURN` baru; damaged tanpa movement stok kedua.
-- [ ] Lost return dan claim. **Partial:** lost return tersedia; claim deadline, reminder, overdue, dan administrasi claim belum lengkap.
+- [x] Lost return dan claim. Lost/claim per item, deadline TikTok 40 hari dari `operations.returns.created_at`, submit/resolve/cancel, reminder, overdue, late arrival, idempotency, dan stock-neutral lifecycle tersedia.
 - [x] Expiry notification.
 - [x] Stocktake.
 - [x] Reconciliation.

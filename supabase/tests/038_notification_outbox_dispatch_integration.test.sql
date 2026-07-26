@@ -4,6 +4,14 @@ create extension if not exists pgtap with schema extensions;
 
 select plan(71);
 
+create temporary table outbox_038_fixture (
+  run_token text not null,
+  organization_id uuid not null
+) on commit drop;
+
+insert into outbox_038_fixture (run_token, organization_id)
+values (gen_random_uuid()::text, gen_random_uuid());
+
 -- Function contract, security, and supported dispatch branches.
 select has_function(
   'notification'::name,
@@ -174,7 +182,7 @@ insert into app.organizations (
   created_at
 )
 values (
-  '00000000-0000-4000-8000-000000000010'::uuid,
+  (select organization_id from outbox_038_fixture),
   'PGTAP_OUTBOX_DISPATCH',
   'pgTAP Outbox Dispatch Organization',
   'Asia/Jakarta',
@@ -194,8 +202,8 @@ insert into app.settings (
 )
 values
 (
-  'f6090000-0000-4000-8000-000000000001'::uuid,
-  '00000000-0000-4000-8000-000000000010'::uuid,
+  md5((select run_token from outbox_038_fixture) || ':setting:expiry')::uuid,
+  (select organization_id from outbox_038_fixture),
   'expiry.warning_days',
   '[90,60,30,0]'::jsonb,
   1,
@@ -204,8 +212,8 @@ values
   '2026-07-26 07:00:00+07'::timestamptz
 ),
 (
-  'f6090000-0000-4000-8000-000000000002'::uuid,
-  '00000000-0000-4000-8000-000000000010'::uuid,
+  md5((select run_token from outbox_038_fixture) || ':setting:return')::uuid,
+  (select organization_id from outbox_038_fixture),
   'return.inspection_sla_hours',
   '[24,72]'::jsonb,
   1,
@@ -220,37 +228,37 @@ select
     select count(*)
     from inventory.stock_transactions
     where organization_id =
-      '00000000-0000-4000-8000-000000000010'::uuid
+      (select organization_id from outbox_038_fixture)
   )::bigint as transaction_count,
   (
     select count(*)
     from inventory.stock_ledger_entries
     where organization_id =
-      '00000000-0000-4000-8000-000000000010'::uuid
+      (select organization_id from outbox_038_fixture)
   )::bigint as ledger_count,
   (
     select count(*)
     from operations.returns
     where organization_id =
-      '00000000-0000-4000-8000-000000000010'::uuid
+      (select organization_id from outbox_038_fixture)
   )::bigint as return_count,
   (
     select count(*)
     from reconciliation.issues
     where organization_id =
-      '00000000-0000-4000-8000-000000000010'::uuid
+      (select organization_id from outbox_038_fixture)
   )::bigint as issue_count,
   (
     select count(*)
     from reconciliation.runs
     where organization_id =
-      '00000000-0000-4000-8000-000000000010'::uuid
+      (select organization_id from outbox_038_fixture)
   )::bigint as reconciliation_run_count,
   (
     select count(*)
     from operations.stocktakes
     where organization_id =
-      '00000000-0000-4000-8000-000000000010'::uuid
+      (select organization_id from outbox_038_fixture)
   )::bigint as stocktake_count;
 
 create temporary table broad_events (
@@ -270,14 +278,14 @@ from (
   (
     'NOTIFICATION_EXPIRY_EVALUATION_REQUESTED',
     notification.enqueue_outbox_event(
-      '00000000-0000-4000-8000-000000000010'::uuid,
+      (select organization_id from outbox_038_fixture),
       'NOTIFICATION_EXPIRY_EVALUATION_REQUESTED',
-      'dispatch:expiry:2026-07-26',
+      format('dispatch:expiry:%s', (select run_token from outbox_038_fixture)),
       'ORGANIZATION',
-      '00000000-0000-4000-8000-000000000010'::uuid,
+      (select organization_id from outbox_038_fixture),
       '2026-07-26 08:00:00+07'::timestamptz,
       '{"reason":"SCHEDULED"}'::jsonb,
-      'f9700000-0000-4000-8000-000000000001'::uuid,
+      md5((select run_token from outbox_038_fixture) || ':correlation:expiry')::uuid,
       null,
       'pgtap.outbox_dispatch_producer'
     )
@@ -285,14 +293,14 @@ from (
   (
     'NOTIFICATION_RETURN_INSPECTION_EVALUATION_REQUESTED',
     notification.enqueue_outbox_event(
-      '00000000-0000-4000-8000-000000000010'::uuid,
+      (select organization_id from outbox_038_fixture),
       'NOTIFICATION_RETURN_INSPECTION_EVALUATION_REQUESTED',
-      'dispatch:return:2026-07-26',
+      format('dispatch:return:%s', (select run_token from outbox_038_fixture)),
       'ORGANIZATION',
-      '00000000-0000-4000-8000-000000000010'::uuid,
+      (select organization_id from outbox_038_fixture),
       '2026-07-26 08:01:00+07'::timestamptz,
       '{"reason":"RETURN_SOURCE_CHANGED"}'::jsonb,
-      'f9700000-0000-4000-8000-000000000002'::uuid,
+      md5((select run_token from outbox_038_fixture) || ':correlation:return')::uuid,
       null,
       'pgtap.outbox_dispatch_producer'
     )
@@ -300,14 +308,14 @@ from (
   (
     'NOTIFICATION_RECONCILIATION_EVALUATION_REQUESTED',
     notification.enqueue_outbox_event(
-      '00000000-0000-4000-8000-000000000010'::uuid,
+      (select organization_id from outbox_038_fixture),
       'NOTIFICATION_RECONCILIATION_EVALUATION_REQUESTED',
-      'dispatch:reconciliation:2026-07-26',
+      format('dispatch:reconciliation:%s', (select run_token from outbox_038_fixture)),
       'ORGANIZATION',
-      '00000000-0000-4000-8000-000000000010'::uuid,
+      (select organization_id from outbox_038_fixture),
       '2026-07-26 08:02:00+07'::timestamptz,
       '{"reason":"RECONCILIATION_COMPLETED"}'::jsonb,
-      'f9700000-0000-4000-8000-000000000003'::uuid,
+      md5((select run_token from outbox_038_fixture) || ':correlation:reconciliation')::uuid,
       null,
       'pgtap.outbox_dispatch_producer'
     )
@@ -315,14 +323,14 @@ from (
   (
     'NOTIFICATION_STOCKTAKE_EVALUATION_REQUESTED',
     notification.enqueue_outbox_event(
-      '00000000-0000-4000-8000-000000000010'::uuid,
+      (select organization_id from outbox_038_fixture),
       'NOTIFICATION_STOCKTAKE_EVALUATION_REQUESTED',
-      'dispatch:stocktake:2026-07-26',
+      format('dispatch:stocktake:%s', (select run_token from outbox_038_fixture)),
       'ORGANIZATION',
-      '00000000-0000-4000-8000-000000000010'::uuid,
+      (select organization_id from outbox_038_fixture),
       '2026-07-26 08:03:00+07'::timestamptz,
       '{"reason":"STOCKTAKE_SOURCE_CHANGED"}'::jsonb,
-      'f9700000-0000-4000-8000-000000000004'::uuid,
+      md5((select run_token from outbox_038_fixture) || ':correlation:stocktake')::uuid,
       null,
       'pgtap.outbox_dispatch_producer'
     )
@@ -332,7 +340,7 @@ from (
 create temporary table broad_process as
 select notification.process_outbox(
   'worker-dispatch-broad',
-  10,
+  100,
   '2026-07-26 09:00:00+07'::timestamptz,
   interval '5 minutes',
   3,
@@ -343,33 +351,46 @@ select notification.process_outbox(
 
 -- Broad family dispatch and multi-evaluator linkage.
 select is(
-  (select (result ->> 'claimedCount')::integer from broad_process),
+  (
+    select count(*)
+    from notification.outbox_events event_row
+    join broad_events broad on broad.outbox_event_id = event_row.id
+  )::integer,
   4,
-  'processor claims four broad family events'
+  'four fixture broad family events are dispatched'
 );
 
 select is(
-  (select (result ->> 'completedCount')::integer from broad_process),
+  (
+    select count(*)
+    from notification.outbox_events event_row
+    join broad_events broad on broad.outbox_event_id = event_row.id
+    where event_row.status_code = 'COMPLETED'
+  )::integer,
   4,
   'all broad family events complete'
 );
 
 select is(
   (
-    select (result ->> 'retryableFailureCount')::integer
-    from broad_process
-  ),
+    select count(*)
+    from notification.outbox_events event_row
+    join broad_events broad on broad.outbox_event_id = event_row.id
+    where event_row.status_code = 'FAILED_RETRYABLE'
+  )::integer,
   0,
   'broad dispatch has no retryable failures'
 );
 
 select is(
   (
-    select (result ->> 'finalFailureCount')::integer
-    from broad_process
-  ),
+    select count(*)
+    from notification.outbox_events event_row
+    join broad_events broad on broad.outbox_event_id = event_row.id
+    where event_row.status_code = 'FAILED'
+  )::integer,
   0,
-  'broad dispatch has no final failures'
+  'fixture broad dispatch has no final failures'
 );
 
 select is(
@@ -565,7 +586,7 @@ select is(
     select count(*)
     from notification.notifications
     where organization_id =
-      '00000000-0000-4000-8000-000000000010'::uuid
+      (select organization_id from outbox_038_fixture)
   ),
   0::bigint,
   'empty organization creates no fabricated notifications'
@@ -576,7 +597,7 @@ select is(
     select count(*)
     from inventory.stock_transactions
     where organization_id =
-      '00000000-0000-4000-8000-000000000010'::uuid
+      (select organization_id from outbox_038_fixture)
   ),
   (
     select transaction_count
@@ -590,7 +611,7 @@ select is(
     select count(*)
     from inventory.stock_ledger_entries
     where organization_id =
-      '00000000-0000-4000-8000-000000000010'::uuid
+      (select organization_id from outbox_038_fixture)
   ),
   (
     select ledger_count
@@ -650,14 +671,14 @@ from (
     'NOTIFICATION_RECONCILIATION_ISSUE_EVALUATION_REQUESTED',
     'RECONCILIATION_ISSUE_HIGH_CRITICAL',
     notification.enqueue_outbox_event(
-      '00000000-0000-4000-8000-000000000010'::uuid,
+      (select organization_id from outbox_038_fixture),
       'NOTIFICATION_RECONCILIATION_ISSUE_EVALUATION_REQUESTED',
-      'dispatch:reconciliation-issue:2026-07-27',
+      format('dispatch:reconciliation-issue:%s', (select run_token from outbox_038_fixture)),
       'ORGANIZATION',
-      '00000000-0000-4000-8000-000000000010'::uuid,
+      (select organization_id from outbox_038_fixture),
       '2026-07-27 08:00:00+07'::timestamptz,
       '{}'::jsonb,
-      'f9700000-0000-4000-8000-000000000005'::uuid,
+      md5((select run_token from outbox_038_fixture) || ':correlation:reconciliation-issue')::uuid,
       null,
       'pgtap.outbox_dispatch_producer'
     )
@@ -666,14 +687,14 @@ from (
     'NOTIFICATION_RECONCILIATION_FAILURE_EVALUATION_REQUESTED',
     'RECONCILIATION_RUN_FAILED',
     notification.enqueue_outbox_event(
-      '00000000-0000-4000-8000-000000000010'::uuid,
+      (select organization_id from outbox_038_fixture),
       'NOTIFICATION_RECONCILIATION_FAILURE_EVALUATION_REQUESTED',
-      'dispatch:reconciliation-failure:2026-07-27',
+      format('dispatch:reconciliation-failure:%s', (select run_token from outbox_038_fixture)),
       'ORGANIZATION',
-      '00000000-0000-4000-8000-000000000010'::uuid,
+      (select organization_id from outbox_038_fixture),
       '2026-07-27 08:01:00+07'::timestamptz,
       '{}'::jsonb,
-      'f9700000-0000-4000-8000-000000000006'::uuid,
+      md5((select run_token from outbox_038_fixture) || ':correlation:reconciliation-failure')::uuid,
       null,
       'pgtap.outbox_dispatch_producer'
     )
@@ -682,14 +703,14 @@ from (
     'NOTIFICATION_STOCKTAKE_RECOUNT_EVALUATION_REQUESTED',
     'STOCKTAKE_RECOUNT_REQUIRED',
     notification.enqueue_outbox_event(
-      '00000000-0000-4000-8000-000000000010'::uuid,
+      (select organization_id from outbox_038_fixture),
       'NOTIFICATION_STOCKTAKE_RECOUNT_EVALUATION_REQUESTED',
-      'dispatch:stocktake-recount:2026-07-27',
+      format('dispatch:stocktake-recount:%s', (select run_token from outbox_038_fixture)),
       'ORGANIZATION',
-      '00000000-0000-4000-8000-000000000010'::uuid,
+      (select organization_id from outbox_038_fixture),
       '2026-07-27 08:02:00+07'::timestamptz,
       '{}'::jsonb,
-      'f9700000-0000-4000-8000-000000000007'::uuid,
+      md5((select run_token from outbox_038_fixture) || ':correlation:stocktake-recount')::uuid,
       null,
       'pgtap.outbox_dispatch_producer'
     )
@@ -698,14 +719,14 @@ from (
     'NOTIFICATION_STOCKTAKE_POST_FAILURE_EVALUATION_REQUESTED',
     'STOCKTAKE_POST_FAILED',
     notification.enqueue_outbox_event(
-      '00000000-0000-4000-8000-000000000010'::uuid,
+      (select organization_id from outbox_038_fixture),
       'NOTIFICATION_STOCKTAKE_POST_FAILURE_EVALUATION_REQUESTED',
-      'dispatch:stocktake-post-failure:2026-07-27',
+      format('dispatch:stocktake-post-failure:%s', (select run_token from outbox_038_fixture)),
       'ORGANIZATION',
-      '00000000-0000-4000-8000-000000000010'::uuid,
+      (select organization_id from outbox_038_fixture),
       '2026-07-27 08:03:00+07'::timestamptz,
       '{}'::jsonb,
-      'f9700000-0000-4000-8000-000000000008'::uuid,
+      md5((select run_token from outbox_038_fixture) || ':correlation:stocktake-post-failure')::uuid,
       null,
       'pgtap.outbox_dispatch_producer'
     )
@@ -715,7 +736,7 @@ from (
 create temporary table granular_process as
 select notification.process_outbox(
   'worker-dispatch-granular',
-  10,
+  100,
   '2026-07-27 09:00:00+07'::timestamptz,
   interval '5 minutes',
   3,
@@ -725,13 +746,25 @@ select notification.process_outbox(
 ) as result;
 
 select is(
-  (select (result ->> 'claimedCount')::integer from granular_process),
+  (
+    select count(*)
+    from notification.outbox_events event_row
+    join granular_events event_fixture
+      on event_fixture.outbox_event_id = event_row.id
+    where event_row.attempt_count = 1
+  )::integer,
   4,
   'processor claims four granular events'
 );
 
 select is(
-  (select (result ->> 'completedCount')::integer from granular_process),
+  (
+    select count(*)
+    from notification.outbox_events event_row
+    join granular_events event_fixture
+      on event_fixture.outbox_event_id = event_row.id
+    where event_row.status_code = 'COMPLETED'
+  )::integer,
   4,
   'all granular events complete'
 );
@@ -798,6 +831,10 @@ select is(
     cross join lateral jsonb_array_elements(
       process_row.result -> 'items'
     ) item(value)
+    where item.value ->> 'eventTypeCode' in (
+      select event_type_code
+      from granular_events
+    )
   ),
   4::bigint,
   'granular dispatch results report four total evaluators'
@@ -806,14 +843,14 @@ select is(
 -- Direct dispatch requires an event already claimed by a worker.
 create temporary table pending_direct_dispatch as
 select notification.enqueue_outbox_event(
-  '00000000-0000-4000-8000-000000000010'::uuid,
+    (select organization_id from outbox_038_fixture),
   'NOTIFICATION_EXPIRY_EVALUATION_REQUESTED',
-  'dispatch:pending-direct',
+    format('dispatch:pending-direct:%s', (select run_token from outbox_038_fixture)),
   'ORGANIZATION',
-  '00000000-0000-4000-8000-000000000010'::uuid,
+    (select organization_id from outbox_038_fixture),
   '2026-08-20 08:00:00+07'::timestamptz,
   '{}'::jsonb,
-  'f9700000-0000-4000-8000-000000000009'::uuid,
+    md5((select run_token from outbox_038_fixture) || ':correlation:pending-direct')::uuid,
   null,
   'pgtap.outbox_dispatch_producer'
 ) as result;
@@ -841,19 +878,19 @@ set config = jsonb_set(
   false
 )
 where organization_id =
-  '00000000-0000-4000-8000-000000000010'::uuid
+  (select organization_id from outbox_038_fixture)
   and code = 'STOCKTAKE_POST_FAILED';
 
 create temporary table retry_event as
 select notification.enqueue_outbox_event(
-  '00000000-0000-4000-8000-000000000010'::uuid,
+    (select organization_id from outbox_038_fixture),
   'NOTIFICATION_STOCKTAKE_EVALUATION_REQUESTED',
-  'dispatch:stocktake:retry',
+    format('dispatch:stocktake:retry:%s', (select run_token from outbox_038_fixture)),
   'ORGANIZATION',
-  '00000000-0000-4000-8000-000000000010'::uuid,
+    (select organization_id from outbox_038_fixture),
   '2026-07-28 08:00:00+07'::timestamptz,
   '{"reason":"CONFIG_FAILURE_TEST"}'::jsonb,
-  'f9700000-0000-4000-8000-000000000010'::uuid,
+    md5((select run_token from outbox_038_fixture) || ':correlation:retry')::uuid,
   null,
   'pgtap.outbox_dispatch_producer'
 ) as result;
@@ -975,7 +1012,7 @@ set config = jsonb_set(
   false
 )
 where organization_id =
-  '00000000-0000-4000-8000-000000000010'::uuid
+  (select organization_id from outbox_038_fixture)
   and code = 'STOCKTAKE_POST_FAILED';
 
 create temporary table successful_retry_process as
@@ -1098,14 +1135,14 @@ select is(
 -- Unsupported event remains a visible poison event.
 create temporary table unsupported_event as
 select notification.enqueue_outbox_event(
-  '00000000-0000-4000-8000-000000000010'::uuid,
+    (select organization_id from outbox_038_fixture),
   'NOTIFICATION_UNKNOWN_EVALUATION_REQUESTED',
-  'dispatch:unsupported',
+    format('dispatch:unsupported:%s', (select run_token from outbox_038_fixture)),
   'ORGANIZATION',
-  '00000000-0000-4000-8000-000000000010'::uuid,
+    (select organization_id from outbox_038_fixture),
   '2026-07-29 08:00:00+07'::timestamptz,
   '{}'::jsonb,
-  'f9700000-0000-4000-8000-000000000011'::uuid,
+    md5((select run_token from outbox_038_fixture) || ':correlation:unsupported')::uuid,
   null,
   'pgtap.outbox_dispatch_producer'
 ) as result;
@@ -1176,7 +1213,7 @@ select is(
     select count(*)
     from operations.returns
     where organization_id =
-      '00000000-0000-4000-8000-000000000010'::uuid
+      (select organization_id from outbox_038_fixture)
   ),
   (
     select return_count
@@ -1190,7 +1227,7 @@ select is(
     select count(*)
     from reconciliation.issues
     where organization_id =
-      '00000000-0000-4000-8000-000000000010'::uuid
+      (select organization_id from outbox_038_fixture)
   ),
   (
     select issue_count
@@ -1204,7 +1241,7 @@ select is(
     select count(*)
     from reconciliation.runs
     where organization_id =
-      '00000000-0000-4000-8000-000000000010'::uuid
+      (select organization_id from outbox_038_fixture)
   ),
   (
     select reconciliation_run_count
@@ -1218,7 +1255,7 @@ select is(
     select count(*)
     from operations.stocktakes
     where organization_id =
-      '00000000-0000-4000-8000-000000000010'::uuid
+      (select organization_id from outbox_038_fixture)
   ),
   (
     select stocktake_count
@@ -1232,7 +1269,7 @@ select is(
     select count(*)
     from inventory.stock_transactions
     where organization_id =
-      '00000000-0000-4000-8000-000000000010'::uuid
+      (select organization_id from outbox_038_fixture)
   ),
   (
     select transaction_count
@@ -1246,7 +1283,7 @@ select is(
     select count(*)
     from inventory.stock_ledger_entries
     where organization_id =
-      '00000000-0000-4000-8000-000000000010'::uuid
+      (select organization_id from outbox_038_fixture)
   ),
   (
     select ledger_count

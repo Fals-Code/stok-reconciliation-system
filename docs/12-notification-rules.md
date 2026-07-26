@@ -2,8 +2,8 @@
 File: 12-notification-rules.md
 Project: Sistem Rekonsiliasi Stok
 Status: Approved design baseline for Phase 1
-Version: 1.0.0
-Last updated: 2026-07-12
+Version: 1.1.0
+Last updated: 2026-07-26
 Language: id-ID
 Timezone: Asia/Jakarta
 Role model: ADMIN only
@@ -3962,3 +3962,15 @@ Keduanya tidak boleh dicampur.
 Satu Admin membaca notifikasi tidak memengaruhi Admin lain. Mark as read tidak menyelesaikan claim, retur, issue, stocktake, import, atau batch expiry. Escalation memperbarui satu episode aktif dan membuatnya unread kembali. Scheduled evaluation dan outbox processing harus idempoten.
 
 Realtime hanya memberi sinyal untuk refresh. Database tetap source of truth. Browser push tetap di luar fase 1. Notifikasi yang baik membantu manusia bertindak; notifikasi yang buruk hanya mengubah layar menjadi pohon Natal administratif. Proyek ini memilih yang pertama, sebuah standar yang rupanya perlu ditulis sepanjang dokumen.
+
+## Runtime amendment — TikTok claim deadline
+
+Evaluator `notification.evaluate_tiktok_claim_deadlines` memakai `deadline_at`
+yang tersimpan pada claim, bukan menghitung ulang basis dari timestamp baru.
+Stage runtime adalah `D14`, `D7`, `D3`, `D1`, `DUE_TODAY`, dan `OVERDUE`.
+Satu claim memiliki satu active episode per rule family; threshold crossing
+menambah history dan mereset read state sesuai kontrak Notification Center.
+Status `SUBMITTED`, `RESOLVED`, dan `CANCELLED` menyelesaikan reminder
+pengajuan; `EXPIRED` tetap diperlakukan sebagai overdue sampai policy
+menyelesaikannya. Deep link notification menuju claim exact dan tetap tunduk
+pada organization-scoped authorization.

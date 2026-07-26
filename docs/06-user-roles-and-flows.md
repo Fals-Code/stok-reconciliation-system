@@ -1088,17 +1088,17 @@ Mencegah klaim TikTok terlewat sebelum 40 hari kalender sejak `operations.return
 
 ### 25.2 Flow
 
-1. Sistem membuat claim candidate dari retur/hilang yang eligible.
-2. Sistem menghitung tanggal batas.
-3. Dashboard menampilkan countdown.
-4. Admin membuka detail bukti.
-5. Admin memperbarui status klaim:
-   - `TO_PREPARE`;
-   - `SUBMITTED`;
-   - `ACCEPTED`;
-   - `REJECTED`;
-   - `EXPIRED`.
-6. Perubahan status dicatat di audit.
+1. Sistem membuat claim dari quantity lost/exception yang eligible per item.
+2. Sistem menyimpan snapshot basis `RETURN_CREATED_AT`, window 40 hari,
+   timezone, policy version, dan `deadline_at`.
+3. Worklist `/returns` menampilkan stage deadline, countdown, stock effect
+   `NONE`, dan deep link ke claim exact.
+4. Admin membuka detail bukti dan timeline immutable.
+5. Admin dapat melakukan `SUBMIT`, `RESOLVE`, atau `CANCEL` dengan
+   confirmation dan feedback persisten.
+6. Late arrival dapat dicatat dari return/claim detail tanpa menghapus LOST
+   atau claim history; konflik claim resolved ditampilkan sebagai warning.
+7. Setiap perubahan status dicatat di audit dan tidak mengubah stok.
 
 ### 25.3 Acceptance Criteria
 
@@ -1106,6 +1106,10 @@ Mencegah klaim TikTok terlewat sebelum 40 hari kalender sejak `operations.return
 - `FLOW-CLM-002`: Reminder tidak mengubah stok.
 - `FLOW-CLM-003`: Klaim terkait dengan retur/order.
 - `FLOW-CLM-004`: Status klaim tidak menghapus bukti lama.
+- `FLOW-CLM-005`: ClaimId invalid tidak fallback ke claim lain dan cross-org
+  detail/mutation ditolak.
+- `FLOW-CLM-006`: Replay identik mengembalikan effect yang sama; payload
+  berbeda dengan key sama ditolak.
 
 ---
 

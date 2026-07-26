@@ -459,6 +459,7 @@ Marketplace hanya memberi informasi bahwa retur terjadi. Kondisi fisik ditentuka
 | BR-RET-009 | Hasil `LOST` hanya boleh untuk barang yang tidak pernah diterima dan MUST NOT membuat inbound. | `LOST_RETURN_CREATED_STOCK` |
 | BR-RET-010 | Batch outbound asal MUST disimpan sebagai provenance bila tersedia dan MUST NOT dipakai sebagai batch tujuan inbound retur. | `RETURN_PROVENANCE_MISSING` |
 | BR-RET-011 | Jika batch asal tidak dapat diverifikasi, status provenance MUST dicatat sebagai unknown, MUST NOT direkayasa menjadi identitas batch produksi, dan hasil `SELLABLE` MUST ditolak sampai provenance terverifikasi; hasil `DAMAGED` tetap boleh dicatat tanpa movement stok. | `RETURN_PROVENANCE_FABRICATED` |
+| BR-RET-011A | Late arrival dengan lebih dari satu allocation shipment MUST membawa ID allocation exact per line; sistem MUST NOT memilih kandidat pertama secara implisit. Allocation berbeda adalah bagian dari payload idempoten. | `RETURN_LATE_ARRIVAL_ALLOCATION_INVALID` |
 | BR-RET-012 | Total `received + lost + pending` MUST konsisten dengan kuantitas retur expected. | `RETURN_QUANTITY_RECONCILIATION_FAILED` |
 | BR-RET-013 | Retur parsial MUST mempertahankan status progres, bukan langsung closed. | `PARTIAL_RETURN_CLOSED` |
 | BR-RET-014 | Bukti inspeksi MAY opsional, tetapi actor, waktu, hasil, dan catatan MUST disimpan. | `RETURN_INSPECTION_AUDIT_MISSING` |

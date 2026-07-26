@@ -397,6 +397,23 @@ supabase db reset
 supabase test db
 ```
 
+Focused Phase 2 return/claim gate:
+
+```bash
+npm run test:tiktok-return-claim-ui
+npx supabase test db supabase/tests/055_tiktok_return_claim_lifecycle.test.sql
+npx supabase test db supabase/tests/056_tiktok_claim_notification_evaluator.test.sql
+npx supabase test db supabase/tests/057_return_late_arrival_workflow.test.sql
+npx supabase test db supabase/tests/058_tiktok_claim_postgrest_wrapper_contract.test.sql
+npm run test:notification-write-actions
+npm run test:notification-admin-operations
+```
+
+Smoke memakai organization, Admin, product, batch, shipment allocation, dan
+receipt fixture unik per run. Assertion receipt/inspection menggunakan
+provenance exact atau baseline-delta; test tidak boleh bergantung pada database
+kosong, UUID Auth hasil bootstrap, urutan file, atau `LIMIT/OFFSET` nondeterministik.
+
 ### 9.4 Playwright
 
 Digunakan untuk:
@@ -1686,7 +1703,7 @@ security log where appropriate
 | TST-REC-006 | P0 | DB | Internal transfer tidak net zero. | Critical issue. |
 | TST-REC-007 | P0 | DB | Allocation berbeda dari ledger. | Critical issue. |
 | TST-REC-008 | P0 | DB | Duplicate source effect. | Issue high/critical. |
-| TST-REC-009 | P0 | DB | Return receipt berbeda dari quarantine inbound. | Issue high. |
+| TST-REC-009 | P0 | DB | Return receipt memiliki transaction, ledger, atau projection delta. | Issue high. |
 | TST-REC-010 | P0 | DB | Reversal melebihi original. | Ditolak/critical issue. |
 | TST-REC-011 | P0 | DB | Issue yang sama muncul pada run berikutnya. | Fingerprint update, bukan duplicate open issue. |
 | TST-REC-012 | P0 | DB | Issue resolved gagal lagi. | Episode/recurrence linked. |
@@ -2855,3 +2872,5 @@ Database suite                  54 files, 2933 tests, PASS
 ```
 
 Angka tersebut adalah snapshot baseline, bukan batas permanen. Coverage boleh bertambah; seluruh smoke terkait dan database suite wajib PASS pada state setelah smoke.
+
+Return-claim smoke mencakup claim-only deep link di luar worklist, route notification `returnId + claimId`, allocation shipment exact per receipt/late-arrival line, conflict idempotency saat allocation berubah, serta provenance unknown yang stock-neutral dan tidak sellable.

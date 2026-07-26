@@ -20,6 +20,10 @@ Depends on:
 
 # Reconciliation Logic: Sistem Rekonsiliasi Stok
 
+## Provenance late arrival split-batch
+
+Rekonsiliasi receipt late arrival menyimpan allocation shipment exact per line. Bila provenance belum teridentifikasi, receipt tetap `NONE` terhadap ledger dan projection; sistem tidak menebak batch. `SELLABLE` diblokir sampai identity terverifikasi, sedangkan `DAMAGED` tetap audit-only tanpa movement.
+
 ## 1. Tujuan Dokumen
 
 Dokumen ini mendefinisikan logika rekonsiliasi untuk Sistem Rekonsiliasi Stok.
