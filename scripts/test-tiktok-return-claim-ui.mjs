@@ -131,7 +131,10 @@ async function submitForm({ uri, html, marker, fields, actionId }) {
   const form = actionId ? null : formFor(html, marker);
   const body = new FormData();
   body.append(actionId ?? actionName(form), "");
-  for (const [key, value] of Object.entries(fields)) body.append(key, value == null ? "" : String(value));
+  for (const [key, value] of Object.entries(fields)) {
+    if (Array.isArray(value)) for (const entry of value) body.append(key, entry == null ? "" : String(entry));
+    else body.append(key, value == null ? "" : String(value));
+  }
   const response = await fetch(uri, { method: "POST", headers: { Cookie: cookie(), Origin: baseUrl, Referer: uri }, body, redirect: "manual" });
   const responseBody = await response.text();
   check(`Server Action redirect: ${marker}`, [302, 303, 307, 308].includes(response.status), responseBody.slice(0, 500));
@@ -214,6 +217,42 @@ commit;
     and r.external_return_ref=${sqlLiteral(returnRef)};
   `);
   check(`Shipment allocation ${suffix} tepat untuk return fixture`, Boolean(fixture.marketplaceShipAllocationId) && fixture.sourceBatchId === runFixture.sourceBatchId && Number(fixture.shippedQuantity) === quantity, JSON.stringify(fixture));
+  return fixture;
+}
+
+function createSplitBatchReturn(suffix) {
+  const code = `SPLIT-${randomUUID()}`;
+  const catalog = runSqlJson(`
+begin;
+select set_config('request.jwt.claim.sub',${sqlLiteral(smokeUserId)},true);
+select set_config('request.jwt.claim.role','authenticated',true);
+select set_config('request.jwt.claims',jsonb_build_object('sub',${sqlLiteral(smokeUserId)},'role','authenticated')::text,true);
+set local role authenticated;
+with product as (
+  select api.create_product(${sqlLiteral(organizationId)}::uuid,${sqlLiteral(`${prefix}:${suffix}:product`)},${sqlLiteral(code)},${sqlLiteral(`${suffix} split-batch product`)},'UNIT',null,'UI smoke split-batch fixture') result
+), batch_one as (
+  select api.create_product_batch(${sqlLiteral(organizationId)}::uuid,${sqlLiteral(`${prefix}:${suffix}:batch-one`)},(select (result->>'productId')::uuid from product),${sqlLiteral(`${code}-BATCH-A`)},'2027-01-01',current_date,null,'STANDARD','split-batch fixture') result
+), batch_two as (
+  select api.create_product_batch(${sqlLiteral(organizationId)}::uuid,${sqlLiteral(`${prefix}:${suffix}:batch-two`)},(select (result->>'productId')::uuid from product),${sqlLiteral(`${code}-BATCH-B`)},'2027-06-30',current_date,null,'STANDARD','split-batch fixture') result
+), receipt_one as (
+  select api.post_receipt(${sqlLiteral(organizationId)}::uuid,${sqlLiteral(`${prefix}:${suffix}:receipt-one`)},${sqlLiteral(`${prefix}:${suffix}:receipt-one-ref`)},clock_timestamp(),jsonb_build_array(jsonb_build_object('productId',(select result->>'productId' from product),'batchId',(select result->>'batchId' from batch_one),'quantity',2,'sourceLineRef',${sqlLiteral(`${prefix}:${suffix}:inbound-a`)})),'split-batch fixture','{}') result
+), receipt_two as (
+  select api.post_receipt(${sqlLiteral(organizationId)}::uuid,${sqlLiteral(`${prefix}:${suffix}:receipt-two`)},${sqlLiteral(`${prefix}:${suffix}:receipt-two-ref`)},clock_timestamp(),jsonb_build_array(jsonb_build_object('productId',(select result->>'productId' from product),'batchId',(select result->>'batchId' from batch_two),'quantity',2,'sourceLineRef',${sqlLiteral(`${prefix}:${suffix}:inbound-b`)})),'split-batch fixture','{}') result
+)
+select json_build_object('productId',(select result->>'productId' from product),'productSku',${sqlLiteral(code)},'receipts',(select json_agg(result) from (select result from receipt_one union all select result from receipt_two) persisted_receipts));
+reset role;
+commit;`);
+  const reserve = `${prefix}:${suffix}:reserve`;
+  const ship = `${prefix}:${suffix}:ship`;
+  const expected = `${prefix}:${suffix}:expected`;
+  const returnRef = `${prefix}:${suffix}:return`;
+  const order = `${prefix}:${suffix}:order`;
+  const line = `${prefix}:${suffix}:line`;
+  runSql(`begin; select set_config('request.jwt.claim.sub',${sqlLiteral(smokeUserId)},true); select set_config('request.jwt.claim.role','authenticated',true); select set_config('request.jwt.claims',jsonb_build_object('sub',${sqlLiteral(smokeUserId)},'role','authenticated')::text,true); set local role authenticated; select api.apply_marketplace_event(${sqlLiteral(organizationId)}::uuid,${sqlLiteral(reserve)},'TIKTOK_SHOP','RESERVE',${sqlLiteral(`${reserve}:event`)},${sqlLiteral(order)},clock_timestamp(),jsonb_build_array(jsonb_build_object('productId',${sqlLiteral(catalog.productId)},'quantity',4,'sourceLineRef',${sqlLiteral(line)})),'ui smoke',jsonb_build_object('smokePrefix',${sqlLiteral(prefix)})); select api.apply_marketplace_event(${sqlLiteral(organizationId)}::uuid,${sqlLiteral(ship)},'TIKTOK_SHOP','SHIP',${sqlLiteral(`${ship}:event`)},${sqlLiteral(order)},clock_timestamp(),jsonb_build_array(jsonb_build_object('productId',${sqlLiteral(catalog.productId)},'quantity',4,'sourceLineRef',${sqlLiteral(line)})),'ui smoke',jsonb_build_object('smokePrefix',${sqlLiteral(prefix)})); select api.create_expected_return(${sqlLiteral(organizationId)}::uuid,${sqlLiteral(expected)},'TIKTOK_SHOP',${sqlLiteral(returnRef)},${sqlLiteral(order)},clock_timestamp(),jsonb_build_array(jsonb_build_object('productId',${sqlLiteral(catalog.productId)},'quantity',4,'sourceLineRef',${sqlLiteral(line)})),'RETURN_REQUESTED','ui smoke',jsonb_build_object('smokePrefix',${sqlLiteral(prefix)})); select api.mark_return_lost(${sqlLiteral(organizationId)}::uuid,${sqlLiteral(`${prefix}:${suffix}:lost`)},${sqlLiteral(returnRef)},${sqlLiteral(`${prefix}:${suffix}:lost:event`)},clock_timestamp(),jsonb_build_array(jsonb_build_object('returnItemId',(select item.return_item_id::text from api.return_items item join api.returns header on header.return_id=item.return_id where header.external_return_ref=${sqlLiteral(returnRef)}),'quantity',2,'sourceLineRef',${sqlLiteral(`${prefix}:${suffix}:lost:line`)})),'ui smoke',jsonb_build_object('smokePrefix',${sqlLiteral(prefix)})); select api.create_tiktok_return_claim(${sqlLiteral(organizationId)}::uuid,${sqlLiteral(`${prefix}:${suffix}:claim`)},(select id from operations.returns where organization_id=${sqlLiteral(organizationId)}::uuid and external_return_ref=${sqlLiteral(returnRef)}),'LOST_RETURN',jsonb_build_array(jsonb_build_object('returnItemId',(select item.return_item_id::text from api.return_items item join api.returns header on header.return_id=item.return_id where header.external_return_ref=${sqlLiteral(returnRef)}),'quantity',2)),clock_timestamp()); commit;`);
+  const splitClaim = runSqlJson(`select json_build_object('id',id) from operations.return_claims where organization_id=${sqlLiteral(organizationId)}::uuid and return_id=(select id from operations.returns where organization_id=${sqlLiteral(organizationId)}::uuid and external_return_ref=${sqlLiteral(returnRef)}) order by created_at desc limit 1;`);
+  runSql(`begin; select set_config('request.jwt.claim.sub',${sqlLiteral(smokeUserId)},true); select set_config('request.jwt.claim.role','authenticated',true); select set_config('request.jwt.claims',jsonb_build_object('sub',${sqlLiteral(smokeUserId)},'role','authenticated')::text,true); set local role authenticated; select api.submit_tiktok_return_claim(${sqlLiteral(organizationId)}::uuid,${sqlLiteral(`${prefix}:${suffix}:claim-submit`)},${sqlLiteral(splitClaim.id)}::uuid,${sqlLiteral(`${prefix}:${suffix}:external-claim`)},clock_timestamp()); select api.resolve_tiktok_return_claim(${sqlLiteral(organizationId)}::uuid,${sqlLiteral(`${prefix}:${suffix}:claim-resolve`)},${sqlLiteral(splitClaim.id)}::uuid,'APPROVED',clock_timestamp()); commit;`);
+  const fixture = runSqlJson(`select json_build_object('returnId',r.id,'returnRef',r.external_return_ref,'claimId',(select claim.id from operations.return_claims claim where claim.organization_id=r.organization_id and claim.return_id=r.id order by claim.created_at desc limit 1),'itemId',i.id,'allocations',coalesce(json_agg(json_build_object('marketplaceShipAllocationId',allocation.id,'sourceBatchId',allocation.batch_id,'sourceBatchCode',allocation.batch_code_snapshot,'sourceExpiryDate',allocation.expiry_date_snapshot,'quantity',allocation.quantity_allocated) order by allocation.allocation_no,allocation.id),'[]'::json),'productId',i.product_id) from operations.returns r join operations.return_items i on i.organization_id=r.organization_id and i.return_id=r.id join operations.marketplace_order_items order_item on order_item.organization_id=i.organization_id and order_item.id=i.marketplace_order_item_id join operations.marketplace_events shipment on shipment.organization_id=order_item.organization_id and shipment.order_id=order_item.order_id and shipment.external_event_ref=${sqlLiteral(`${ship}:event`)} left join operations.marketplace_ship_allocations allocation on allocation.organization_id=shipment.organization_id and allocation.event_id=shipment.id and allocation.product_id=i.product_id and allocation.source_line_ref=i.source_line_ref where r.organization_id=${sqlLiteral(organizationId)}::uuid and r.external_return_ref=${sqlLiteral(returnRef)} group by r.id,r.external_return_ref,i.id,i.product_id;`);
+  check(`Split fixture ${suffix} memakai dua allocation`, fixture.allocations.length === 2 && fixture.allocations.every((allocation) => Number(allocation.quantity) === 2), JSON.stringify(fixture));
   return fixture;
 }
 
@@ -302,7 +341,9 @@ async function main() {
   const scenarioB = createReturn("B-CANCEL", 1);
   const scenarioSellable = createReturn("C-SELLABLE", 1, false);
   const scenarioDamaged = createReturn("D-DAMAGED", 1, false);
+  const scenarioSplit = createSplitBatchReturn("E-SPLIT-BATCH");
   for (const fixture of [scenarioA, scenarioB, scenarioSellable, scenarioDamaged]) check("Fixture return memiliki UUID", UUID.test(fixture.returnId) && UUID.test(fixture.itemId));
+  check("Split fixture return memiliki UUID", UUID.test(scenarioSplit.returnId) && UUID.test(scenarioSplit.itemId));
 
   const beforeCreate = stockSnapshot();
   let current = await page(`/returns?returnId=${scenarioA.returnId}#claims`);
@@ -334,9 +375,10 @@ async function main() {
   check("Evaluator notification membuat hasil", evalResult && ["COMPLETED", "REPLAYED"].includes(evalResult.action));
   current = await page(`/returns?claimId=${claimA.id}#claim-detail`);
   check("Notification deep link memilih claim exact", current.html.includes(claimA.id) && htmlContains(current.html, "Detail klaim"));
+  check("Claim-only deep link memakai return claim exact", current.html.includes(scenarioA.returnRef) && current.html.includes(claimA.id) && !current.html.includes("Claim tidak ditemukan"));
   const notificationRows = await rpc("notification_list", { p_lifecycle_status_code: null, p_severity_code: null, p_category_code: null, p_read_state_code: null, p_include_archived: true, p_limit: 100, p_before_last_seen_at: null, p_before_id: null });
   const notification = (notificationRows ?? []).find((row) => row.entity_id === claimA.id || row.action_route?.includes(claimA.id));
-  check("Notification tertaut ke claim dan route exact", Boolean(notification) && notification.action_route === `/returns?claimId=${claimA.id}`);
+  check("Notification tertaut ke claim dan route exact", Boolean(notification) && notification.action_route === `/returns?returnId=${scenarioA.returnId}&claimId=${claimA.id}#claim-detail`);
   check("Link kembali ke Notification Center tersedia", current.html.includes(`/notifications?notificationId=${notification?.notification_id}#detail`));
 
   const submitRejected = await submitForm({ uri: current.uri, html: current.html, marker: "External claim reference", fields: { claimId: claimA.id, returnId: scenarioA.returnId, externalClaimRef: `${prefix}:CLAIM-A`, occurredAt: localDateTime() } });
@@ -354,11 +396,12 @@ async function main() {
 
   const lateBefore = stockSnapshot();
   current = await page(`/returns?returnId=${scenarioA.returnId}&claimId=${claimA.id}#claims`);
-  const lateRejected = await submitForm({ uri: current.uri, html: current.html, marker: "Konfirmasi kedatangan terlambat", fields: { returnId: scenarioA.returnId, returnRef: scenarioA.returnRef, lateArrivalReference: `${prefix}:A:LATE`, receiptRef: `${prefix}:A:RECEIPT`, lateReturnItemId: scenarioA.itemId, [`lateQuantity_${scenarioA.itemId}`]: "2", sourceLineRef: `${prefix}:A:LATE:LINE`, occurredAt: localDateTime(), confirmation: "on" } });
+  const lateLineKey = `${scenarioA.itemId}:${scenarioA.marketplaceShipAllocationId}`;
+  const lateRejected = await submitForm({ uri: current.uri, html: current.html, marker: "Konfirmasi kedatangan terlambat", fields: { returnId: scenarioA.returnId, returnRef: scenarioA.returnRef, lateArrivalReference: `${prefix}:A:LATE`, receiptRef: `${prefix}:A:RECEIPT`, lateReturnLineKey: lateLineKey, [`lateQuantity_${lateLineKey}`]: "2", sourceLineRef: `${prefix}:A:LATE:LINE`, occurredAt: localDateTime(), confirmation: "on" } });
   check("Late arrival over-quantity memberi feedback", htmlContains(lateRejected.html, "melebihi quantity lost") || htmlContains(lateRejected.html, "belum dikoreksi"));
   current = await page(`/returns?returnId=${scenarioA.returnId}&claimId=${claimA.id}#claims`);
   const lateActionId = actionName(formFor(current.html, "Konfirmasi kedatangan terlambat"));
-  const initialLateArrivalFields = { returnId: scenarioA.returnId, returnRef: scenarioA.returnRef, lateArrivalReference: `${prefix}:A:LATE`, receiptRef: `${prefix}:A:RECEIPT`, lateReturnItemId: scenarioA.itemId, [`lateQuantity_${scenarioA.itemId}`]: "1", sourceLineRef: `${prefix}:A:LATE:LINE`, occurredAt: localDateTime(), note: "UI smoke late arrival", confirmation: "on" };
+  const initialLateArrivalFields = { returnId: scenarioA.returnId, returnRef: scenarioA.returnRef, lateArrivalReference: `${prefix}:A:LATE`, receiptRef: `${prefix}:A:RECEIPT`, lateReturnLineKey: lateLineKey, [`lateQuantity_${lateLineKey}`]: "1", sourceLineRef: `${prefix}:A:LATE:LINE`, occurredAt: localDateTime(), note: "UI smoke late arrival", confirmation: "on" };
   const lateDone = await submitForm({ uri: current.uri, html: current.html, marker: "Konfirmasi kedatangan terlambat", fields: initialLateArrivalFields, actionId: lateActionId });
   check("Late arrival valid berhasil", htmlContains(lateDone.html, "stock-neutral") || htmlContains(lateDone.html, "berhasil"));
   const lateRows = await restRows(`return_late_arrivals?organization_id=eq.${organizationId}&return_id=eq.${scenarioA.returnId}&select=*&limit=10`);
@@ -375,6 +418,23 @@ async function main() {
   const changedLate = await submitForm({ uri: current.uri, html: current.html, marker: "Konfirmasi kedatangan terlambat", fields: changedLateArrivalFields, actionId: lateActionId });
   const lateAfterConflict = await restRows(`return_late_arrivals?organization_id=eq.${organizationId}&return_id=eq.${scenarioA.returnId}&select=late_arrival_id`);
   check("Late arrival payload berubah ditolak tanpa effect baru", lateAfterConflict.length === 1 && htmlContains(changedLate.html, "payload berbeda"));
+  const changedAllocationFields = structuredClone(initialLateArrivalFields);
+  changedAllocationFields.lateReturnLineKey = `${scenarioA.itemId}:UNVERIFIED`;
+  changedAllocationFields[`lateQuantity_${scenarioA.itemId}:UNVERIFIED`] = "1";
+  const changedAllocation = await submitForm({ uri: current.uri, html: current.html, marker: "Konfirmasi kedatangan terlambat", fields: changedAllocationFields, actionId: lateActionId });
+  check("Late arrival allocation berubah dengan key sama ditolak", htmlContains(changedAllocation.html, "payload berbeda"));
+
+  current = await page(`/returns?returnId=${scenarioSplit.returnId}&claimId=${scenarioSplit.claimId}#actions`);
+  const splitForm = formFor(current.html, "Konfirmasi kedatangan terlambat");
+  check("Split-batch form menampilkan dua provenance allocation", scenarioSplit.allocations.every((allocation) => splitForm.includes(`value=\"${scenarioSplit.itemId}:${allocation.marketplaceShipAllocationId}\"`)), `allocationIds=${scenarioSplit.allocations.map((allocation) => allocation.marketplaceShipAllocationId).join(",")} rendered=${(splitForm.match(/lateReturnLineKey[^>]+/g) ?? []).join(" | ")}`);
+  const splitActionId = actionName(splitForm);
+  const splitFields = { returnId: scenarioSplit.returnId, returnRef: scenarioSplit.returnRef, lateArrivalReference: `${prefix}:E:LATE`, receiptRef: `${prefix}:E:RECEIPT`, lateReturnLineKey: scenarioSplit.allocations.map((allocation) => `${scenarioSplit.itemId}:${allocation.marketplaceShipAllocationId}`), [`lateQuantity_${scenarioSplit.itemId}:${scenarioSplit.allocations[0].marketplaceShipAllocationId}`]: "1", [`lateQuantity_${scenarioSplit.itemId}:${scenarioSplit.allocations[1].marketplaceShipAllocationId}`]: "1", sourceLineRef: `${prefix}:E:LATE:LINE`, occurredAt: localDateTime(), confirmation: "on" };
+  const splitLate = await submitForm({ uri: current.uri, html: current.html, marker: "Konfirmasi kedatangan terlambat", fields: splitFields, actionId: splitActionId });
+  const splitReceiptLines = await restRows(`return_receipt_lines?organization_id=eq.${organizationId}&receipt_ref=eq.${encodeURIComponent(`${prefix}:E:RECEIPT`)}&select=*&order=marketplace_ship_allocation_id.asc`);
+  check("Split-batch late arrival menyimpan dua receipt line exact", splitReceiptLines.length === 2 && splitReceiptLines.every((line) => scenarioSplit.allocations.some((allocation) => line.marketplace_ship_allocation_id === allocation.marketplaceShipAllocationId && line.source_batch_id === allocation.sourceBatchId && line.batch_identity_verified === true && Number(line.quantity_received) === 1)) && (htmlContains(splitLate.html, "stock-neutral") || htmlContains(splitLate.html, "berhasil")), JSON.stringify(splitReceiptLines));
+  const splitReplay = await submitForm({ uri: current.uri, html: current.html, marker: "Konfirmasi kedatangan terlambat", fields: structuredClone(splitFields), actionId: splitActionId });
+  const splitReplayLines = await restRows(`return_receipt_lines?organization_id=eq.${organizationId}&receipt_ref=eq.${encodeURIComponent(`${prefix}:E:RECEIPT`)}&select=receipt_line_id`);
+  check("Split-batch exact replay tidak menggandakan effect", splitReplayLines.length === 2 && (htmlContains(splitReplay.html, "E:RECEIPT") || htmlContains(splitReplay.html, "stock-neutral")));
 
   current = await page(`/returns?returnId=${scenarioB.returnId}#claims`);
   await submitForm({ uri: current.uri, html: current.html, marker: "Buat klaim TikTok", fields: { returnId: scenarioB.returnId, claimTypeCode: "LOST_RETURN", idempotencyKey: `${prefix}:claim-b`, claimItemId: scenarioB.itemId, [`quantity_${scenarioB.itemId}`]: "1", occurredAt: localDateTime(), confirmation: "on" } });

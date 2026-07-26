@@ -1,6 +1,6 @@
 begin;
 create extension if not exists pgtap;
-select plan(168);
+select plan(169);
 select has_function('notification','ensure_tiktok_claim_rule',array['uuid','text','timestamp with time zone'],'claim rule provisioner exists');
 select has_function('notification','request_tiktok_claim_deadline_evaluation',array['uuid','text','timestamp with time zone','text'],'outbox evaluation request exists');
 select has_function('notification','evaluate_tiktok_claim_deadlines',array['uuid','text','timestamp with time zone','text'],'claim evaluator exists');
@@ -94,6 +94,7 @@ insert into claim_notification_results select 'D14',notification.evaluate_tiktok
 create temp table evaluator_episode as select id from notification.notifications where entity_id=(select (result->>'claimId')::uuid from claim_notification_results where kind='CLAIM') and rule_code_snapshot='CLAIM_DEADLINE';
 insert into claim_notification_results values ('EPISODE',jsonb_build_object('notificationId',(select id from evaluator_episode)));
 select is((select stage_code from notification.notifications where id=(select id from evaluator_episode)),'D14','exact D14 creates D14 stage');
+select is((select action_route from notification.notifications where id=(select id from evaluator_episode)),'/returns?returnId='||(select return_id from operations.return_claims where id=(select (result->>'claimId')::uuid from claim_notification_results where kind='CLAIM'))||'&claimId='||(select (result->>'claimId')::uuid from claim_notification_results where kind='CLAIM')||'#claim-detail','deadline notification route carries exact return and claim context');
 
 -- A second real Admin exercises the public per-user notification API.  This is
 -- fixture identity data only; notification and claim state are still changed
@@ -187,7 +188,7 @@ select is((select severity_code from notification.notifications where id=(select
 select is((select entity_type_code from notification.notifications where id=(select id from basis_missing_episode)),'RETURN_CLAIM','basis-missing episode identifies a return claim');
 select is((select entity_id from notification.notifications where id=(select id from basis_missing_episode)),(select id from basis_missing_fixture),'basis-missing episode identifies the fixture claim');
 select is((select action_code from notification.notifications where id=(select id from basis_missing_episode)),'OPEN_RETURN_CLAIM_DETAIL','basis-missing action code follows the rule contract');
-select is((select action_route from notification.notifications where id=(select id from basis_missing_episode)),'/returns?claimId='||(select id from basis_missing_fixture),'basis-missing deep link follows the claim contract');
+select is((select action_route from notification.notifications where id=(select id from basis_missing_episode)),'/returns?returnId='||(select return_id from operations.return_claims where id=(select id from basis_missing_fixture))||'&claimId='||(select id from basis_missing_fixture)||'#claim-detail','basis-missing deep link follows the exact claim contract');
 select isnt((select deduplication_key from notification.notifications where id=(select id from basis_missing_episode)),(select deduplication_key from notification.notifications where id=(select id from evaluator_episode)),'basis-missing and deadline deduplication keys are separate');
 select is((select count(*) from notification.notifications where entity_id=(select id from basis_missing_fixture) and rule_code_snapshot='CLAIM_DEADLINE' and lifecycle_status_code in ('OPEN','ACKNOWLEDGED')),0::bigint,'deadline rule is inactive for a claim without a basis');
 select is((select jsonb_build_object(
