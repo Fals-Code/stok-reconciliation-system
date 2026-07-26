@@ -1269,30 +1269,32 @@ select is(
   (
     select count(*)
     from inventory.stock_reversal_applications application
-    join inventory.stock_ledger_entries original_entry
+    left join inventory.stock_ledger_entries original_entry
       on original_entry.id = application.original_entry_id
-    join inventory.stock_ledger_entries reversal_entry
+    left join inventory.stock_ledger_entries reversal_entry
       on reversal_entry.id = application.reversal_entry_id
-    join inventory.stock_transactions reversal_transaction
+    left join inventory.stock_transactions reversal_transaction
       on reversal_transaction.id = application.reversal_transaction_id
     where application.organization_id =
           '00000000-0000-4000-8000-000000000001'::uuid
-      and reversal_transaction.reversal_of_transaction_id =
+      and (
+        reversal_transaction.reversal_of_transaction_id is distinct from
           application.original_transaction_id
-      and reversal_entry.transaction_id =
+        or reversal_entry.transaction_id is distinct from
           application.reversal_transaction_id
-      and original_entry.transaction_id =
+        or original_entry.transaction_id is distinct from
           application.original_transaction_id
-      and reversal_entry.quantity_delta =
-          -original_entry.quantity_delta
+        or reversal_entry.organization_id is distinct from
+          application.organization_id
+        or reversal_entry.product_id is distinct from original_entry.product_id
+        or reversal_entry.batch_id is distinct from original_entry.batch_id
+        or reversal_entry.bucket_code is distinct from original_entry.bucket_code
+        or reversal_entry.quantity_delta is distinct from
+          (-sign(original_entry.quantity_delta) * application.quantity_applied)
+      )
   ),
-  (
-    select count(*)
-    from inventory.stock_reversal_applications application
-    where application.organization_id =
-          '00000000-0000-4000-8000-000000000001'::uuid
-  ),
-  'every application has valid original and reversing linkage'
+  0::bigint,
+  'every reversal application has valid original/reversing linkage and partial quantity'
 );
 
 select is(

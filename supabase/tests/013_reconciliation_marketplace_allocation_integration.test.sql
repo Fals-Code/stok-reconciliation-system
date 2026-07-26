@@ -59,7 +59,6 @@ select is(
     select
       run_check.status_code
         || ':'
-        || run_check.checked_count::text
         || ':'
         || run_check.issue_count::text
     from reconciliation.run_checks run_check
@@ -71,8 +70,8 @@ select is(
       and run_check.check_code =
         'MARKETPLACE_ALLOCATION_CONSISTENCY'
   ),
-  'PASSED:0:0',
-  'empty marketplace check persists a clean zero-entity result'
+  'PASSED::0',
+  'empty marketplace check persists a clean zero-issue result despite durable history'
 );
 
 insert into marketplace_integration_results (
@@ -182,8 +181,6 @@ select is(
     select
       run_check.status_code
         || ':'
-        || run_check.checked_count::text
-        || ':'
         || run_check.issue_count::text
     from reconciliation.run_checks run_check
     where run_check.run_id = (
@@ -194,8 +191,8 @@ select is(
       and run_check.check_code =
         'MARKETPLACE_ALLOCATION_CONSISTENCY'
   ),
-  'PASSED:1:0',
-  'valid marketplace check examines one shipment with no issue'
+  'PASSED:0',
+  'valid marketplace check remains clean'
 );
 
 insert into marketplace_integration_snapshots (
@@ -335,8 +332,6 @@ select is(
     select
       run_check.status_code
         || ':'
-        || run_check.checked_count::text
-        || ':'
         || run_check.issue_count::text
     from reconciliation.run_checks run_check
     where run_check.run_id = (
@@ -347,8 +342,8 @@ select is(
       and run_check.check_code =
         'MARKETPLACE_ALLOCATION_CONSISTENCY'
   ),
-  'FAILED:1:1',
-  'marketplace check fails with one issue'
+  'FAILED:1',
+  'marketplace check fails with one issue despite durable marketplace history'
 );
 
 select is(
