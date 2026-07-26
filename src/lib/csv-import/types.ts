@@ -116,9 +116,61 @@ export type CsvImportRowReadModel = {
   canonical_line_count: number;
   event_group_key: string | null;
   expansion_preview: Record<string, unknown> | null;
+  commit_result_id: string | null;
+  canonical_event_id: string | null;
+  marketplace_order_id: string | null;
+  normalization_event_id: string | null;
   processed_at: string | null;
   created_at: string;
   updated_at: string;
+};
+
+export type CsvImportCommitResult = {
+  status: string;
+  jobId: string;
+  commitCommandId?: string;
+  requestHash?: string;
+  processedRowCount?: number;
+  eventCount?: number;
+  errorCode?: string;
+  detail?: string;
+  events?: Array<{
+    eventGroupKey: string;
+    status: "COMPLETED" | "REPLAYED" | string;
+    eventId: string;
+    orderId: string;
+    normalizationEventId: string;
+  }>;
+};
+
+export type CsvImportCommitReadModel = {
+  id: string;
+  organization_id: string;
+  import_job_id: string;
+  commit_idempotency_key: string;
+  request_hash: string;
+  status_code: string;
+  response_snapshot: CsvImportCommitResult;
+  error_code: string | null;
+  started_at: string;
+  completed_at: string | null;
+};
+
+export type CsvImportEventResultReadModel = {
+  id: string;
+  organization_id: string;
+  import_job_id: string;
+  import_commit_command_id: string;
+  event_identity_id: string;
+  event_group_key: string;
+  status_code: string;
+  external_event_ref: string;
+  canonical_idempotency_key: string;
+  canonical_event_id: string;
+  marketplace_order_id: string;
+  normalization_event_id: string;
+  response_snapshot: Record<string, unknown>;
+  created_at: string;
 };
 
 export type CsvImportPage<T> = {

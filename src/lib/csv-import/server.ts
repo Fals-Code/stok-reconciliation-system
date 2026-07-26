@@ -8,6 +8,9 @@ import { parseMarketplaceCsv } from "./parser";
 import {
   CSV_IMPORT_TEMPLATE_VERSION,
   type CsvImportJobReadModel,
+  type CsvImportCommitReadModel,
+  type CsvImportCommitResult,
+  type CsvImportEventResultReadModel,
   type CsvImportPage,
   type CsvImportParseResult,
   type CsvImportRowReadModel,
@@ -116,6 +119,13 @@ function requestHash(result: CsvImportParseResult, fileName: string) {
   return createHash("sha256").update(payload, "utf8").digest("hex");
 }
 
+function safeCommitError(error: unknown) {
+  const message = error instanceof Error ? error.message : "";
+  const code = message.split("|")[0]?.trim() ?? "";
+  if (/^(CSV_|MARKETPLACE_|IDEMPOTENCY_)[A-Z0-9_]*$/.test(code)) return new Error(code);
+  return new Error("CSV_IMPORT_COMMIT_FAILED");
+}
+
 export type CsvImportUploadResult = {
   status: string;
   jobId: string | null;
@@ -212,4 +222,57 @@ export async function getMarketplaceCsvImportRows(jobId: string, limit = 100, cu
   const rows = await readApi<CsvImportRowReadModel[]>(`import_row_preview_read_model?${filters.join("&")}&select=*&order=row_number.asc,id.asc&limit=${boundedLimit + 1}`, session);
   const pageRows = rows.slice(0, boundedLimit);
   return { rows: pageRows, nextCursor: rows.length > boundedLimit ? pageRows.at(-1)?.row_number ?? null : null, hasMore: rows.length > boundedLimit };
+}
+
+export async function commitMarketplaceCsvImportJob(
+  jobId: string,
+  commitIdempotencyKey: string,
+  confirmation = false,
+): Promise<CsvImportCommitResult> {
+  const session = await getAdminSession();
+  if (!session || !/^[0-9a-f-]{36}$/i.test(jobId)) throw new Error("CSV_IMPORT_JOB_NOT_FOUND");
+  if (!confirmation) throw new Error("CSV_IMPORT_COMMIT_CONFIRMATION_REQUIRED");
+  if (!/^[A-Za-z0-9:_-]{1,200}$/.test(commitIdempotencyKey)) throw new Error("CSV_IMPORT_COMMIT_KEY_INVALID");
+  const { secretKey } = config();
+  try {
+    return await rpc<CsvImportCommitResult>(
+      "commit_marketplace_csv_import_job",
+      {
+        p_organization_id: session.profile.organization_id,
+        p_import_job_id: jobId,
+        p_commit_idempotency_key: commitIdempotencyKey,
+        p_confirmation: true,
+      },
+      secretKey,
+      secretKey,
+    );
+  } catch (error) {
+    throw safeCommitError(error);
+  }
+}
+
+export async function getMarketplaceCsvImportCommit(jobId: string, commandId: string): Promise<CsvImportCommitReadModel | null> {
+  const session = await getAdminSession();
+  if (!session || !/^[0-9a-f-]{36}$/i.test(jobId) || !/^[0-9a-f-]{36}$/i.test(commandId)) return null;
+  const organization = encodeURIComponent(session.profile.organization_id);
+  const rows = await readApi<CsvImportCommitReadModel[]>(
+    `import_commit_read_model?organization_id=eq.${organization}&import_job_id=eq.${encodeURIComponent(jobId)}&id=eq.${encodeURIComponent(commandId)}&select=*&limit=1`,
+    session,
+  );
+  return rows[0] ?? null;
+}
+
+export async function getMarketplaceCsvImportEventResults(jobId: string, limit = 100, cursor: string | null = null): Promise<CsvImportPage<CsvImportEventResultReadModel>> {
+  const session = await getAdminSession();
+  if (!session || !/^[0-9a-f-]{36}$/i.test(jobId)) return { rows: [], nextCursor: null, hasMore: false };
+  const organization = encodeURIComponent(session.profile.organization_id);
+  const boundedLimit = Math.min(Math.max(limit, 1), 200);
+  const filters = [`organization_id=eq.${organization}`, `import_job_id=eq.${encodeURIComponent(jobId)}`];
+  if (cursor) filters.push(`created_at=gt.${encodeURIComponent(cursor)}`);
+  const rows = await readApi<CsvImportEventResultReadModel[]>(
+    `import_event_result_read_model?${filters.join("&")}&select=*&order=created_at.asc,id.asc&limit=${boundedLimit + 1}`,
+    session,
+  );
+  const pageRows = rows.slice(0, boundedLimit);
+  return { rows: pageRows, nextCursor: rows.length > boundedLimit ? pageRows.at(-1)?.created_at ?? null : null, hasMore: rows.length > boundedLimit };
 }
