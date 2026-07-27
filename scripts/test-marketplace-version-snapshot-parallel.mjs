@@ -2,7 +2,6 @@ import { spawnSync } from "node:child_process";
 import { readFile } from "node:fs/promises";
 
 const EMAIL = process.env.MARKETPLACE_VERSION_PARALLEL_EMAIL ?? "demo.admin@glowlab.invalid";
-const PASSWORD = process.env.MARKETPLACE_VERSION_PARALLEL_PASSWORD ?? "LocalSmoke123!";
 const TIMEOUT_MS = 30_000;
 const PREFIX = "CONCURRENCY-MARKETPLACE-VERSION-V1";
 const V1_AT = "2026-07-01T00:00:00Z";
@@ -14,6 +13,27 @@ function assert(condition, message) { if (!condition) fail(message); }
 function value(input) { return String(input ?? "").trim(); }
 function errorCode(result) { return value(result?.payload?.message ?? result?.payload?.code); }
 function literal(input) { return `'${String(input).replaceAll("'", "''")}'`; }
+
+function resolvePassword(config) {
+  const pwd = process.env.MARKETPLACE_VERSION_PARALLEL_PASSWORD ?? config?.MARKETPLACE_VERSION_PARALLEL_PASSWORD ?? process.env.PARALLEL_TEST_PASSWORD ?? config?.PARALLEL_TEST_PASSWORD;
+  if (!pwd || typeof pwd !== "string" || pwd.trim() === "") {
+    fail("Password harness tidak ditemukan pada MARKETPLACE_VERSION_PARALLEL_PASSWORD atau PARALLEL_TEST_PASSWORD.");
+  }
+  return pwd;
+}
+
+function validateSupabaseUrl(config) {
+  const rawUrl = config?.NEXT_PUBLIC_SUPABASE_URL ?? process.env.NEXT_PUBLIC_SUPABASE_URL;
+  if (!rawUrl) fail("NEXT_PUBLIC_SUPABASE_URL tidak ditemukan.");
+  let parsed;
+  try { parsed = new URL(rawUrl); } catch { fail("NEXT_PUBLIC_SUPABASE_URL tidak valid."); }
+  const hostname = parsed.hostname.replace(/^\[|\]$/g, "");
+  const isLocal = hostname === "localhost" || hostname === "127.0.0.1" || hostname === "::1";
+  const allowRemote = process.env.ALLOW_REMOTE_PARALLEL_TESTS === "true" || config?.ALLOW_REMOTE_PARALLEL_TESTS === "true";
+  if (!isLocal && !allowRemote) {
+    fail(`Supabase URL non-local (${hostname}) ditolak secara default. Set ALLOW_REMOTE_PARALLEL_TESTS=true untuk mengizinkan testing remote.`);
+  }
+}
 
 async function env() {
   const raw = await readFile(".env.local", "utf8");
@@ -42,10 +62,12 @@ function sqlJson(container, sql) {
 }
 
 async function login(config) {
+  validateSupabaseUrl(config);
+  const password = resolvePassword(config);
   const response = await fetch(`${config.NEXT_PUBLIC_SUPABASE_URL}/auth/v1/token?grant_type=password`, {
     method: "POST",
     headers: { apikey: config.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY, "Content-Type": "application/json" },
-    body: JSON.stringify({ email: EMAIL, password: PASSWORD }),
+    body: JSON.stringify({ email: EMAIL, password }),
     signal: AbortSignal.timeout(TIMEOUT_MS),
   });
   if (!response.ok) fail(`Login Admin gagal (${response.status}).`);

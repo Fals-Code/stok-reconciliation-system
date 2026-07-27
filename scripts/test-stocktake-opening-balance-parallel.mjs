@@ -3,7 +3,6 @@ import { readFile } from "node:fs/promises";
 import process from "node:process";
 
 const EMAIL = process.env.STOCKTAKE_OPENING_PARALLEL_EMAIL ?? "demo.admin@glowlab.invalid";
-const PASSWORD = process.env.STOCKTAKE_OPENING_PARALLEL_PASSWORD ?? "LocalSmoke123!";
 const TIMEOUT_MS = 30_000;
 const PREFIX = "CONCURRENCY-STOCKTAKE-OPENING-V1";
 const OCCURRED_AT = "2026-07-20T09:00:00Z";
@@ -13,10 +12,31 @@ function assert(ok, message) { if (!ok) fail(message); }
 function code(result) { return String(result?.payload?.message ?? result?.payload?.code ?? "").trim(); }
 function sql(value) { return `'${String(value).replaceAll("'", "''")}'`; }
 
+function resolvePassword(config) {
+  const pwd = process.env.STOCKTAKE_OPENING_PARALLEL_PASSWORD ?? config?.STOCKTAKE_OPENING_PARALLEL_PASSWORD ?? process.env.PARALLEL_TEST_PASSWORD ?? config?.PARALLEL_TEST_PASSWORD;
+  if (!pwd || typeof pwd !== "string" || pwd.trim() === "") {
+    fail("Password harness tidak ditemukan pada STOCKTAKE_OPENING_PARALLEL_PASSWORD atau PARALLEL_TEST_PASSWORD.");
+  }
+  return pwd;
+}
+
+function validateSupabaseUrl(config) {
+  const rawUrl = config?.NEXT_PUBLIC_SUPABASE_URL ?? process.env.NEXT_PUBLIC_SUPABASE_URL;
+  if (!rawUrl) fail("NEXT_PUBLIC_SUPABASE_URL tidak ditemukan.");
+  let parsed;
+  try { parsed = new URL(rawUrl); } catch { fail("NEXT_PUBLIC_SUPABASE_URL tidak valid."); }
+  const hostname = parsed.hostname.replace(/^\[|\]$/g, "");
+  const isLocal = hostname === "localhost" || hostname === "127.0.0.1" || hostname === "::1";
+  const allowRemote = process.env.ALLOW_REMOTE_PARALLEL_TESTS === "true" || config?.ALLOW_REMOTE_PARALLEL_TESTS === "true";
+  if (!isLocal && !allowRemote) {
+    fail(`Supabase URL non-local (${hostname}) ditolak secara default. Set ALLOW_REMOTE_PARALLEL_TESTS=true untuk mengizinkan testing remote.`);
+  }
+}
+
 async function env() { const raw = await readFile(".env.local", "utf8"); return Object.fromEntries(raw.split(/\r?\n/).filter((line) => line && !line.startsWith("#") && line.includes("=")).map((line) => { const at = line.indexOf("="); return [line.slice(0, at), line.slice(at + 1).replace(/^['\"]|['\"]$/g, "")]; })); }
 function db() { const result = spawnSync("docker", ["ps", "--format", "{{.Names}}"], { encoding: "utf8", windowsHide: true }); const container = result.stdout.split(/\r?\n/).map((item) => item.trim()).find((item) => item.startsWith("supabase_db_")); if (!container) fail("Container Supabase lokal tidak ditemukan."); return container; }
 function query(container, statement) { const result = spawnSync("docker", ["exec", "-i", container, "psql", "-U", "postgres", "-d", "postgres", "-v", "ON_ERROR_STOP=1", "-t", "-A", "-q"], { input: statement, encoding: "utf8", windowsHide: true }); if (result.status !== 0) fail(`Snapshot database gagal: ${result.stderr.slice(-600)}`); const row = result.stdout.split(/\r?\n/).map((item) => item.trim()).findLast((item) => item.startsWith("{") || item === "null"); if (!row) fail("Snapshot database tidak mengembalikan JSON."); return JSON.parse(row); }
-async function login(config) { const response = await fetch(`${config.NEXT_PUBLIC_SUPABASE_URL}/auth/v1/token?grant_type=password`, { method: "POST", headers: { apikey: config.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY, "Content-Type": "application/json" }, body: JSON.stringify({ email: EMAIL, password: PASSWORD }), signal: AbortSignal.timeout(TIMEOUT_MS) }); if (!response.ok) fail(`Login harness gagal (${response.status}).`); const body = await response.json(); if (!body.access_token) fail("Login tidak menghasilkan token."); return body.access_token; }
+async function login(config) { validateSupabaseUrl(config); const password = resolvePassword(config); const response = await fetch(`${config.NEXT_PUBLIC_SUPABASE_URL}/auth/v1/token?grant_type=password`, { method: "POST", headers: { apikey: config.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY, "Content-Type": "application/json" }, body: JSON.stringify({ email: EMAIL, password }), signal: AbortSignal.timeout(TIMEOUT_MS) }); if (!response.ok) fail(`Login harness gagal (${response.status}).`); const body = await response.json(); if (!body.access_token) fail("Login tidak menghasilkan token."); return body.access_token; }
 async function rpc(config, token, name, body) { const response = await fetch(`${config.NEXT_PUBLIC_SUPABASE_URL}/rest/v1/rpc/${name}`, { method: "POST", headers: { apikey: config.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY, Authorization: `Bearer ${token}`, "Accept-Profile": "api", "Content-Profile": "api", "Content-Type": "application/json" }, body: JSON.stringify(body), signal: AbortSignal.timeout(TIMEOUT_MS) }); const raw = await response.text(); let payload; try { payload = raw ? JSON.parse(raw) : null; } catch { payload = { message: raw }; } return { ok: response.ok, payload }; }
 async function rows(config, token, path) { const response = await fetch(`${config.NEXT_PUBLIC_SUPABASE_URL}/rest/v1/${path}`, { headers: { apikey: config.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY, Authorization: `Bearer ${token}`, "Accept-Profile": "api", "Content-Profile": "api" }, signal: AbortSignal.timeout(TIMEOUT_MS) }); if (!response.ok) fail(`Read model ${path} gagal (${response.status}).`); return response.json(); }
 async function organization(config, token) { const result = await rows(config, token, "current_admin_profile?select=*&limit=1"); if (result.length !== 1 || result[0]?.role_code !== "ADMIN" || !result[0]?.organization_id) fail("Admin fixture aktif tidak tersedia."); return result[0].organization_id; }

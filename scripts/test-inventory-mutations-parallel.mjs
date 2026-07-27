@@ -3,7 +3,6 @@ import { readFile } from "node:fs/promises";
 import process from "node:process";
 
 const EMAIL = process.env.INVENTORY_PARALLEL_EMAIL ?? "demo.admin@glowlab.invalid";
-const PASSWORD = process.env.INVENTORY_PARALLEL_PASSWORD ?? "LocalSmoke123!";
 const TIMEOUT_MS = 30_000;
 const PREFIX = "CONCURRENCY-INVENTORY-V1";
 const RECEIPT_AT = "2026-06-20T09:00:00Z";
@@ -13,6 +12,27 @@ function fail(message) { throw new Error(message); }
 function assert(condition, message) { if (!condition) fail(message); }
 function text(value) { return String(value ?? "").trim(); }
 function sqlLiteral(value) { return `'${String(value).replaceAll("'", "''")}'`; }
+
+function resolvePassword(config) {
+  const pwd = process.env.INVENTORY_PARALLEL_PASSWORD ?? config?.INVENTORY_PARALLEL_PASSWORD ?? process.env.PARALLEL_TEST_PASSWORD ?? config?.PARALLEL_TEST_PASSWORD;
+  if (!pwd || typeof pwd !== "string" || pwd.trim() === "") {
+    fail("Password harness tidak ditemukan pada INVENTORY_PARALLEL_PASSWORD atau PARALLEL_TEST_PASSWORD.");
+  }
+  return pwd;
+}
+
+function validateSupabaseUrl(config) {
+  const rawUrl = config?.NEXT_PUBLIC_SUPABASE_URL ?? process.env.NEXT_PUBLIC_SUPABASE_URL;
+  if (!rawUrl) fail("NEXT_PUBLIC_SUPABASE_URL tidak ditemukan.");
+  let parsed;
+  try { parsed = new URL(rawUrl); } catch { fail("NEXT_PUBLIC_SUPABASE_URL tidak valid."); }
+  const hostname = parsed.hostname.replace(/^\[|\]$/g, "");
+  const isLocal = hostname === "localhost" || hostname === "127.0.0.1" || hostname === "::1";
+  const allowRemote = process.env.ALLOW_REMOTE_PARALLEL_TESTS === "true" || config?.ALLOW_REMOTE_PARALLEL_TESTS === "true";
+  if (!isLocal && !allowRemote) {
+    fail(`Supabase URL non-local (${hostname}) ditolak secara default. Set ALLOW_REMOTE_PARALLEL_TESTS=true untuk mengizinkan testing remote.`);
+  }
+}
 
 async function readEnv() {
   const contents = await readFile(".env.local", "utf8");
@@ -39,7 +59,9 @@ function sqlJson(container, sql) {
 }
 
 async function login(config) {
-  const response = await fetch(`${config.NEXT_PUBLIC_SUPABASE_URL}/auth/v1/token?grant_type=password`, { method: "POST", headers: { apikey: config.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY, "Content-Type": "application/json" }, body: JSON.stringify({ email: EMAIL, password: PASSWORD }), signal: AbortSignal.timeout(TIMEOUT_MS) });
+  validateSupabaseUrl(config);
+  const password = resolvePassword(config);
+  const response = await fetch(`${config.NEXT_PUBLIC_SUPABASE_URL}/auth/v1/token?grant_type=password`, { method: "POST", headers: { apikey: config.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY, "Content-Type": "application/json" }, body: JSON.stringify({ email: EMAIL, password }), signal: AbortSignal.timeout(TIMEOUT_MS) });
   if (!response.ok) fail(`Login harness gagal (${response.status}).`);
   const payload = await response.json();
   if (!payload.access_token) fail("Login harness tidak menghasilkan access token.");

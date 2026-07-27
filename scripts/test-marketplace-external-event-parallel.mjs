@@ -4,8 +4,7 @@ import process from "node:process";
 
 const BASE_URL = process.env.CROSS_ADAPTER_SMOKE_URL ?? "http://127.0.0.1:3000";
 const PORT = new URL(BASE_URL).port || "3000";
-const EMAIL = process.env.CSV_IMPORT_SMOKE_EMAIL ?? "demo.admin@glowlab.invalid";
-const PASSWORD = process.env.CSV_IMPORT_SMOKE_PASSWORD ?? "LocalSmoke123!";
+const EMAIL = process.env.MARKETPLACE_EXTERNAL_PARALLEL_EMAIL ?? process.env.CSV_IMPORT_SMOKE_EMAIL ?? "demo.admin@glowlab.invalid";
 const TIMEOUT_MS = 30_000;
 const PREFIX = "CONCURRENCY-CROSS-ADAPTER-V6";
 const EFFECTIVE_AT = "2026-07-01T00:00:00Z";
@@ -15,6 +14,27 @@ function fail(message) { throw new Error(message); }
 function assert(condition, message) { if (!condition) fail(message); }
 function errorText(result) { return String(result?.payload?.message ?? result?.payload?.code ?? "").trim(); }
 function literal(value) { return `'${String(value).replaceAll("'", "''")}'`; }
+
+function resolvePassword(config) {
+  const pwd = process.env.MARKETPLACE_EXTERNAL_PARALLEL_PASSWORD ?? config?.MARKETPLACE_EXTERNAL_PARALLEL_PASSWORD ?? process.env.CSV_IMPORT_SMOKE_PASSWORD ?? config?.CSV_IMPORT_SMOKE_PASSWORD ?? process.env.PARALLEL_TEST_PASSWORD ?? config?.PARALLEL_TEST_PASSWORD;
+  if (!pwd || typeof pwd !== "string" || pwd.trim() === "") {
+    fail("Password harness tidak ditemukan pada MARKETPLACE_EXTERNAL_PARALLEL_PASSWORD, CSV_IMPORT_SMOKE_PASSWORD, atau PARALLEL_TEST_PASSWORD.");
+  }
+  return pwd;
+}
+
+function validateUrl(rawUrl, name, config) {
+  if (!rawUrl) fail(`${name} tidak ditemukan.`);
+  let parsed;
+  try { parsed = new URL(rawUrl); } catch { fail(`${name} tidak valid.`); }
+  const hostname = parsed.hostname.replace(/^\[|\]$/g, "");
+  const isLocal = hostname === "localhost" || hostname === "127.0.0.1" || hostname === "::1";
+  const allowRemote = process.env.ALLOW_REMOTE_PARALLEL_TESTS === "true" || config?.ALLOW_REMOTE_PARALLEL_TESTS === "true";
+  if (!isLocal && !allowRemote) {
+    fail(`${name} non-local (${hostname}) ditolak secara default. Set ALLOW_REMOTE_PARALLEL_TESTS=true untuk mengizinkan testing remote.`);
+  }
+}
+
 function dbContainer() {
   const result = spawnSync("docker", ["ps", "--format", "{{.Names}}"], { encoding: "utf8", windowsHide: true });
   if (result.status !== 0) fail("Docker Supabase lokal tidak tersedia.");
@@ -47,9 +67,12 @@ async function waitReady() {
   fail("Next server tidak siap untuk harness cross-adapter.");
 }
 async function login(config) {
+  validateUrl(config.NEXT_PUBLIC_SUPABASE_URL ?? process.env.NEXT_PUBLIC_SUPABASE_URL, "NEXT_PUBLIC_SUPABASE_URL", config);
+  validateUrl(BASE_URL, "CROSS_ADAPTER_SMOKE_URL", config);
+  const password = resolvePassword(config);
   const response = await fetch(`${config.NEXT_PUBLIC_SUPABASE_URL}/auth/v1/token?grant_type=password`, {
     method: "POST", headers: { apikey: config.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY, "Content-Type": "application/json" },
-    body: JSON.stringify({ email: EMAIL, password: PASSWORD }), signal: AbortSignal.timeout(TIMEOUT_MS),
+    body: JSON.stringify({ email: EMAIL, password }), signal: AbortSignal.timeout(TIMEOUT_MS),
   });
   if (!response.ok) fail(`Login Admin gagal (${response.status}).`);
   const body = await response.json();
