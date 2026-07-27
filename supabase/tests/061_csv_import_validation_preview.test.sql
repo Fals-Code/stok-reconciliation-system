@@ -110,10 +110,10 @@ select is(
 );
 select is((select status_code from integration.import_jobs where id = '00000000-0000-4061-8000-000000000301'), 'READY', 'valid job reaches READY');
 select is((select count(*) from api.import_row_preview_read_model where import_job_id = '00000000-0000-4061-8000-000000000301'), 2::bigint, 'preview rows are readable');
-select is((select expansion_preview->>'listingType' from api.import_row_preview_read_model where row_number = 2), 'SINGLE', 'SINGLE preview is canonical');
-select is((select expansion_preview->>'listingType' from api.import_row_preview_read_model where row_number = 3), 'BUNDLE', 'BUNDLE preview is canonical');
-select is((select expansion_preview->>'stockEffect' from api.import_row_preview_read_model where row_number = 3), 'NONE', 'preview has no stock effect');
-select is((select canonical_line_count from api.import_row_preview_read_model where row_number = 3), 2, 'bundle preview exposes expanded component count');
+select is((select expansion_preview->>'listingType' from api.import_row_preview_read_model where import_job_id = '00000000-0000-4061-8000-000000000301' and row_number = 2), 'SINGLE', 'SINGLE preview is canonical');
+select is((select expansion_preview->>'listingType' from api.import_row_preview_read_model where import_job_id = '00000000-0000-4061-8000-000000000301' and row_number = 3), 'BUNDLE', 'BUNDLE preview is canonical');
+select is((select expansion_preview->>'stockEffect' from api.import_row_preview_read_model where import_job_id = '00000000-0000-4061-8000-000000000301' and row_number = 3), 'NONE', 'preview has no stock effect');
+select is((select canonical_line_count from api.import_row_preview_read_model where import_job_id = '00000000-0000-4061-8000-000000000301' and row_number = 3), 2, 'bundle preview exposes expanded component count');
 
 select is(
   api.validate_marketplace_csv_import_job(
