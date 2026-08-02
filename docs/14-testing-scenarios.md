@@ -934,6 +934,27 @@ live demo script
 | Performance | Tidak | Smoke | Wajib |
 | UAT | Tidak | Tidak | Wajib |
 
+### 23.1 Golden Demo Deterministik Lokal
+
+Command runner yang tersedia adalah:
+
+```text
+npm run test:demo
+```
+
+Runner memakai environment demo/local yang terautentikasi dan tidak mereset
+database. Golden Story mencakup Slice A--K, notification, stocktake variance
+Serum `-1`, reconciliation bersih, dan final Serum `23 / 0 / 23` serta
+Cleanser `14 / 0 / 14`. Reservation, expected return, receipt retur, DAMAGED,
+LOST, claim, notification, dan reconciliation mengikuti kontrak stock-neutral
+masing-masing.
+
+Durable replay dijalankan ulang pada persisted state yang sama. Kedua snapshot
+harus mempunyai delta nol, tidak ada outcome `CREATED`, tidak ada ledger atau
+adjustment kedua, dan tidak ada unexpected open CRITICAL issue. Evidence clean
+pgTAP terpisah dari runner-only changes; jangan mengklaim pgTAP baru dijalankan
+sesudah perubahan runner tanpa clean reset yang sesuai.
+
 ---
 
 ## 24. Invariant Global

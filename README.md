@@ -959,8 +959,8 @@ supabase test db
 # E2E
 pnpm test:e2e
 
-# Demo smoke
-pnpm test:demo
+# Golden Demo runner
+npm run test:demo
 
 # Focused Product/Batch Admin smoke
 npm run test:product-batch-admin-ui
@@ -991,7 +991,7 @@ Contoh script yang direkomendasikan:
     "test:coverage": "vitest run --coverage",
     "test:db": "supabase test db",
     "test:e2e": "playwright test",
-    "test:demo": "playwright test --grep @demo"
+    "test:demo": "node scripts/test-demo.mjs"
   }
 }
 ```
@@ -1051,6 +1051,21 @@ pnpm test:marketplace-listing-simulator-ui
 pnpm build
 pnpm test:e2e --grep @smoke
 ```
+
+### Golden Demo Runner Lokal
+
+Golden Story deterministik dijalankan dari environment Supabase lokal yang sudah
+terautentikasi:
+
+```bash
+npm run test:demo
+```
+
+Runner tidak mereset database dan hanya memakai fixture demo yang
+organization-scoped. Ia memverifikasi Slice A--K, stocktake, reconciliation,
+serta final acceptance (Serum `23 / 0 / 23`, Cleanser `14 / 0 / 14`). Rerun
+yang sehat harus mengadopsi atau mereplay evidence yang sudah ada tanpa domain
+effect kedua; gunakan snapshot delta runner untuk membuktikannya.
 
 ---
 
@@ -1116,6 +1131,9 @@ inspection DAMAGED 1         -> audit classification; stock delta 0
 - jangan gunakan production organization;
 - jangan menyembunyikan failed invariant;
 - setiap perubahan quantity harus dibuka sampai ledger/source.
+
+Golden runner adalah bukti local/demo; bukan pengganti CI, scheduler production,
+atau deployment live.
 
 ---
 
@@ -1209,6 +1227,9 @@ GitHub
 -> Vercel Next.js
 -> Supabase Cloud
 ```
+
+Topologi ini adalah target deployment. Repository ini belum menyatakan GitHub
+Actions atau deployment production selesai hanya berdasarkan Golden Demo lokal.
 
 ### Environment
 
@@ -1441,7 +1462,7 @@ Status berikut menggambarkan source pada branch saat ini. Status ini bukan pengg
 | Notification Center | **Implemented** | Lifecycle OPEN/ACKNOWLEDGED/RESOLVED, per-Admin read state, unread badge aktif, evaluator expiry/return/claim-deadline/reconciliation/stocktake, dedup episode, transactional outbox, retry, RLS, detail/history, deep link, dan Admin Operations UI | Import failure, marketplace stalled evaluator, production scheduler/cron, dan optional realtime refresh |
 | CSV import | **Implemented** | Admin CSV `MARKETPLACE_RESERVATION_V1`: private upload, staging, validation/parser, canonical SINGLE/BUNDLE preview, error report organization-scoped, serta commit atomic/idempoten melalui pipeline reservasi kanonis tanpa direct write ke ledger/projection | Shipment/cancellation/return CSV, API/webhook marketplace asli, dan scheduler production |
 | Pusat Kendali Hari Ini | **Implemented** | `/today` adalah antrean kerja Admin read-only dari sinyal aktif reconciliation, claim, return inspection, expiry, stocktake, outbox, dan rule-run; identity deterministik, filter URL, keyset pagination, deep-link exact, serta blocked state tanpa link palsu | Marketplace stalled, stocktake scheduled/due, dan CSV import failure sebagai work signal; scheduler/cron production dan optional realtime refresh |
-| Release engineering | **Partial** | Lint, typecheck, build, pgTAP, seed, dan demo bootstrap tersedia secara lokal | GitHub Actions, deployment live, smoke test production, dan final golden demo |
+| Release engineering | **Partial** | Lint, typecheck, build, clean pgTAP evidence, seed, concurrency hardening PR #57, dan Golden Demo durable replay lokal tersedia | GitHub Actions, deployment live, dan smoke test production |
 
 Keterangan:
 
@@ -1480,10 +1501,10 @@ Minimum:
 - [x] CSV import ORDER/reservation: private upload, staging/preview canonical, error report organization-scoped, dan commit atomic/idempoten melalui boundary kanonis tanpa direct ledger/projection write.
 - [x] Pusat Kendali Hari Ini read-only: work item organization-scoped, pagination/filter URL, deep-link exact bila tersedia, serta tanpa mutation bisnis.
 - [x] RLS dan security tests.
-- [ ] Concurrency tests. **Partial:** harness paralel CSV untuk replay dan external-event identity tersedia; pengujian concurrency final lintas capability masih menjadi release gate.
+- [x] Concurrency hardening dan parallel harness untuk mutation boundary tersedia; duplicate command/event diverifikasi menghasilkan maksimal satu domain effect.
 - [ ] Deployment live.
-- [ ] Demo script lulus.
-- [ ] Tidak ada unexpected critical reconciliation issue. **Release gate:** harus dibuktikan dari clean reconciliation run sebelum rilis.
+- [x] Golden Demo runner lokal lulus, termasuk durable replay tanpa fixture growth.
+- [x] Golden reconciliation final tidak memiliki unexpected critical issue; deployment release tetap memerlukan gate environment tersendiri.
 - [x] Tidak ada harga atau nilai uang.
 ---
 

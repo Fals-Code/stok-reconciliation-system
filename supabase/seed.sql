@@ -1274,19 +1274,19 @@ begin
           '00000000-0000-4000-8000-000000000001'::uuid,
           'CLAIM_DEADLINE',
           '1.0.0',
-          'CLAIM',
+          'RETURN',
           'HYBRID',
-          'CLAIM',
-          'DYNAMIC',
-          'CLAIM_DEADLINE_STAGE',
-          'CLAIM_ELIGIBLE_AND_OPEN',
-          'CLAIM_SUBMITTED_OR_RESOLVED',
+          'RETURN_CLAIM',
+          'TIKTOK_CLAIM_V1',
+          'TIKTOK_CLAIM_V1',
+          'TIKTOK_CLAIM_V1',
+          'TIKTOK_CLAIM_V1',
           '1.0.0',
-          'OPEN_CLAIM_DETAIL',
+          'OPEN_RETURN_CLAIM_DETAIL',
           '{
-            "thresholdDays": [14, 7, 3, 1, 0],
-            "timezone": "Asia/Jakarta",
-            "reminderCooldownHours": 12
+            "schemaVersion": 1,
+            "stages": ["D14", "D7", "D3", "D1", "DUE_TODAY", "OVERDUE"],
+            "deadlineField": "deadline_at"
           }'::jsonb,
           true,
           '2026-07-15 00:00:00+07'::timestamptz,
@@ -1984,10 +1984,11 @@ begin
           'imports',
           'imports',
           false,
-          20971520,
+          10485760,
           array[
             'text/csv',
-            'application/vnd.ms-excel'
+            'application/csv',
+            'text/plain'
           ]::text[]
         ),
         (
@@ -2017,7 +2018,7 @@ begin
       )
       values
         ('evidence', 'evidence', false, 10485760),
-        ('imports', 'imports', false, 20971520),
+        ('imports', 'imports', false, 10485760),
         ('exports', 'exports', false, 20971520)
       on conflict (id) do update
       set
