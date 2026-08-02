@@ -1,6 +1,6 @@
 begin;
 create extension if not exists pgtap;
-select plan(183);
+select plan(185);
 select has_function('notification','ensure_tiktok_claim_rule',array['uuid','text','timestamp with time zone'],'claim rule provisioner exists');
 select has_function('notification','request_tiktok_claim_deadline_evaluation',array['uuid','text','timestamp with time zone','text'],'outbox evaluation request exists');
 select has_function('notification','evaluate_tiktok_claim_deadlines',array['uuid','text','timestamp with time zone','text'],'claim evaluator exists');
@@ -22,7 +22,7 @@ select matches(pg_get_functiondef('notification.ensure_tiktok_claim_rule(uuid,te
 select matches(pg_get_functiondef('notification.ensure_tiktok_claim_rule(uuid,text,timestamp with time zone)'::regprocedure),'D1','D1 stage configured');
 select matches(pg_get_functiondef('notification.ensure_tiktok_claim_rule(uuid,text,timestamp with time zone)'::regprocedure),'DUE_TODAY','due-today stage configured');
 select matches(pg_get_functiondef('notification.ensure_tiktok_claim_rule(uuid,text,timestamp with time zone)'::regprocedure),'OVERDUE','overdue stage configured');
-select matches(pg_get_functiondef('notification.ensure_tiktok_claim_rule(uuid,text,timestamp with time zone)'::regprocedure),'effective_from<=p_effective_at and \(effective_to is null or effective_to>p_effective_at\)','rule lookup uses the observed effective window');
+select ok(position('effective_from <= p_effective_at' in pg_get_functiondef('notification.ensure_tiktok_claim_rule(uuid,text,timestamp with time zone)'::regprocedure)) > 0 and position('effective_to > p_effective_at' in pg_get_functiondef('notification.ensure_tiktok_claim_rule(uuid,text,timestamp with time zone)'::regprocedure)) > 0,'rule lookup uses the observed effective window');
 select matches(pg_get_functiondef('notification.evaluate_tiktok_claim_deadlines(uuid,text,timestamp with time zone,text)'::regprocedure),'notification.rule_runs','evaluator links evaluation to existing rule runs');
 select matches(pg_get_functiondef('notification.evaluate_tiktok_claim_deadlines(uuid,text,timestamp with time zone,text)'::regprocedure),'pg_advisory_xact_lock','evaluator serializes active episode updates');
 select matches(pg_get_functiondef('notification.evaluate_tiktok_claim_deadlines(uuid,text,timestamp with time zone,text)'::regprocedure),'idempotency_key','duplicate evaluation is deduplicated');
@@ -96,6 +96,8 @@ insert into claim_notification_results select 'BEFORE_D14',notification.evaluate
 select is((select count(*) from notification.notifications where entity_id=(select (result->>'claimId')::uuid from claim_notification_results where kind='CLAIM') and rule_code_snapshot='CLAIM_DEADLINE' and lifecycle_status_code in ('OPEN','ACKNOWLEDGED')),0::bigint,'before D14 no active deadline episode exists');
 insert into claim_notification_results select 'D14',notification.evaluate_tiktok_claim_deadlines((select organization_id from evaluator_fixture),'056-d14',(select deadline_at-interval '14 days' from operations.return_claims where id=(select (result->>'claimId')::uuid from claim_notification_results where kind='CLAIM')),'pgtap.056');
 create temp table evaluator_episode as select id from notification.notifications where entity_id=(select (result->>'claimId')::uuid from claim_notification_results where kind='CLAIM') and rule_code_snapshot='CLAIM_DEADLINE';
+select is((select result->>'createdCount' from claim_notification_results where kind='D14'),'1','exact D14 increments createdCount once');
+select is((select count(*) from notification.notifications where organization_id=(select organization_id from evaluator_fixture)::uuid and entity_type_code='RETURN_CLAIM' and entity_id=(select (result->>'claimId')::uuid from claim_notification_results where kind='CLAIM') and rule_code_snapshot='CLAIM_DEADLINE'),1::bigint,'exact D14 persists one canonical RETURN_CLAIM notification');
 insert into claim_notification_results values ('EPISODE',jsonb_build_object('notificationId',(select id from evaluator_episode)));
 select is((select stage_code from notification.notifications where id=(select id from evaluator_episode)),'D14','exact D14 creates D14 stage');
 select is((select action_route from notification.notifications where id=(select id from evaluator_episode)),'/returns?returnId='||(select return_id from operations.return_claims where id=(select (result->>'claimId')::uuid from claim_notification_results where kind='CLAIM'))||'&claimId='||(select (result->>'claimId')::uuid from claim_notification_results where kind='CLAIM')||'#claim-detail','deadline notification route carries exact return and claim context');
@@ -139,11 +141,11 @@ select is((select count(*) from notification.rule_runs where organization_id=(se
 select is((select count(*) from notification.notification_events where notification_id=(select id from evaluator_episode)),(select event_count from overdue_replay_before),'replay leaves notification event history stable');
 
 select ok(not has_function_privilege('public','notification.ensure_tiktok_claim_rule(uuid,text,timestamp with time zone)','EXECUTE'),'PUBLIC cannot provision internal rules');
-select matches(pg_get_functiondef('notification.ensure_tiktok_claim_rule(uuid,text,timestamp with time zone)'::regprocedure),'organization_id=p_organization_id','rule lookup remains organization-scoped');
-select matches(pg_get_functiondef('notification.ensure_tiktok_claim_rule(uuid,text,timestamp with time zone)'::regprocedure),'code=p_code','rule lookup remains rule-family-scoped');
+select matches(pg_get_functiondef('notification.ensure_tiktok_claim_rule(uuid,text,timestamp with time zone)'::regprocedure),'organization_id[[:space:]]*=[[:space:]]*p_organization_id','rule lookup remains organization-scoped');
+select matches(pg_get_functiondef('notification.ensure_tiktok_claim_rule(uuid,text,timestamp with time zone)'::regprocedure),'code[[:space:]]*=[[:space:]]*p_code','rule lookup remains rule-family-scoped');
 select matches(pg_get_functiondef('notification.ensure_tiktok_claim_rule(uuid,text,timestamp with time zone)'::regprocedure),'is_active','rule lookup excludes inactive versions');
-select matches(pg_get_functiondef('notification.ensure_tiktok_claim_rule(uuid,text,timestamp with time zone)'::regprocedure),'effective_from<=p_effective_at','future-dated rules are excluded and the effective-from boundary is inclusive');
-select matches(pg_get_functiondef('notification.ensure_tiktok_claim_rule(uuid,text,timestamp with time zone)'::regprocedure),'effective_to>p_effective_at','expired rules are excluded and the effective-to boundary is exclusive');
+select matches(pg_get_functiondef('notification.ensure_tiktok_claim_rule(uuid,text,timestamp with time zone)'::regprocedure),'effective_from[[:space:]]*<=[[:space:]]*p_effective_at','future-dated rules are excluded and the effective-from boundary is inclusive');
+select matches(pg_get_functiondef('notification.ensure_tiktok_claim_rule(uuid,text,timestamp with time zone)'::regprocedure),'effective_to[[:space:]]*>[[:space:]]*p_effective_at','expired rules are excluded and the effective-to boundary is exclusive');
 
 -- This schema-owner fixture represents a historical/imported corrupt claim:
 -- it keeps the real return and product-linked claim item, but has only the

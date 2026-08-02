@@ -465,7 +465,7 @@ Baseline yang direkomendasikan:
     "test:coverage": "vitest run --coverage",
     "test:db": "supabase test db",
     "test:e2e": "playwright test",
-    "test:demo": "playwright test --grep @demo",
+    "test:demo": "node scripts/test-demo.mjs",
     "verify:env": "tsx scripts/verify-env.ts",
     "verify:release": "tsx scripts/check-release.ts"
   }

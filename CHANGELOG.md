@@ -74,6 +74,11 @@ YYYY-MM-DD
 
 ### Added
 
+- `[Testing][Demo]` Menambahkan runner Golden Demo deterministik melalui `npm run test:demo`, dengan fixture organization-scoped, evidence ledger/FEFO/retur/klaim/notifikasi, stocktake, reconciliation, dan final acceptance.
+- `[Testing][Demo]` Menambahkan durable replay Golden: rerun mengadopsi atau mereplay evidence tanpa fixture growth atau domain effect kedua, diverifikasi melalui snapshot delta nol.
+- `[Migration][Testing]` Menyelaraskan identity notification `CLAIM_DEADLINE` ke kontrak `RETURN_CLAIM`, termasuk retirement rule legacy, selector evaluator canonical, dan pgTAP identity coverage.
+- `[Testing]` Menambahkan bukti terminal stocktake adjustment dan reconciliation POST_STOCKTAKE yang stock-neutral, tanpa unexpected open CRITICAL issue.
+
 - `[Implemented]` Admin CSV Import v1 untuk marketplace ORDER/RESERVE dengan upload private, preview canonical, row-level validation, atomic commit confirmation, dan error report organization-scoped.
 - `[Testing]` Durable UI smoke dan parallel commit harness untuk memastikan replay/idempotency tidak menggandakan domain effect.
 - `[Migration][Implemented]` Menambahkan read model Today Control Center yang organization-scoped, read-only, dan deterministic untuk sinyal reconciliation, deadline claim, return inspection, expiry batch, stocktake, kegagalan outbox, serta rule-run.
@@ -81,6 +86,8 @@ YYYY-MM-DD
 - `[Testing]` Menambahkan pgTAP `063_today_control_center_read_model.test.sql` dan focused smoke `npm run test:today-control-center-ui`; membuka atau menyaring antrean tidak membuat stock atau domain mutation.
 
 ### Fixed
+
+- `[Concurrency]` PR #57 memperkeras concurrency dan atomicity pada mutation boundary agar duplicate command/event tetap menghasilkan maksimal satu domain effect.
 
 - Detail klaim retur TikTok kini mengambil claim exact secara organization-scoped dan tidak bergantung pada limit atau filter worklist; notification membawa konteks return dan claim.
 - Late arrival menyimpan allocation shipment exact per line untuk provenance split-batch, tanpa menebak batch saat provenance belum teridentifikasi.

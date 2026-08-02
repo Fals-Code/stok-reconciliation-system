@@ -609,7 +609,7 @@ npm run test:tiktok-return-claim-ui
 npm run test:notification-write-actions
 npm run test:notification-admin-operations
 pnpm build
-pnpm playwright test --grep @demo
+npm run test:demo
 ```
 
 Perintah final disesuaikan `package.json`.
@@ -2473,6 +2473,23 @@ Demo, preview, testing, dan production harus menggunakan identitas, secret, sert
 ---
 
 ## 83. Ringkasan Final
+
+### 83.1 Golden Runner dan Closing Proof
+
+Untuk rehearsal lokal yang deterministik, jalankan:
+
+```text
+npm run test:demo
+```
+
+Runner tidak melakukan database reset dan memakai organization fixture demo
+yang terisolasi. Setelah Slice A--K, closing proof wajib mencakup notification
+claim, stocktake adjustment `-1` pada Serum, reconciliation POST_STOCKTAKE yang
+stock-neutral, dan final Serum `23 / 0 / 23` serta Cleanser `14 / 0 / 14`.
+
+Rerun pada state final harus ADOPTED atau REPLAYED saja: tidak boleh ada
+fixture/domain effect baru, ledger/adjustment kedua, atau snapshot delta selain
+nol. Golden runner adalah proof lokal/demo; deployment live tetap non-goal.
 
 Demo yang benar bukan tur fitur.
 
