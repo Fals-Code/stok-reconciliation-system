@@ -10,112 +10,118 @@ export type AppNavSection = {
   items: readonly AppNavItem[];
 };
 
+/*
+ * shortLabel dipertahankan sebagai compatibility bridge untuk shell lama.
+ * Redesign shell berikutnya akan menggantinya dengan ikon aksesibel.
+ */
 export const APP_NAV_SECTIONS = [
   {
-    label: "Operasional",
+    label: "Utama",
     items: [
       {
+        href: "/today",
+        label: "Pusat Kendali",
+        shortLabel: "PK",
+        description: "Pekerjaan yang perlu ditangani hari ini",
+      },
+      {
         href: "/",
-        label: "Dashboard",
-        shortLabel: "DB",
-        description: "Ringkasan stok dan transaksi",
-      },      {
+        label: "Ringkasan Stok",
+        shortLabel: "RS",
+        description: "Posisi stok dan aktivitas terbaru",
+      },
+    ],
+  },
+  {
+    label: "Pekerjaan Gudang",
+    items: [
+      {
         href: "/manual-outbounds",
         label: "Barang Keluar",
         shortLabel: "BK",
-        description: "Preview FEFO dan posting",
-      },
-      {
-        href: "/stock-disposals",
-        label: "Rusak & Kedaluwarsa",
-        shortLabel: "RX",
-        description: "Pemusnahan batch dan bucket",
-      },
-      {
-        href: "/marketplace",
-        label: "Marketplace",
-        shortLabel: "MP",
-        description: "Listing, reservasi, dan shipment",
-      },
-      {
-        href: "/marketplace/import",
-        label: "Import CSV",
-        shortLabel: "CSV",
-        description: "Preview dan reservasi marketplace",
+        description: "Preview FEFO sebelum stok dikeluarkan",
       },
       {
         href: "/returns",
         label: "Retur",
         shortLabel: "RT",
-        description: "Penerimaan dan inspeksi",
+        description: "Penerimaan, inspeksi, dan klaim retur",
+      },
+      {
+        href: "/stock-disposals",
+        label: "Rusak & Kedaluwarsa",
+        shortLabel: "RD",
+        description: "Catat pengeluaran stok yang tidak layak",
+      },
+      {
+        href: "/marketplace",
+        label: "Pesanan Marketplace",
+        shortLabel: "PM",
+        description: "Listing, reservasi, dan pengiriman",
+      },
+      {
+        href: "/marketplace/import",
+        label: "Impor Marketplace",
+        shortLabel: "IM",
+        description: "Periksa dan proses data CSV",
       },
     ],
   },
   {
-    label: "Kontrol stok",
+    label: "Kontrol Stok",
     items: [
-      {
-        href: "/opening-balances",
-        label: "Saldo Awal",
-        shortLabel: "SA",
-        description: "Cutover, verifikasi, dan audit",
-      },
       {
         href: "/stocktakes",
         label: "Stok Opname",
         shortLabel: "SO",
-        description: "Hitung fisik dan adjustment",
+        description: "Hitung fisik dan penyesuaian opname",
+      },
+      {
+        href: "/reconciliation",
+        label: "Rekonsiliasi",
+        shortLabel: "RE",
+        description: "Periksa integritas dan selisih stok",
       },
       {
         href: "/entry-corrections",
         label: "Koreksi Entri",
         shortLabel: "KE",
-        description: "Preview dan reversal transaksi",
+        description: "Preview dan reversal transaksi salah",
       },
       {
-        href: "/reconciliation",
-        label: "Rekonsiliasi",
-        shortLabel: "RK",
-        description: "Pemeriksaan integritas stok",
+        href: "/opening-balances",
+        label: "Saldo Awal",
+        shortLabel: "SA",
+        description: "Cutover dan verifikasi stok awal",
       },
       {
         href: "/ledger",
-        label: "Ledger Explorer",
-        shortLabel: "LG",
-        description: "Audit movement dan saldo",
+        label: "Riwayat Stok",
+        shortLabel: "RS",
+        description: "Telusuri pergerakan dan asal saldo",
       },
     ],
   },
   {
-    label: "Master Data",
+    label: "Data & Sistem",
     items: [
       {
         href: "/products",
-        label: "Produk",
-        shortLabel: "PR",
-        description: "Identitas Produk, status, dan audit",
-      },
-    ],
-  },  {
-    label: "Monitoring",
-    items: [
-      {
-        href: "/today",
-        label: "Pusat Kendali Hari Ini",
-        shortLabel: "HK",
-        description: "Antrean tindakan operasional",
-      },
-      {
-        href: "/notifications/operations",
-        label: "Notification Operations",
-        shortLabel: "NO",
-        description: "Evaluator dan outbox",
+        label: "Produk & Batch",
+        shortLabel: "PB",
+        description: "Kelola identitas produk dan batch",
       },
       {
         href: "/notifications",
-        label: "Notification Center",
+        label: "Notifikasi",
         shortLabel: "NT",
-        description: "Alert dan tindak lanjut",
+        description: "Peringatan dan tindak lanjut aktif",
+      },
+      {
+        href: "/notifications/operations",
+        label: "Pemrosesan Notifikasi",
+        shortLabel: "PN",
+        description: "Periksa evaluasi dan antrean notifikasi",
       },
     ],
   },
@@ -129,10 +135,34 @@ export function isNavItemActive(pathname: string, href: string) {
   return pathname === href || pathname.startsWith(`${href}/`);
 }
 
-export function findActiveNavItem(pathname: string) {
+export function getActiveNavHref(pathname: string) {
+  let activeHref: string | null = null;
+
   for (const section of APP_NAV_SECTIONS) {
-    const item = section.items.find((candidate) =>
-      isNavItemActive(pathname, candidate.href),
+    for (const item of section.items) {
+      if (!isNavItemActive(pathname, item.href)) {
+        continue;
+      }
+
+      if (activeHref === null || item.href.length > activeHref.length) {
+        activeHref = item.href;
+      }
+    }
+  }
+
+  return activeHref;
+}
+
+export function findActiveNavItem(pathname: string) {
+  const activeHref = getActiveNavHref(pathname);
+
+  if (!activeHref) {
+    return null;
+  }
+
+  for (const section of APP_NAV_SECTIONS) {
+    const item = section.items.find(
+      (candidate) => candidate.href === activeHref,
     );
 
     if (item) {

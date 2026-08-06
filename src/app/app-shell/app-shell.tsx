@@ -14,7 +14,7 @@ import { logoutAction } from "@/app/auth-actions";
 import {
   APP_NAV_SECTIONS,
   findActiveNavItem,
-  isNavItemActive,
+  getActiveNavHref,
 } from "@/app/app-shell/navigation";
 
 type AppShellProfile = {
@@ -66,6 +66,8 @@ function Navigation({
   onNavigate?: () => void;
   unreadCount: number;
 }) {
+  const activeHref = getActiveNavHref(pathname);
+
   return (
     <nav aria-label="Navigasi utama" className="space-y-7 px-3 py-5">
       {APP_NAV_SECTIONS.map((section) => (
@@ -76,7 +78,7 @@ function Navigation({
 
           <div className="mt-2 space-y-1">
             {section.items.map((item) => {
-              const active = isNavItemActive(pathname, item.href);
+              const active = activeHref === item.href;
 
               return (
                 <Link
