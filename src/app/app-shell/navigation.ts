@@ -173,3 +173,101 @@ export function findActiveNavItem(pathname: string) {
 
   return null;
 }
+export type AppBreadcrumbItem = {
+  label: string;
+  href?: string;
+};
+
+export type BreadcrumbOptions = {
+  currentLabel?: string;
+  fallbackLabel?: string;
+};
+
+const UUID_LABEL_PATTERN =
+  /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+
+function normalizeOperatorLabel(
+  value: string | undefined,
+) {
+  const normalized = value?.trim() ?? "";
+
+  if (
+    !normalized ||
+    UUID_LABEL_PATTERN.test(normalized)
+  ) {
+    return null;
+  }
+
+  return normalized;
+}
+
+export function getBreadcrumbItems(
+  pathname: string,
+  options: BreadcrumbOptions = {},
+): AppBreadcrumbItem[] {
+  const activeNavigation =
+    findActiveNavItem(pathname);
+
+  const currentLabel =
+    normalizeOperatorLabel(
+      options.currentLabel,
+    );
+
+  const fallbackLabel =
+    normalizeOperatorLabel(
+      options.fallbackLabel,
+    ) ?? "Halaman";
+
+  if (!activeNavigation) {
+    return [
+      {
+        label:
+          currentLabel ??
+          fallbackLabel,
+      },
+    ];
+  }
+
+  const isNestedRoute =
+    pathname !==
+    activeNavigation.item.href;
+
+  const hasDynamicBusinessLabel =
+    Boolean(
+      currentLabel &&
+        currentLabel !==
+          activeNavigation.item.label,
+    );
+
+  const items: AppBreadcrumbItem[] = [
+    {
+      label:
+        activeNavigation.sectionLabel,
+    },
+    {
+      label:
+        activeNavigation.item.label,
+      ...(
+        isNestedRoute &&
+        hasDynamicBusinessLabel
+          ? {
+              href:
+                activeNavigation.item.href,
+            }
+          : {}
+      ),
+    },
+  ];
+
+  if (
+    isNestedRoute &&
+    hasDynamicBusinessLabel &&
+    currentLabel
+  ) {
+    items.push({
+      label: currentLabel,
+    });
+  }
+
+  return items;
+}

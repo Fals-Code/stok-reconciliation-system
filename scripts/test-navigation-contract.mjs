@@ -31,6 +31,7 @@ const {
   APP_NAV_SECTIONS,
   findActiveNavItem,
   getActiveNavHref,
+  getBreadcrumbItems,
   isNavItemActive,
 } = await import(navigationModuleUrl);
 
@@ -203,4 +204,107 @@ assert.equal(
   "Pemrosesan Notifikasi",
 );
 
+const todayBreadcrumb =
+  getBreadcrumbItems("/today");
+
+assert.deepEqual(
+  todayBreadcrumb,
+  [
+    {
+      label: "Utama",
+    },
+    {
+      label: "Pusat Kendali",
+    },
+  ],
+  "Breadcrumb route statis harus berasal dari metadata navigasi",
+);
+
+const productId =
+  "11111111-1111-4111-8111-111111111111";
+
+const dynamicProductBreadcrumb =
+  getBreadcrumbItems(
+    `/products/${productId}`,
+    {
+      currentLabel:
+        "Serum Brightening",
+    },
+  );
+
+assert.deepEqual(
+  dynamicProductBreadcrumb,
+  [
+    {
+      label: "Data & Sistem",
+    },
+    {
+      label: "Produk & Batch",
+      href: "/products",
+    },
+    {
+      label: "Serum Brightening",
+    },
+  ],
+  "Breadcrumb dinamis harus memakai label bisnis yang diberikan halaman",
+);
+
+const uuidBreadcrumb =
+  getBreadcrumbItems(
+    `/products/${productId}`,
+    {
+      currentLabel: productId,
+    },
+  );
+
+assert.equal(
+  uuidBreadcrumb.some(
+    (item) =>
+      item.label.includes(productId),
+  ),
+  false,
+  "UUID tidak boleh menjadi label utama breadcrumb",
+);
+
+assert.deepEqual(
+  uuidBreadcrumb,
+  [
+    {
+      label: "Data & Sistem",
+    },
+    {
+      label: "Produk & Batch",
+    },
+  ],
+  "Route dinamis tanpa label bisnis aman harus kembali ke label navigasi",
+);
+
+assert.deepEqual(
+  getBreadcrumbItems(
+    "/route-tidak-dikenal",
+  ),
+  [
+    {
+      label: "Halaman",
+    },
+  ],
+  "Route tanpa metadata harus memakai fallback aman tanpa membocorkan path",
+);
+
+assert.deepEqual(
+  getBreadcrumbItems(
+    "/route-tidak-dikenal",
+    {
+      currentLabel:
+        "Detail Operasional",
+    },
+  ),
+  [
+    {
+      label:
+        "Detail Operasional",
+    },
+  ],
+  "Route tanpa metadata boleh memakai label bisnis eksplisit",
+);
 console.log("Navigation contract focused checks: PASS");
