@@ -2,12 +2,19 @@
 
 import { useState } from "react";
 
+import {
+  IconButton,
+  Input,
+} from "@/components/ui";
+
 export type PasswordInputProps = {
   id: string;
   name: string;
   autoComplete?: string;
   placeholder?: string;
   required?: boolean;
+  "aria-describedby"?: string;
+  "aria-invalid"?: boolean;
 };
 
 export function PasswordInput({
@@ -16,26 +23,43 @@ export function PasswordInput({
   autoComplete,
   placeholder,
   required,
+  "aria-describedby": ariaDescribedBy,
+  "aria-invalid": ariaInvalid,
 }: PasswordInputProps) {
-  const [visible, setVisible] = useState(false);
+  const [visible, setVisible] =
+    useState(false);
 
   return (
     <div className="relative">
-      <input
+      <Input
+        aria-describedby={ariaDescribedBy}
+        aria-invalid={ariaInvalid}
         autoComplete={autoComplete}
-        className="min-h-12 w-full rounded-[0.75rem] border border-[#c7d4cf] bg-[#f6f8f7] px-4 pr-12 text-sm text-[#172522] outline-none placeholder:text-[#788681] hover:border-[#8fa09a] focus-visible:border-[#1f6f64] focus-visible:ring-2 focus-visible:ring-[#2f8075] focus-visible:ring-offset-1"
+        className="pr-14"
         id={id}
         name={name}
         placeholder={placeholder}
         required={required}
-        type={visible ? "text" : "password"}
+        type={
+          visible
+            ? "text"
+            : "password"
+        }
       />
 
-      <button
-        aria-label={visible ? "Sembunyikan password" : "Tampilkan password"}
+      <IconButton
         aria-pressed={visible}
-        className="absolute inset-y-0 right-1.5 my-auto grid h-9 w-9 place-items-center rounded-[0.625rem] text-[#6b7873] transition hover:bg-[#e7efec] hover:text-[#123f3a] focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#2f8075]"
-        onClick={() => setVisible((current) => !current)}
+        className="absolute inset-y-0 right-0 my-auto"
+        label={
+          visible
+            ? "Sembunyikan password"
+            : "Tampilkan password"
+        }
+        onClick={() =>
+          setVisible(
+            (current) => !current,
+          )
+        }
         type="button"
       >
         {visible ? (
@@ -83,7 +107,7 @@ export function PasswordInput({
             />
           </svg>
         )}
-      </button>
+      </IconButton>
     </div>
   );
 }
