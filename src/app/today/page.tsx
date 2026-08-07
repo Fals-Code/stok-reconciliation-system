@@ -1,5 +1,7 @@
 import Link from "next/link";
 
+import { getBreadcrumbItems } from "@/app/app-shell/navigation";
+import { PageHeader } from "@/app/app-shell/page-header";
 import { requireAdminSession } from "@/lib/auth";
 import {
   decodeTodayControlCenterCursor,
@@ -235,14 +237,16 @@ export default async function TodayControlCenterPage({
   return (
     <main className="min-h-screen bg-slate-950 text-slate-100">
       <div className="mx-auto w-full max-w-[1500px] px-5 py-8 lg:px-8">
-        <header className="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
-          <div>
-            <p className="section-kicker">Monitoring / Antrean operasional</p>
-            <h1 className="mt-3 text-3xl font-semibold tracking-tight sm:text-4xl">Pusat Kendali Hari Ini</h1>
-            <p className="mt-3 max-w-3xl text-sm leading-6 text-slate-400">Antrean kerja read-only dari sinyal operasional aktif. Membuka atau menyaring daftar ini tidak mengubah stok maupun status bisnis.</p>
-          </div>
-          <span className="status-pill status-neutral">Read-only</span>
-        </header>
+        <PageHeader
+          breadcrumb={getBreadcrumbItems("/today")}
+          description="Antrean kerja read-only dari sinyal operasional aktif. Membuka atau menyaring daftar ini tidak mengubah stok maupun status bisnis."
+          status={
+            <span className="status-pill status-neutral">
+              Read-only
+            </span>
+          }
+          title="Pusat Kendali Hari Ini"
+        />
 
         {state.invalidState ? <div className="mt-6 rounded-2xl border border-amber-400/20 bg-amber-400/10 p-4 text-sm text-amber-100" role="status">Filter atau tautan halaman tidak valid. Menampilkan antrean dari awal dengan filter aman.</div> : null}
         {loadFailed ? <div className="mt-6 rounded-2xl border border-rose-400/20 bg-rose-400/10 p-4 text-sm text-rose-100" role="alert">Antrean belum dapat dimuat. Coba muat ulang; tidak ada perubahan data yang dilakukan.</div> : null}
