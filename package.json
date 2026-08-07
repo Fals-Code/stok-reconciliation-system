@@ -37,6 +37,7 @@
     "test:marketplace-version-snapshot-parallel": "node scripts/test-marketplace-version-snapshot-parallel.mjs",
     "test:today-control-center-ui": "node scripts/test-today-control-center-ui.mjs",
     "test:login-ui": "node scripts/test-login-ui.mjs",
+    "test:ui-primitives": "node scripts/test-ui-primitives.mjs",
     "test:navigation-contract": "node scripts/test-navigation-contract.mjs",
     "test:demo": "node scripts/test-demo.mjs",
     "test:admin-shell-browser": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/test-admin-shell-browser.ps1",
