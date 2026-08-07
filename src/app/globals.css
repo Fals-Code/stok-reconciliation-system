@@ -1,6 +1,44 @@
 @import "tailwindcss";
 
 :root {
+  /* Light-first redesign tokens. */
+  --ui-canvas: #f7f8f6;
+  --ui-surface: #ffffff;
+  --ui-surface-subtle: #fcfdfc;
+  --ui-surface-selected: #e7f0ed;
+
+  --ui-text: #18201e;
+  --ui-text-muted: #6b7471;
+  --ui-text-on-primary: #ffffff;
+
+  --ui-border: #d9dfdc;
+  --ui-border-strong: #b8c3bf;
+
+  --ui-primary: #1f6f64;
+  --ui-primary-hover: #185a52;
+  --ui-primary-subtle: #e7f0ed;
+
+  --ui-warning: #b45309;
+  --ui-warning-subtle: #fff4e5;
+  --ui-danger: #b42318;
+  --ui-danger-subtle: #fdecea;
+  --ui-focus: #2f8075;
+
+  --ui-overlay: rgb(24 32 30 / 0.5);
+
+  --ui-radius-sm: 0.5rem;
+  --ui-radius-md: 0.75rem;
+  --ui-radius-lg: 1rem;
+
+  --ui-shadow-sm: 0 1px 2px rgb(24 32 30 / 0.06);
+  --ui-shadow-md: 0 12px 32px rgb(24 32 30 / 0.1);
+
+  --ui-control-height: 2.75rem;
+  --ui-header-height: 4rem;
+  --ui-sidebar-expanded: 17rem;
+  --ui-sidebar-collapsed: 4.5rem;
+
+  /* Legacy bridge until authenticated pages migrate together. */
   --background: #020617;
   --foreground: #f8fafc;
 }
@@ -8,6 +46,29 @@
 @theme inline {
   --color-background: var(--background);
   --color-foreground: var(--foreground);
+
+  --color-ui-canvas: var(--ui-canvas);
+  --color-ui-surface: var(--ui-surface);
+  --color-ui-surface-subtle: var(--ui-surface-subtle);
+  --color-ui-surface-selected: var(--ui-surface-selected);
+
+  --color-ui-text: var(--ui-text);
+  --color-ui-text-muted: var(--ui-text-muted);
+  --color-ui-text-on-primary: var(--ui-text-on-primary);
+
+  --color-ui-border: var(--ui-border);
+  --color-ui-border-strong: var(--ui-border-strong);
+
+  --color-ui-primary: var(--ui-primary);
+  --color-ui-primary-hover: var(--ui-primary-hover);
+  --color-ui-primary-subtle: var(--ui-primary-subtle);
+
+  --color-ui-warning: var(--ui-warning);
+  --color-ui-warning-subtle: var(--ui-warning-subtle);
+  --color-ui-danger: var(--ui-danger);
+  --color-ui-danger-subtle: var(--ui-danger-subtle);
+  --color-ui-focus: var(--ui-focus);
+
   --font-sans: Arial, Helvetica, sans-serif;
   --font-mono: "Courier New", Courier, monospace;
 }
@@ -207,4 +268,57 @@ tbody tr:hover {
   .form-grid {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
+}
+/* Authenticated Admin shell foundation. */
+.app-shell {
+  color-scheme: light;
+}
+
+.app-shell :focus-visible {
+  outline: 3px solid var(--ui-focus);
+  outline-offset: 2px;
+}
+
+.app-shell summary {
+  list-style: none;
+}
+
+.app-shell summary::-webkit-details-marker {
+  display: none;
+}
+
+#main-content {
+  scroll-margin-top: var(--ui-header-height);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .app-shell *,
+  .app-shell *::before,
+  .app-shell *::after {
+    scroll-behavior: auto !important;
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
+}
+.app-shell details[data-hover-menu]:hover > [data-popover],
+.app-shell details[data-hover-menu]:focus-within > [data-popover],
+.app-shell details[data-hover-menu][open] > [data-popover] {
+  display: block;
+}
+/*
+ * Area transparan antara trigger dan popover.
+ * Memberi jarak visual tanpa memutus hover.
+ */
+.app-shell details[data-hover-menu] > [data-popover-hover-bridge] {
+  position: absolute;
+  top: 100%;
+  right: 0;
+  z-index: 40;
+  height: 0.75rem;
+  pointer-events: none;
+}
+
+.app-shell details[data-hover-menu][open] > [data-popover-hover-bridge] {
+  pointer-events: auto;
 }
