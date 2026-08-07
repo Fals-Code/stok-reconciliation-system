@@ -39,9 +39,9 @@ Gunakan progressive disclosure:
 
 ### Tempat kerja sedikit, kemampuan tetap lengkap
 
-Navigasi utama ditargetkan hanya memiliki tiga tempat kerja:
+Primary navigation ditargetkan hanya memiliki tiga tempat kerja:
 
-1. **Hari Ini**
+1. **Beranda**
 2. **Stok**
 3. **Pesanan**
 
@@ -52,13 +52,20 @@ Struktur target:
 ```text
 Stock Reconciliation
 
-● Hari Ini
+● Beranda
   Stok
   Pesanan
 
 ────────────────
 ⚙ Pengaturan
 ```
+
+Alasan memakai **Beranda** sebagai label navigasi:
+
+- lebih universal daripada `Hari Ini`;
+- langsung dipahami sebagai titik awal aplikasi;
+- tidak memberi kesan bahwa pekerjaan dengan tenggat besok/lusa tidak boleh muncul;
+- tetap memungkinkan judul halaman **Hari Ini** untuk menekankan pekerjaan yang perlu diperhatikan sekarang.
 
 Route teknis dan route lama boleh tetap dipertahankan untuk menjaga kontrak, deep-link, test, dan implementasi bertahap. Route tidak wajib tampil sebagai primary navigation.
 
@@ -85,9 +92,11 @@ Contoh:
 
 ## Information architecture
 
-### 1. Hari Ini
+### 1. Beranda — halaman `Hari Ini`
 
-**Hari Ini** menjadi halaman awal setelah login dan menggantikan kebutuhan pengguna untuk memilih antara dashboard, Pusat Kendali, Ringkasan Stok, dan Notifikasi.
+**Beranda** menjadi halaman awal setelah login dan menggantikan kebutuhan pengguna untuk memilih antara dashboard, Pusat Kendali, Ringkasan Stok, dan Notifikasi.
+
+Judul halaman dapat menggunakan **Hari Ini**.
 
 Pertanyaan yang dijawab:
 
@@ -205,6 +214,77 @@ Gunakan untuk kebutuhan jarang atau teknis seperti:
 
 Notification Operations, outbox retry, evaluator, status processing, dan detail teknis sejenis masuk ke **Diagnostik**, bukan sejajar dengan pekerjaan gudang sehari-hari.
 
+## Safeguard operasional
+
+Penyederhanaan UI tidak boleh mengurangi keamanan operasional.
+
+### Jejak audit tetap kuat
+
+Setiap perubahan permanen harus tetap dapat menjawab:
+
+- siapa atau proses apa yang melakukan perubahan;
+- kapan kejadian berlangsung;
+- kapan sistem mencatatnya;
+- apa alasan perubahan;
+- referensi/bukti apa yang digunakan;
+- nilai sebelum dan sesudah bila relevan;
+- transaksi sumber dan transaksi pembatalan bila terjadi reversal.
+
+Pada UI utama, tampilkan bahasa manusia seperti:
+
+- **Dilakukan oleh**
+- **Waktu kejadian**
+- **Waktu dicatat**
+- **Alasan**
+- **Referensi / Bukti**
+
+Metadata seperti correlation ID, idempotency command ID, ledger sequence, raw source type, dan linkage teknis ditempatkan dalam **Detail teknis**.
+
+Audit trail tidak boleh dapat dihapus atau dimodifikasi hanya demi menyederhanakan UI.
+
+### Permission-aware, tetapi jangan membuat RBAC palsu
+
+Scope produk saat ini tetap **satu role ADMIN**. Redesign ini tidak otomatis menambah Supervisor, Manager, atau role baru karena hal tersebut memerlukan kontrak auth/RLS/server action/test tersendiri.
+
+Namun komponen tindakan berisiko harus didesain agar future-ready terhadap permission, misalnya:
+
+- pemusnahan stok;
+- pembatalan transaksi;
+- posting hasil hitung;
+- perubahan saldo awal;
+- tindakan diagnostik sistem.
+
+Aturan:
+
+- keamanan tidak boleh hanya bergantung pada tombol yang disembunyikan; permission tetap harus ditegakkan server-side bila RBAC benar-benar ditambahkan;
+- aksi yang secara permanen tidak dimiliki suatu role dapat disembunyikan;
+- aksi yang hanya sementara tidak tersedia sebaiknya disabled dengan alasan yang jelas;
+- jangan menampilkan opsi role/permission yang backend-nya belum ada.
+
+Penambahan RBAC adalah scope terpisah, bukan bagian kosmetik redesign.
+
+### Status koneksi dan penyimpanan harus jujur
+
+Jangan menampilkan label **Tersinkronisasi** jika aplikasi belum memiliki mekanisme offline queue/sync yang nyata.
+
+Untuk implementasi sekarang:
+
+- saat request berlangsung → **Menyimpan...**;
+- setelah server mengonfirmasi → **Tersimpan**;
+- bila request gagal → jelaskan bahwa perubahan **belum tersimpan**;
+- bila browser terdeteksi offline → tampilkan banner **Koneksi terputus** dan cegah kesan bahwa mutation sudah aman;
+- tombol mutation harus mencegah double-submit saat request sedang berjalan.
+
+Jika di masa depan dibuat offline queue, baru gunakan state seperti:
+
+- **Belum dikirim**
+- **Menunggu sinkronisasi**
+- **Sedang menyinkronkan**
+- **Tersinkronisasi**
+- **Perlu diperiksa** bila terjadi konflik.
+
+Offline-first dan conflict resolution merupakan capability tersendiri dan tidak boleh dipalsukan melalui indikator visual saja.
+
 ## Bahasa antarmuka
 
 ### Gunakan bahasa pekerjaan, bukan bahasa implementasi
@@ -213,9 +293,9 @@ Bahasa UI utama menggunakan istilah yang dapat dipahami pengguna tanpa mengetahu
 
 | Istilah sistem | Bahasa UI utama |
 | --- | --- |
-| Today Control Center / Pusat Kendali | **Hari Ini** |
-| Dashboard / Ringkasan Stok | masuk ke **Hari Ini** dan **Stok** |
-| Notification Center | **Aktivitas / Notifikasi terbaru** di Hari Ini |
+| Today Control Center / Pusat Kendali | **Beranda**, judul halaman **Hari Ini** |
+| Dashboard / Ringkasan Stok | masuk ke **Beranda** dan **Stok** |
+| Notification Center | **Aktivitas / Notifikasi terbaru** di Beranda |
 | Product Inventory | **Stok** |
 | Stock Ledger | **Riwayat Stok** |
 | Stocktake / Stok Opname | **Hitung Stok** |
@@ -223,20 +303,25 @@ Bahasa UI utama menggunakan istilah yang dapat dipahami pengguna tanpa mengetahu
 | Entry Correction | **Batalkan Transaksi** dari detail transaksi |
 | Manual Outbound | **Barang Keluar** |
 | Receipt / Post Receipt | **Barang Masuk / Simpan Barang Masuk** |
-| Stock Disposal | **Barang Rusak / Kedaluwarsa** |
+| Stock Disposal | **Barang Rusak / Kedaluwarsa** atau **Catat Pemusnahan** |
 | Return Inspection Pending | **Retur Belum Diperiksa** |
 | TikTok Claim Deadline | **Batas Klaim TikTok Mendekat** |
 | Authoritative Preview | **Periksa Sebelum Simpan** |
 | Reversal | **Pembatalan Transaksi** |
 | Projection | **Jumlah stok saat ini** bila konteks memungkinkan |
-| Work Item | **Pekerjaan** atau langsung nama masalah |
+| Work Item | langsung gunakan nama masalah/tugas |
 | Severity | **Prioritas** |
-| Source Reference | **Referensi** |
+| Source Reference | gunakan label kontekstual, bukan hanya `Referensi` |
 | Resolution Status | **Status** |
+| Quantity | **Jumlah** |
+| Bucket | **Kondisi Stok** |
+| Actor / process | **Dilakukan oleh** |
+| Occurred at | **Waktu kejadian** |
+| Recorded at | **Waktu dicatat** |
 
 Istilah teknis tetap boleh muncul pada `Detail teknis`, audit, troubleshooting, atau dokumentasi developer.
 
-### Bahasa quantity
+### Istilah stok
 
 Gunakan label yang menjelaskan kondisi stok:
 
@@ -251,7 +336,277 @@ Gunakan label yang menjelaskan kondisi stok:
 
 Jika dua angka berbeda secara bisnis, jangan menyederhanakan sampai maknanya hilang. Misalnya **Layak Dijual** dan **Tersedia** tetap dipisahkan bila sebagian stok sudah dipesan.
 
-### Tombol menjelaskan akibatnya
+Untuk kode status batch:
+
+| Kode | Bahasa UI |
+| --- | --- |
+| ACTIVE | **Aktif** |
+| BLOCKED | **Diblokir** + alasan |
+| EXPIRED | **Kedaluwarsa** |
+| ARCHIVED | **Diarsipkan** |
+
+`Batch` tetap dapat digunakan karena merupakan konsep gudang penting, tetapi tampilkan sebagai **Kode Batch** pada field dan berikan penjelasan singkat pada pengalaman pertama bila diperlukan.
+
+### Istilah prioritas
+
+Gunakan maksimal empat tingkat dan hindari campuran bahasa:
+
+| Kode | Bahasa UI |
+| --- | --- |
+| CRITICAL | **Kritis** |
+| HIGH | **Mendesak** |
+| WARNING / MEDIUM | **Perlu Diperiksa** |
+| INFO / LOW | **Informasi** |
+
+Gunakan warna sebagai pendukung, bukan satu-satunya pembeda.
+
+### Status Hitung Stok
+
+Status internal stocktake perlu diterjemahkan menjadi progres yang mudah dipahami:
+
+| Status internal | Bahasa UI |
+| --- | --- |
+| DRAFT | **Belum Dimulai** |
+| READY | **Siap Dihitung** |
+| COUNTING | **Sedang Dihitung** |
+| REVIEW | **Perlu Diperiksa** |
+| APPROVED | **Siap Disimpan** |
+| POSTING | **Menyimpan Perubahan** |
+| POSTED | **Selesai** |
+| CANCELLED | **Dibatalkan** |
+| EXCEPTION | **Bermasalah** |
+
+Status baris:
+
+- PENDING → **Belum Dihitung**
+- COUNTED → **Sudah Dihitung**
+- RECOUNT_REQUESTED → **Hitung Ulang**
+
+Keputusan pemeriksaan:
+
+- MATCHED → **Sesuai**
+- VARIANCE_ACCEPTED → **Selisih Diterima**
+- RECOUNT_REQUIRED → **Hitung Ulang**
+- EXCEPTION → **Perlu Penanganan**
+
+### Alasan selisih stok
+
+Hindari istilah internal seperti `projection drift`, `source event failure`, atau `duplicate movement` pada pilihan utama.
+
+Gunakan bahasa seperti:
+
+- **Barang keluar belum dicatat**
+- **Barang masuk belum dicatat**
+- **Data retur tidak sesuai**
+- **Salah hitung batch**
+- **Salah hitung kondisi stok**
+- **Barang rusak belum dicatat**
+- **Barang kedaluwarsa belum dicatat**
+- **Saldo awal belum pasti**
+- **Ada perubahan stok saat penghitungan**
+- **Perubahan stok tercatat dua kali**
+- **Data dari sumber gagal diproses**
+- **Saldo sistem tidak sesuai riwayat**
+- **Barang fisik hilang**
+- **Stok fisik lebih banyak**
+- **Data produk/batch salah**
+- **Belum diketahui**
+- **Lainnya**
+
+## Audit field dan form
+
+### Field umum
+
+Gunakan label kontekstual.
+
+Kurang jelas:
+
+- Referensi
+- Source Ref
+- Quantity
+- Channel
+- Bucket
+- Actor / Process
+
+Lebih jelas:
+
+- **Nomor / Referensi Barang Keluar**
+- **Nomor / Referensi Barang Masuk**
+- **Nomor Catatan Pemusnahan**
+- **Bukti / Berita Acara**
+- **Jumlah**
+- **Sumber Pesanan** atau **Marketplace**
+- **Kondisi Stok**
+- **Dilakukan oleh**
+
+`SKU` boleh dipertahankan tetapi label yang lebih ramah adalah **SKU / Kode Produk**.
+
+### Barang Keluar
+
+Jangan tampilkan copy seperti:
+
+- `Database menentukan batch secara FEFO...`
+- `Preview authoritative`
+- `reserved stock`
+- `ledger/projection/idempotency`
+- `Referensi baris UI-1`
+
+Gunakan:
+
+> Sistem memilih batch yang tanggal kedaluwarsanya paling dekat secara otomatis.
+
+Info sebelum simpan:
+
+> Memeriksa data belum mengubah stok. Setelah disimpan, transaksi tidak dapat diedit. Jika ada kesalahan, transaksi dapat dibatalkan dari Riwayat Stok.
+
+CTA:
+
+- `Tinjau alokasi FEFO` → **Periksa Barang Keluar**
+- final → **Keluarkan N Unit** atau **Simpan Barang Keluar**
+
+### Barang Rusak / Kedaluwarsa
+
+User memang perlu memilih batch exact karena barang fisik tertentu akan dimusnahkan, tetapi tidak perlu memahami istilah `bucket`.
+
+Gunakan:
+
+- `Bucket sumber` → **Kondisi Stok**
+- `Quantity` → **Jumlah Dimusnahkan**
+- `Exact batch & bucket` → hapus dari UI utama
+- `Pilih batch dan bucket fisik...` → **Pilih batch dan jumlah barang yang benar-benar dimusnahkan.**
+
+Tampilkan bukti/alasan secara eksplisit karena tindakan bersifat destruktif.
+
+### Hitung Stok
+
+Form pembuatan sesi saat ini terlalu banyak meminta keputusan teknis. UI target menyederhanakannya menjadi:
+
+1. **Apa yang ingin dihitung?**
+   - Semua stok
+   - Produk tertentu
+   - Batch tertentu
+2. **Kapan dihitung?**
+3. **Tampilkan jumlah sistem saat menghitung?**
+   - Jangan tampilkan — disarankan
+   - Tampilkan
+4. **Catatan** — opsional
+
+Field/istilah berikut tidak perlu tampil di alur utama bila dapat diinfer atau memiliki default tetap:
+
+- `Full inventory / Cycle count / Ad hoc`
+- `CONTINUOUS`
+- `Mode scope`
+- `Visibility`
+- `Buckets`
+- `Inclusion rules`
+- `idempotencyKey`
+
+Jika kategori kondisi stok memang perlu dipilih, tampilkan sebagai bagian **Pilihan Tambahan**:
+
+```text
+Kondisi stok yang dihitung
+☑ Layak Dijual
+☑ Ditahan
+☑ Rusak
+```
+
+Pilihan seperti include zero balance, inactive master, blocked batch, dan expired batch masuk **Pilihan Lanjutan**, bukan layar utama.
+
+### Pesanan
+
+User utama tidak perlu melihat state `reservation`, `normalization`, `mapping version`, `component lifecycle`, atau `event` kecuali masuk detail teknis.
+
+Status utama harus menjawab progres pekerjaan, misalnya:
+
+- **Perlu Diproses**
+- **Stok Disiapkan**
+- **Dalam Pengiriman**
+- **Dikirim**
+- **Selesai**
+- **Dibatalkan**
+- **Selesai — sebagian dibatalkan**
+
+### Retur dan Klaim
+
+Gunakan bahasa:
+
+- **Akan Diretur**
+- **Belum Tiba**
+- **Sudah Diterima**
+- **Belum Diperiksa**
+- **Layak Dijual**
+- **Rusak**
+- **Hilang**
+- **Klaim Perlu Diajukan**
+- **Menunggu Hasil Klaim**
+- **Klaim Selesai**
+
+Jangan menampilkan raw status code sebagai label utama.
+
+## Audit filter dan pencarian
+
+### Beranda
+
+- `Severity` → **Prioritas**
+- `Work Type` → **Jenis Masalah**
+- `Terapkan` → **Tampilkan** atau **Terapkan Filter**
+- `Reset` → **Hapus Filter**
+
+### Riwayat Stok
+
+Filter default cukup:
+
+- Tanggal
+- Produk / SKU
+- Batch
+- Jenis Perubahan
+- Referensi
+
+Filter lanjutan bila dibutuhkan:
+
+- Waktu dicatat sistem
+- Sumber data
+- Dilakukan oleh
+- Kondisi stok
+- Arah stok: Masuk / Keluar
+- Status pembatalan
+
+Terjemahan:
+
+- `transaction type` → **Jenis Perubahan**
+- `reason` → **Alasan**
+- `channel` → **Sumber Pesanan**
+- `source reference` → **Nomor Referensi**
+- `actor/process` → **Dilakukan oleh**
+- `quantity direction` → **Arah Stok**
+- `reversal state` → **Status Pembatalan**
+- `recorded at` → **Waktu Dicatat Sistem**
+
+Jangan menampilkan semua filter teknis secara default.
+
+### Hitung Stok
+
+Filter daftar sesi cukup:
+
+- Status
+- Yang Dihitung
+- Tanggal
+
+`Visibility` tidak perlu menjadi filter utama kecuali ada kebutuhan operasional nyata.
+
+### Pesanan dan Retur
+
+Utamakan filter berbasis pekerjaan:
+
+- Perlu Diproses
+- Perlu Dikirim
+- Perlu Diperiksa
+- Klaim Mendekati Batas Waktu
+- Selesai
+
+bukan raw lifecycle code.
+
+## Tombol menjelaskan akibatnya
 
 Hindari tombol generik:
 
@@ -264,15 +619,21 @@ Hindari tombol generik:
 Gunakan:
 
 - **Simpan Barang Masuk**
+- **Periksa Barang Keluar**
 - **Keluarkan 12 Unit**
+- **Mulai Hitung Stok**
 - **Simpan Hasil Hitung**
 - **Batalkan Transaksi**
+- **Catat Pemusnahan**
 - **Tandai sebagai Rusak**
+- **Catat Barang Diterima**
+- **Simpan Hasil Pemeriksaan**
+- **Ajukan Klaim**
 - **Impor 24 Pesanan**
 
 Pengguna harus dapat memperkirakan akibat tombol sebelum menekannya.
 
-### Error menjelaskan masalah dan langkah berikutnya
+## Error menjelaskan masalah dan langkah berikutnya
 
 Jangan menampilkan kode internal sebagai pesan utama.
 
@@ -297,6 +658,17 @@ Kurang     4
 
 Kode internal dapat tersedia di bagian `Detail teknis` yang collapsed.
 
+Gunakan pola error:
+
+1. apa yang gagal;
+2. apakah ada data yang berubah;
+3. mengapa bila dapat dijelaskan;
+4. tindakan aman berikutnya.
+
+Contoh:
+
+> **Barang keluar belum tersimpan.** Koneksi ke server terputus sebelum proses selesai. Tidak ada bukti bahwa stok sudah berubah. Periksa koneksi lalu coba lagi.
+
 ## Progressive disclosure
 
 Informasi dibagi menjadi tiga tingkat:
@@ -320,7 +692,8 @@ Tampilkan ketika pengguna membuka detail:
 - sebelum dan sesudah;
 - alasan sistem memilih tindakan;
 - riwayat yang relevan;
-- kemungkinan penyebab masalah.
+- kemungkinan penyebab masalah;
+- siapa yang melakukan dan kapan.
 
 ### Tingkat 3 — detail teknis
 
@@ -328,13 +701,15 @@ Tampilkan hanya bila dibutuhkan:
 
 - UUID;
 - ledger sequence;
+- correlation ID;
 - request hash;
 - RPC;
 - event code;
 - projection internals;
-- idempotency key;
+- idempotency key/command ID;
 - raw payload;
-- evaluator/outbox details.
+- evaluator/outbox details;
+- raw lifecycle code.
 
 ## Pola perubahan stok
 
@@ -455,16 +830,11 @@ Untuk data dalam jumlah besar:
 - keyset pagination tetap digunakan bila kontrak data memerlukannya;
 - mobile dapat menggunakan compact cards bila tabel tidak lagi efektif.
 
-Filter default menggunakan bahasa user:
+Global search, bila tersedia, menggunakan placeholder yang menjelaskan cakupan:
 
-- Tanggal
-- Produk
-- Batch
-- Jenis Perubahan
-- Referensi
-- Status
-
-Filter teknis seperti actor/process, source type, reversal state, recorded timestamp, raw bucket, atau identifier internal ditempatkan pada **Filter Lanjutan** bila masih dibutuhkan.
+```text
+Cari produk, batch, pesanan, atau retur...
+```
 
 ## Hierarki tindakan
 
@@ -478,7 +848,7 @@ Danger hanya digunakan pada tindakan final yang memang berisiko, bukan mewarnai 
 Confirmation kuat digunakan untuk tindakan seperti:
 
 - pengeluaran stok permanen;
-- disposal;
+- disposal/pemusnahan;
 - pembatalan/reversal;
 - posting hasil hitung;
 - saldo awal.
@@ -521,12 +891,13 @@ Aturan visual:
 ### Mobile
 
 - sidebar menjadi drawer;
-- primary navigation tetap hanya Hari Ini, Stok, Pesanan;
+- primary navigation tetap hanya Beranda, Stok, Pesanan;
 - tabel padat berubah menjadi compact card bila perlu;
 - action penting tetap mudah dijangkau;
 - target sentuh minimal 44 x 44 px;
 - drawer mengunci scroll belakang;
-- fokus kembali ke tombol pembuka setelah drawer ditutup.
+- fokus kembali ke tombol pembuka setelah drawer ditutup;
+- status koneksi/error tidak menutupi tindakan utama.
 
 ### Tablet
 
@@ -560,6 +931,8 @@ Penyederhanaan UI tidak boleh mengubah aturan berikut:
 13. Penyesuaian hasil hitung merupakan proses terpisah.
 14. Preview authoritative wajib dipertahankan untuk stock-out dan koreksi manual.
 15. Penyederhanaan navigasi tidak boleh menghilangkan route contract, deep-link, audit evidence, atau safe internal route validation.
+16. Current scope tetap satu role ADMIN; RBAC baru memerlukan scope dan security contract terpisah.
+17. UI tidak boleh mengklaim offline sync/tersinkronisasi tanpa capability server/client yang benar-benar mendukungnya.
 
 ## State wajib
 
@@ -571,17 +944,49 @@ Halaman dan komponen harus menyediakan state nyata:
 - blocked;
 - success;
 - stale preview;
-- replay atau idempotent success bila relevan.
+- saving/pending untuk mutation;
+- replay atau idempotent success bila relevan;
+- connection failure bila request tidak dapat mencapai server.
 
 Semua state menggunakan bahasa yang menjelaskan apa yang terjadi dan apa yang dapat dilakukan pengguna selanjutnya.
 
-Tidak boleh ada placeholder, tombol mati, link palsu, atau form palsu.
+Tidak boleh ada placeholder, tombol mati, link palsu, form palsu, atau indikator sync palsu.
+
+## Usability audit gate
+
+Sebelum suatu page group dianggap selesai, lakukan tes dengan perspektif pengguna baru.
+
+Pengguna harus dapat menyelesaikan skenario berikut tanpa mengetahui istilah backend:
+
+1. Membuka aplikasi dan mengetahui apa yang perlu diperiksa.
+2. Mencari stok Serum tertentu.
+3. Mengetahui perbedaan Stok Fisik, Layak Dijual, Sudah Dipesan, dan Tersedia.
+4. Mencatat barang masuk.
+5. Mengeluarkan barang tanpa memilih batch FEFO sendiri.
+6. Mencatat barang rusak/kedaluwarsa dengan bukti yang benar.
+7. Memulai penghitungan fisik tanpa memahami `scope`, `bucket`, `visibility`, atau `cycle count`.
+8. Mengetahui penyebab selisih stok dan membuka bukti terkait.
+9. Menemukan transaksi salah dari riwayat dan membatalkannya tanpa memahami reversal.
+10. Memproses pesanan, retur, dan klaim sebagai satu cerita.
+11. Memahami apakah suatu perubahan sudah tersimpan atau belum ketika koneksi bermasalah.
+12. Membaca siapa/kapan/mengapa suatu perubahan terjadi dari detail audit.
+
+Pertanyaan evaluasi untuk setiap layar:
+
+- Apakah judulnya langsung menjelaskan tujuan layar?
+- Apakah ada istilah yang hanya dipahami pembuat sistem?
+- Apakah user harus memilih sesuatu yang sebenarnya dapat ditentukan sistem?
+- Apakah tombol menjelaskan akibatnya?
+- Apakah error memberi langkah berikutnya?
+- Apakah informasi teknis bisa dipindah ke detail lanjutan?
+- Apakah tindakan destruktif memiliki bukti dan preview yang cukup?
+- Apakah status koneksi/penyimpanan jujur?
 
 ## Target pengalaman pengguna
 
 Pengguna baru harus dapat menjawab tanpa bantuan pembuat sistem:
 
-- Untuk melihat pekerjaan penting → **Hari Ini**.
+- Untuk melihat pekerjaan penting → **Beranda**.
 - Untuk mencari produk, batch, jumlah, atau riwayat → **Stok**.
 - Untuk memproses marketplace, retur, atau klaim → **Pesanan**.
 - Untuk mencatat perubahan stok → **Stok > Catat Perubahan**.
@@ -589,17 +994,18 @@ Pengguna baru harus dapat menjawab tanpa bantuan pembuat sistem:
 - Untuk memperbaiki transaksi salah → buka transaksi dari **Riwayat**, lalu **Batalkan Transaksi**.
 - Untuk masalah teknis/setup → **Pengaturan**.
 
-Jika pengguna masih harus bertanya kepada pembuat sistem “fitur ini ada di menu mana?” atau “istilah ini artinya apa?” untuk pekerjaan umum, desain belum selesai.
+Jika pengguna masih harus bertanya kepada pembuat sistem “fitur ini ada di menu mana?”, “istilah ini artinya apa?”, atau “tombol ini akan melakukan apa?” untuk pekerjaan umum, desain belum selesai.
 
 ## Urutan migrasi
 
-1. Kunci information architecture dan bahasa UI pada guide ini.
-2. Pertahankan route/business contract, tetapi sederhanakan primary navigation menjadi Hari Ini, Stok, Pesanan, dan Pengaturan sekunder.
-3. Migrasikan **Hari Ini** sebagai pilot: ringkasan + antrean tindakan + aktivitas/notifikasi.
+1. Kunci information architecture, bahasa UI, dan safeguard operasional pada guide ini.
+2. Pertahankan route/business contract, tetapi sederhanakan primary navigation menjadi Beranda, Stok, Pesanan, dan Pengaturan sekunder.
+3. Migrasikan **Beranda / Hari Ini** sebagai pilot: ringkasan + antrean tindakan + aktivitas/notifikasi.
 4. Satukan pengalaman **Stok**: posisi stok, produk/batch, riwayat, perubahan stok, hitung stok, dan entry point masalah.
 5. Satukan pengalaman **Pesanan**: pesanan, import sebagai action, retur & klaim, serta tindakan contextual.
 6. Pindahkan setup dan diagnostik ke **Pengaturan**.
 7. Hapus jargon teknis dari primary UI dan pindahkan ke detail teknis/audit.
-8. Lakukan responsive, accessibility, usability scenario, dan cleanup legacy UI.
+8. Terapkan copy dictionary untuk status, field, filter, CTA, error, dan confirmation.
+9. Lakukan responsive, accessibility, connection-state, usability scenario, dan cleanup legacy UI.
 
 Setiap kelompok harus dapat direview dan divalidasi secara terpisah. Penyederhanaan presentasi tidak boleh mengubah kontrak domain yang sudah lolos test.
