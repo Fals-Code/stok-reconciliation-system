@@ -49,3 +49,5 @@ Thumbs.db
 /.agents/
 /.claude/
 /skills-lock.json
+/playwright-report/
+/test-results/

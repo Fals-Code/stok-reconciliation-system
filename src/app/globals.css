@@ -269,3 +269,56 @@ tbody tr:hover {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 }
+/* Authenticated Admin shell foundation. */
+.app-shell {
+  color-scheme: light;
+}
+
+.app-shell :focus-visible {
+  outline: 3px solid var(--ui-focus);
+  outline-offset: 2px;
+}
+
+.app-shell summary {
+  list-style: none;
+}
+
+.app-shell summary::-webkit-details-marker {
+  display: none;
+}
+
+#main-content {
+  scroll-margin-top: var(--ui-header-height);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .app-shell *,
+  .app-shell *::before,
+  .app-shell *::after {
+    scroll-behavior: auto !important;
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
+}
+.app-shell details[data-hover-menu]:hover > [data-popover],
+.app-shell details[data-hover-menu]:focus-within > [data-popover],
+.app-shell details[data-hover-menu][open] > [data-popover] {
+  display: block;
+}
+/*
+ * Area transparan antara trigger dan popover.
+ * Memberi jarak visual tanpa memutus hover.
+ */
+.app-shell details[data-hover-menu] > [data-popover-hover-bridge] {
+  position: absolute;
+  top: 100%;
+  right: 0;
+  z-index: 40;
+  height: 0.75rem;
+  pointer-events: none;
+}
+
+.app-shell details[data-hover-menu][open] > [data-popover-hover-bridge] {
+  pointer-events: auto;
+}

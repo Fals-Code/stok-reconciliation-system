@@ -38,7 +38,9 @@
     "test:today-control-center-ui": "node scripts/test-today-control-center-ui.mjs",
     "test:login-ui": "node scripts/test-login-ui.mjs",
     "test:navigation-contract": "node scripts/test-navigation-contract.mjs",
-    "test:demo": "node scripts/test-demo.mjs"
+    "test:demo": "node scripts/test-demo.mjs",
+    "test:admin-shell-browser": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/test-admin-shell-browser.ps1",
+    "test:admin-shell-browser:headed": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/test-admin-shell-browser.ps1 -Headed"
   },
   "dependencies": {
     "csv-parse": "^7.0.1",
@@ -47,6 +49,7 @@
     "react-dom": "19.2.4"
   },
   "devDependencies": {
+    "@playwright/test": "^1.62.1",
     "@tailwindcss/postcss": "^4",
     "@types/node": "^20",
     "@types/react": "^19",

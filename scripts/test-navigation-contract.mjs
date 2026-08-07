@@ -59,6 +59,29 @@ const items = APP_NAV_SECTIONS.flatMap((section) =>
   })),
 );
 
+assert.equal(
+  items.every(
+    (item) =>
+      typeof item.icon === "string" &&
+      item.icon.length > 0,
+  ),
+  true,
+  "Setiap tujuan navigasi harus memiliki ikon",
+);
+
+assert.equal(
+  new Set(items.map((item) => item.icon)).size,
+  items.length,
+  "Ikon utama setiap tujuan navigasi harus jelas dan tidak duplikat",
+);
+assert.equal(
+  items.some((item) =>
+    Object.hasOwn(item, "shortLabel"),
+  ),
+  false,
+  "Kotak inisial navigasi lama tidak boleh tersisa",
+);
+
 const actualRoutes = items
   .map((item) => item.href)
   .sort((left, right) => left.localeCompare(right));

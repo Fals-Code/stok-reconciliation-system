@@ -344,7 +344,7 @@ try {
         }
 
     Invoke-SmokeTest `
-        -Name "Source contract: mobile drawer safeguards" `
+        -Name "Source contract: adaptive Admin shell safeguards" `
         -Test {
             $shellPath = Join-Path `
                 $ProjectRoot `
@@ -353,9 +353,33 @@ try {
             $shellText = [System.IO.File]::ReadAllText($shellPath)
 
             $requiredMarkers = @(
+                'data-app-shell="light-admin-shell"',
+                'data-app-topbar="admin"',
+                'data-notification-preview',
+                'data-notification-preview-mode="latest"',
+                'data-exclusive-popover="notification"',
+                'data-exclusive-popover="account"',
+                'data-popover-hover-bridge="notification"',
+                'data-popover-hover-bridge="account"',
+                'closeTopbarMenusOnEscape',
+                'notificationMenuRef.current?.removeAttribute(',
+                'data-account-popover',
+                'data-popover-offset="spacious"',
+                'data-popover-clip="rounded"',
+                'onPointerEnter={(event) =>',
+                'event.pointerType !== "mouse"',
+                'event.currentTarget.open = true',
+                'notifications={notificationPreview}',
+                'appMode !== "LOCAL"',
+                'data-sidebar-toggle',
+                'data-sidebar-state={',
+                'window.localStorage.setItem(',
+                'href="#main-content"',
+                'id="main-content"',
                 'aria-controls="mobile-navigation"',
-                'accountMenuRef.current?.removeAttribute("open")',
+                'accountMenuRef.current?.removeAttribute(',
                 'event.key === "Escape"',
+                'mobileTriggerRef.current?.focus()',
                 'z-[60]'
             )
 
@@ -366,7 +390,63 @@ try {
                     -Message "Missing mobile shell safeguard: $marker"
             }
 
-            return "Drawer, Escape, account close, and layer markers exist."
+            Assert-NotContains `
+                -Text $shellText `
+                -Unexpected "<OrganizationSummary" `
+                -Message "Organization summary card masih dirender pada sidebar."
+
+            $globalsPath = Join-Path `
+                $ProjectRoot `
+                "src\app\globals.css"
+
+            $globalsText = [System.IO.File]::ReadAllText(
+                $globalsPath
+            )
+
+            Assert-Contains `
+                -Text $globalsText `
+                -Expected ".app-shell details[data-hover-menu] > [data-popover-hover-bridge]" `
+                -Message "Explicit hover bridge popover tidak ditemukan."
+
+            Assert-Contains `
+                -Text $globalsText `
+                -Expected "height: 0.75rem;" `
+                -Message "Jarak aman popover belum dikunci."
+
+            Assert-Contains `
+                -Text $globalsText `
+                -Expected "[open] > [data-popover-hover-bridge]" `
+                -Message "Hover bridge belum aktif saat popover terbuka."
+
+            Assert-Contains `
+                -Text $shellText `
+                -Expected "overflow-hidden rounded-[var(--ui-radius-lg)]" `
+                -Message "Notification popover belum memotong hover mengikuti radius."
+
+            Assert-Contains `
+                -Text $shellText `
+                -Expected "hover:bg-ui-surface-subtle active:bg-ui-primary-subtle" `
+                -Message "State hover dan active footer notifikasi belum sesuai."
+
+            $layoutPath = Join-Path `
+                $ProjectRoot `
+                "src\app\layout.tsx"
+
+            $layoutText = [System.IO.File]::ReadAllText(
+                $layoutPath
+            )
+
+            Assert-Contains `
+                -Text $layoutText `
+                -Expected "getNotificationList({" `
+                -Message "Notification preview query tidak ditemukan."
+
+            Assert-NotContains `
+                -Text $layoutText `
+                -Unexpected 'readStateCode: "UNREAD"' `
+                -Message "Preview topbar masih dibatasi hanya ke notifikasi unread."
+
+            return "Adaptive sidebar, exclusive latest-notification popovers, skip link, focus return, and drawer safeguards exist."
         }
 
     Invoke-SmokeTest `
@@ -402,7 +482,7 @@ try {
 
             Assert-NotContains `
                 -Text $response.Content `
-                -Unexpected "Ledger-first stock control" `
+                -Unexpected "Kontrol stok gudang" `
                 -Message "Admin sidebar leaked into the login page."
 
             return "Login page is outside the authenticated shell."
@@ -586,13 +666,27 @@ try {
 
                     Assert-Contains `
                         -Text $response.Content `
-                        -Expected "Ledger-first stock control" `
+                        -Expected "Kontrol stok gudang" `
                         -Message "Shared Admin shell marker was not rendered."
 
                     Assert-Contains `
                         -Text $response.Content `
                         -Expected "Keluar dari akun" `
                         -Message "Admin account control was not rendered."
+                    Assert-Contains `
+                        -Text $response.Content `
+                        -Expected "data-notification-preview" `
+                        -Message "Notification preview popover was not rendered."
+
+                    Assert-Contains `
+                        -Text $response.Content `
+                        -Expected 'data-notification-preview-mode="latest"' `
+                        -Message "Latest notification preview mode was not rendered."
+
+                    Assert-Contains `
+                        -Text $response.Content `
+                        -Expected "data-account-popover" `
+                        -Message "Account profile popover was not rendered."
 
                     Assert-Contains `
                         -Text $response.Content `

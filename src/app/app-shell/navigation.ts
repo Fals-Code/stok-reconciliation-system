@@ -1,8 +1,10 @@
+import type { NavigationIconName } from "@/app/app-shell/navigation-icon";
+
 export type AppNavItem = {
   href: string;
   label: string;
-  shortLabel: string;
   description: string;
+  icon: NavigationIconName;
 };
 
 export type AppNavSection = {
@@ -10,10 +12,6 @@ export type AppNavSection = {
   items: readonly AppNavItem[];
 };
 
-/*
- * shortLabel dipertahankan sebagai compatibility bridge untuk shell lama.
- * Redesign shell berikutnya akan menggantinya dengan ikon aksesibel.
- */
 export const APP_NAV_SECTIONS = [
   {
     label: "Utama",
@@ -21,14 +19,14 @@ export const APP_NAV_SECTIONS = [
       {
         href: "/today",
         label: "Pusat Kendali",
-        shortLabel: "PK",
         description: "Pekerjaan yang perlu ditangani hari ini",
+        icon: "task",
       },
       {
         href: "/",
         label: "Ringkasan Stok",
-        shortLabel: "RS",
         description: "Posisi stok dan aktivitas terbaru",
+        icon: "dashboard",
       },
     ],
   },
@@ -38,32 +36,32 @@ export const APP_NAV_SECTIONS = [
       {
         href: "/manual-outbounds",
         label: "Barang Keluar",
-        shortLabel: "BK",
         description: "Preview FEFO sebelum stok dikeluarkan",
+        icon: "outbound",
       },
       {
         href: "/returns",
         label: "Retur",
-        shortLabel: "RT",
         description: "Penerimaan, inspeksi, dan klaim retur",
+        icon: "return",
       },
       {
         href: "/stock-disposals",
         label: "Rusak & Kedaluwarsa",
-        shortLabel: "RD",
         description: "Catat pengeluaran stok yang tidak layak",
+        icon: "disposal",
       },
       {
         href: "/marketplace",
         label: "Pesanan Marketplace",
-        shortLabel: "PM",
         description: "Listing, reservasi, dan pengiriman",
+        icon: "marketplace",
       },
       {
         href: "/marketplace/import",
         label: "Impor Marketplace",
-        shortLabel: "IM",
         description: "Periksa dan proses data CSV",
+        icon: "import",
       },
     ],
   },
@@ -73,32 +71,32 @@ export const APP_NAV_SECTIONS = [
       {
         href: "/stocktakes",
         label: "Stok Opname",
-        shortLabel: "SO",
         description: "Hitung fisik dan penyesuaian opname",
+        icon: "stocktake",
       },
       {
         href: "/reconciliation",
         label: "Rekonsiliasi",
-        shortLabel: "RE",
         description: "Periksa integritas dan selisih stok",
+        icon: "reconciliation",
       },
       {
         href: "/entry-corrections",
         label: "Koreksi Entri",
-        shortLabel: "KE",
         description: "Preview dan reversal transaksi salah",
+        icon: "correction",
       },
       {
         href: "/opening-balances",
         label: "Saldo Awal",
-        shortLabel: "SA",
         description: "Cutover dan verifikasi stok awal",
+        icon: "opening-balance",
       },
       {
         href: "/ledger",
         label: "Riwayat Stok",
-        shortLabel: "RS",
         description: "Telusuri pergerakan dan asal saldo",
+        icon: "history",
       },
     ],
   },
@@ -108,20 +106,20 @@ export const APP_NAV_SECTIONS = [
       {
         href: "/products",
         label: "Produk & Batch",
-        shortLabel: "PB",
         description: "Kelola identitas produk dan batch",
+        icon: "product",
       },
       {
         href: "/notifications",
         label: "Notifikasi",
-        shortLabel: "NT",
         description: "Peringatan dan tindak lanjut aktif",
+        icon: "notification",
       },
       {
         href: "/notifications/operations",
         label: "Pemrosesan Notifikasi",
-        shortLabel: "PN",
         description: "Periksa evaluasi dan antrean notifikasi",
+        icon: "notification-process",
       },
     ],
   },
