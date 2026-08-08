@@ -528,6 +528,39 @@ Alasan wajib bila memiliki nilai audit nyata, misalnya:
 
 Tandai field opsional secara jelas.
 
+### Alasan, kanal, dan referensi tidak dicampur
+
+**Alasan** menjawab mengapa barang bergerak. **Kanal/Sumber** menjawab dari mana kejadian berasal.
+
+Jangan membuat satu pilihan campuran seperti:
+
+```text
+Shopee Promo
+TikTok Sampel
+Manual Rusak
+```
+
+Lebih jelas:
+
+```text
+Alasan
+Sampel
+
+Kanal / Sumber
+Pengeluaran Manual
+```
+
+Untuk Barang Keluar manual dengan alasan **Bonus**, **Promo**, atau **Sampel**, current server contract membutuhkan referensi bisnis.
+
+UI harus langsung menampilkan field wajib yang relevan:
+
+```text
+Referensi Kegiatan *
+[ Campaign Agustus ]
+```
+
+Jangan menunggu submit gagal baru menjelaskan bahwa referensi diperlukan. Identifier teknis/source-line tetap dibuat sistem.
+
 ### Default waktu
 
 Untuk operasi yang terjadi sekarang, default-kan waktu ke saat ini dan tampilkan:
@@ -738,6 +771,21 @@ Preview menampilkan:
 
 ### Barang Rusak / Kedaluwarsa
 
+#### Mendekati kedaluwarsa bukan kedaluwarsa
+
+Batch yang **mendekati** tanggal kedaluwarsa hanya mendapat warning/risk state. Jangan menawarkan atau mengizinkan alasan **Kedaluwarsa** seolah tanggal kedaluwarsa sudah lewat.
+
+```text
+Mendekati kedaluwarsa
+12 hari lagi
+
+Batch belum dapat dicatat sebagai Kedaluwarsa.
+```
+
+Eligibility tetap berasal dari source/server dengan boundary tanggal operasional yang sah.
+
+Jika barang memang rusak, proses melalui kondisi/alasan rusak yang sah; jangan mengubah near-expiry menjadi expired agar pemusnahan dapat diposting.
+
 User memang memilih batch fisik exact, tetapi UI tidak perlu memakai istilah `bucket`.
 
 Gunakan:
@@ -812,6 +860,33 @@ Jelaskan:
 > Transaksi asli tidak dihapus. Sistem membuat transaksi pembatalan agar riwayat tetap dapat dilacak.
 
 Alasan pembatalan wajib.
+
+#### Tidak semua transaksi dapat memakai pembatalan generik
+
+Ketersediaan **Batalkan Transaksi** mengikuti authoritative preview dan domain support, bukan sekadar karena transaksi terlihat di Riwayat.
+
+Jika pembatalan diblokir, jelaskan alasan manusia dan arah berikutnya.
+
+Contoh penerimaan yang barangnya sudah dipakai:
+
+```text
+Transaksi ini belum dapat dibatalkan.
+
+Sebagian barang dari penerimaan ini sudah digunakan
+pada transaksi lain.
+
+[ Lihat Pergerakan Terkait ]
+```
+
+Blocker lain dapat mencakup:
+
+- transaksi sudah dibatalkan;
+- stok yang perlu dipulihkan/tarik kembali sudah tidak cukup;
+- pembatalan akan membuat posisi stok tidak valid terhadap reservasi;
+- preview sudah tidak berlaku;
+- tipe transaksi memiliki workflow koreksi domain tersendiri.
+
+Jangan menampilkan tombol generik aktif lalu membiarkan raw database error menjadi penjelasan pertama.
 
 ### Status dan langkah berikutnya Pesanan
 
@@ -914,6 +989,33 @@ Menampilkan 4 dari 128 produk
 
 Jangan membuat user lupa bahwa dia sedang melihat subset.
 
+### State daftar penting tersimpan di URL
+
+Untuk list/worklist penting, state yang menentukan **subset dan urutan data** harus tersimpan di URL bila route mendukungnya:
+
+- pencarian;
+- filter;
+- sort;
+- pagination/cursor.
+
+Tujuannya agar refresh, bookmark, tombol Back, dan kembali dari detail membawa user ke konteks yang sama.
+
+Contoh state URL:
+
+```text
+?q=serum&status=ditahan
+```
+
+Jangan menyimpan ke URL:
+
+- password;
+- catatan draft yang belum disimpan;
+- raw payload;
+- token/secret;
+- data sensitif lain.
+
+Parameter URL yang tidak valid tidak boleh diam-diam menampilkan subset berbeda seolah benar. Gunakan fallback aman dan jelaskan filter yang benar-benar aktif.
+
 ### Riwayat Stok
 
 Filter default:
@@ -985,6 +1087,30 @@ Status selesai akan muncul setelah kondisi sumber benar-benar beres.
 ```
 
 Jangan gunakan label `Acknowledged`.
+
+#### Penanganan Kritis membutuhkan catatan audit
+
+Untuk notification dengan severity source `CRITICAL` yang ditampilkan sebagai **Kritis**, tindakan:
+
+```text
+[ Tandai Sedang Ditangani ]
+```
+
+harus meminta catatan penanganan yang bermakna:
+
+```text
+Catatan penanganan *
+[ Sedang dicek terhadap transaksi dan stok fisik. ]
+```
+
+Severity di bawahnya boleh mengikuti kontrak server yang mengizinkan catatan opsional.
+
+Catatan penanganan:
+
+- menjadi evidence koordinasi manusia;
+- tidak mengubah stok;
+- tidak menyelesaikan kondisi sumber;
+- tidak menggantikan tindakan domain yang sebenarnya.
 
 #### Resolved berasal dari source condition
 
@@ -1749,6 +1875,31 @@ Komponen dibuat future-ready terhadap permission untuk aksi seperti:
 
 Jika RBAC ditambahkan kemudian, keamanan harus ditegakkan oleh server/RLS/domain guard, bukan hanya menyembunyikan tombol.
 
+### Login dan logout aman
+
+Login gagal karena kredensial tidak valid harus memakai pesan generik yang tidak membocorkan apakah email tertentu terdaftar.
+
+Contoh:
+
+```text
+Email atau password tidak cocok.
+Periksa kembali lalu coba lagi.
+```
+
+Jangan menampilkan raw provider error, endpoint Auth, environment variable, SQL, atau detail yang membedakan `email tidak ada` dari `password salah`.
+
+Capability yang belum tersedia seperti signup atau reset password tidak boleh ditampilkan sebagai link palsu.
+
+Setelah logout:
+
+```text
+Sesi telah diakhiri.
+```
+
+halaman operasional wajib tetap terlindungi. Menekan tombol **Back** tidak boleh membuka kembali data authenticated tanpa autentikasi ulang.
+
+Ini berbeda dari session recovery: logout adalah tindakan eksplisit untuk mengakhiri akses, sehingga sistem tidak boleh memulihkan mutation/draft rahasia secara otomatis setelah logout.
+
 ### Akun Admin Individual dan Lifecycle
 
 Satu role `ADMIN` bukan berarti satu akun bersama.
@@ -2359,6 +2510,34 @@ Retur RTN-281
 Batch RETURN dibuat oleh workflow retur, bukan dipilih manual saat membuat batch normal.
 
 ## Marketplace, Bundle, Retur, dan Klaim
+
+### Status marketplace tidak sama dengan penerimaan fisik gudang
+
+Marketplace dapat menyatakan retur **diterima**, tetapi status sumber tersebut bukan bukti bahwa Admin gudang sudah melihat barang secara fisik.
+
+Jika keduanya berbeda, tampilkan terpisah:
+
+```text
+Status Marketplace
+Retur diterima
+
+Status Gudang
+Belum dikonfirmasi tiba
+
+Dampak stok
+Belum berubah
+```
+
+Jangan otomatis:
+
+- mengubah status gudang menjadi Sudah Diterima;
+- menjalankan inspeksi;
+- membuat batch RETURN;
+- menambah stok;
+
+hanya karena source marketplace menyebut `received`.
+
+Penerimaan fisik tetap merupakan tindakan/command gudang tersendiri dan pada Phase 2 tetap stock-neutral sampai hasil inspeksi `SELLABLE` yang sah.
 
 ### Status pesanan dan dampak stok dipisahkan
 
@@ -3468,6 +3647,10 @@ Penyederhanaan UI tidak boleh mengubah:
 16. Scope tetap satu role ADMIN sampai kontrak security baru dibuat.
 17. UI tidak mengklaim offline sync tanpa capability nyata.
 18. Client-side simplification tidak boleh mengganti authoritative server validation.
+
+19. Alasan dan kanal tetap merupakan dimensi terpisah.
+20. Barang Keluar manual untuk Bonus/Promo/Sampel tetap memerlukan referensi bisnis sesuai kontrak server.
+21. Status retur dari marketplace tidak menjadi bukti penerimaan fisik gudang.
 
 ## State Wajib
 
