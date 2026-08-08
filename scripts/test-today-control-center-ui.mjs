@@ -346,7 +346,7 @@ async function main() {
   const anonymous = await page("/today", false);
   check("Tanpa Admin diarahkan ke login", [302, 303, 307, 308].includes(anonymous.response.status) && String(anonymous.response.headers.get("location") ?? "").includes("/login"));
   const home = await page("/today");
-  check("Route Pusat Kendali dapat dibuka", home.response.status === 200 && home.html.includes("Pusat Kendali Hari Ini"));
+  check("Route Hari Ini dapat dibuka", home.response.status === 200 && home.html.includes("Hari Ini") && !home.html.includes("Read-only"));
   check(
     "Shared PageHeader dan breadcrumb tampil",
     home.html.includes('data-page-header="shared"') &&
@@ -364,9 +364,12 @@ async function main() {
       todayNavigationTag.includes('aria-current="page"') &&
       home.html.includes("Pusat Kendali"),
   );
-  check("Summary severity tampil dengan label teks", home.html.includes("Prioritas pada halaman ini") && home.html.includes("Kritis") && home.html.includes("Segera") && home.html.includes("Perhatian") && home.html.includes("Rutin"));
+  const summaryBlock = home.html.match(/<div class="grid gap-4 sm:grid-cols-2 xl:grid-cols-4" data-testid="today-severity-summary">([\s\S]*?)<\/div>\s*<\/section>/)?.[1] ?? "";
+  check("Summary severity hanya operasional", home.html.includes("Prioritas pada halaman ini") && summaryBlock.includes("Kritis") && summaryBlock.includes("Mendesak") && summaryBlock.includes("Perlu Diperiksa") && summaryBlock.includes("Informasi") && !summaryBlock.includes("RUN_FAILED") && !summaryBlock.includes("Outbox notifikasi gagal") && !summaryBlock.includes("Evaluasi notifikasi gagal"));
   const filterForm = home.html.match(/<form\b[^>]*data-testid="today-filter-form"[^>]*>/)?.[0] ?? "";
-  check("Daftar tindakan read-only tampil", home.html.includes("Sinyal aktif yang perlu diperiksa") && Boolean(filterForm) && !filterForm.includes("action="));
+  check("Daftar tindakan operasional tampil", home.html.includes("Sinyal aktif yang perlu diperiksa") && home.html.includes("Saring prioritas") && home.html.includes("Prioritas") && Boolean(filterForm) && !filterForm.includes("action="));
+  check("Status sistem dipisahkan dari pekerjaan gudang", home.html.includes("Status Sistem") && home.html.includes("Gangguan di luar pekerjaan gudang."));
+  check("Tidak ada label Tenggat generik", home.html.includes("Batas klaim") || home.html.includes("Periksa sebelum") || home.html.includes("Kedaluwarsa") || home.html.includes("Batas hitung ulang") || home.html.includes("Batas posting ulang") || home.html.includes("Waktu gangguan"));
 
   const first = allRows[0];
   const severity = await page(`/today?severity=${encodeURIComponent(first.severity_code)}`);
@@ -428,6 +431,7 @@ async function main() {
   check("Ada work item tanpa action route untuk state blocked", Boolean(blocked));
   const blockedPage = await page(`/today?severity=${encodeURIComponent(blocked.severity_code)}&workType=${encodeURIComponent(blocked.work_type_code)}`);
   check("Item tanpa route tidak membuat link palsu", blockedPage.html.includes("Detail tindakan belum tersedia"));
+  check("Desktop worklist tetap padat dan mobile tetap kartu", home.html.includes('data-testid="today-work-list-desktop"') && home.html.includes('data-testid="today-work-list-mobile"') && home.html.includes('data-testid="today-system-failures"'));
   const unsafeRoutePage = await page("/today?severity=INFO&workType=BATCH_EXPIRY");
   check("Protocol-relative route ter-encode tidak menjadi link", unsafeRoutePage.html.includes("Fixture route double-encoded tidak aman Pusat Kendali") && !unsafeRoutePage.html.includes('href="/%252F%252Fevil.example"'));
 
