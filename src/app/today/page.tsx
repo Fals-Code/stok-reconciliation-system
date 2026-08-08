@@ -12,6 +12,14 @@ import {
   type TodayControlCenterWorkItem,
   type TodayControlCenterWorkType,
 } from "@/lib/supabase-rest";
+import {
+  Alert,
+  Button,
+  EmptyState,
+  Field,
+  Select,
+  StatusBadge,
+} from "@/components/ui";
 
 export const dynamic = "force-dynamic";
 
@@ -38,11 +46,18 @@ const workTypeLabels: Record<TodayControlCenterWorkType, string> = {
   NOTIFICATION_RULE_RUN_FAILURE: "Evaluasi notifikasi gagal",
 };
 
-const severityMeta: Record<TodayControlCenterSeverity, { label: string; tone: string }> = {
-  CRITICAL: { label: "Kritis", tone: "border-rose-400/30 bg-rose-400/10 text-rose-200" },
-  HIGH: { label: "Segera", tone: "border-amber-400/30 bg-amber-400/10 text-amber-100" },
-  WARNING: { label: "Perhatian", tone: "border-sky-400/30 bg-sky-400/10 text-sky-100" },
-  INFO: { label: "Rutin", tone: "border-white/15 bg-white/[0.04] text-slate-200" },
+const severityToBadgeTone: Record<TodayControlCenterSeverity, "neutral" | "warning" | "danger"> = {
+  CRITICAL: "danger",
+  HIGH: "warning",
+  WARNING: "warning",
+  INFO: "neutral",
+};
+
+const severityMeta: Record<TodayControlCenterSeverity, { label: string }> = {
+  CRITICAL: { label: "Kritis" },
+  HIGH: { label: "Segera" },
+  WARNING: { label: "Perhatian" },
+  INFO: { label: "Rutin" },
 };
 
 type SearchValue = string | string[] | undefined;
@@ -166,41 +181,88 @@ function isSafeInternalRoute(routePath: string | null) {
   }
 }
 
-function SeverityBadge({ severity }: { severity: TodayControlCenterSeverity }) {
-  const meta = severityMeta[severity];
-  return <span className={`status-pill border ${meta.tone}`}>{meta.label}</span>;
-}
-
 function WorkItemCard({ item }: { item: TodayControlCenterWorkItem }) {
   const actionAvailable = isSafeInternalRoute(item.route_path);
+  const badgeTone = severityToBadgeTone[item.severity_code];
 
   return (
-    <article className="rounded-2xl border border-white/10 bg-white/[0.025] p-5" data-testid="today-work-item">
+    <article className="rounded-[var(--ui-radius-lg)] border border-ui-border bg-ui-surface p-4 sm:p-5 hover:bg-ui-surface-subtle transition-colors" data-testid="today-work-item">
       <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
         <div className="min-w-0">
           <div className="flex flex-wrap items-center gap-2">
-            <SeverityBadge severity={item.severity_code} />
-            <span className="text-xs text-slate-400">{workTypeLabels[item.work_type_code]}</span>
+            <StatusBadge tone={badgeTone}>{severityMeta[item.severity_code].label}</StatusBadge>
+            <span className="text-xs text-ui-text-muted">{workTypeLabels[item.work_type_code]}</span>
           </div>
-          <h2 className="mt-3 text-lg font-semibold text-white">{item.title}</h2>
-          <p className="mt-2 max-w-4xl text-sm leading-6 text-slate-300">{item.summary}</p>
+          <h2 className="mt-3 text-lg font-semibold text-ui-text">{item.title}</h2>
+          <p className="mt-2 max-w-4xl text-sm leading-6 text-ui-text-muted">{item.summary}</p>
         </div>
         {actionAvailable ? (
-          <Link className="nav-link shrink-0" href={item.route_path as string} data-testid="today-work-item-link">
+          <Link
+            href={item.route_path as string}
+            className="inline-flex min-h-[var(--ui-control-height)] items-center justify-center rounded-[var(--ui-radius-md)] border border-transparent bg-transparent px-4 text-sm font-semibold text-ui-text-muted hover:bg-ui-surface-subtle hover:text-ui-text transition-colors motion-reduce:transition-none focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ui-focus shrink-0"
+            data-testid="today-work-item-link"
+          >
             Buka tindakan
           </Link>
         ) : (
-          <span className="shrink-0 rounded-xl border border-white/10 px-3 py-2 text-sm text-slate-500" data-testid="today-work-item-blocked">
+          <span className="shrink-0 rounded-[var(--ui-radius-md)] border border-ui-border bg-ui-surface-subtle px-3 py-2 text-sm text-ui-text-muted" data-testid="today-work-item-blocked">
             Detail tindakan belum tersedia
           </span>
         )}
       </div>
-      <dl className="mt-5 grid gap-3 text-xs text-slate-400 sm:grid-cols-2 xl:grid-cols-4">
-        <div><dt className="font-mono uppercase tracking-wide text-slate-600">Terjadi</dt><dd className="mt-1 text-slate-300">{formatDate(item.occurred_at)}</dd></div>
-        <div><dt className="font-mono uppercase tracking-wide text-slate-600">Tenggat</dt><dd className="mt-1 text-slate-300">{formatDate(item.due_at)}</dd></div>
-        <div><dt className="font-mono uppercase tracking-wide text-slate-600">Sumber</dt><dd className="mt-1 break-all text-slate-300">{item.source_reference ?? "Referensi tidak tersedia"}</dd></div>
-        <div><dt className="font-mono uppercase tracking-wide text-slate-600">Status episode</dt><dd className="mt-1 text-slate-300">{item.resolution_status === "ACKNOWLEDGED" ? "Sudah diakui" : "Aktif"}</dd></div>
+      <dl className="mt-4 grid gap-3 text-xs text-ui-text-muted sm:grid-cols-2 xl:grid-cols-4">
+        <div><dt className="font-mono uppercase tracking-wide text-ui-text-muted">Terjadi</dt><dd className="mt-1 text-ui-text">{formatDate(item.occurred_at)}</dd></div>
+        <div><dt className="font-mono uppercase tracking-wide text-ui-text-muted">Tenggat</dt><dd className="mt-1 text-ui-text">{formatDate(item.due_at)}</dd></div>
+        <div><dt className="font-mono uppercase tracking-wide text-ui-text-muted">Sumber</dt><dd className="mt-1 break-all text-ui-text">{item.source_reference ?? "Referensi tidak tersedia"}</dd></div>
+        <div><dt className="font-mono uppercase tracking-wide text-ui-text-muted">Status episode</dt><dd className="mt-1 text-ui-text">{item.resolution_status === "ACKNOWLEDGED" ? "Sudah diakui" : "Aktif"}</dd></div>
       </dl>
+    </article>
+  );
+}
+
+function WorkItemCardMobile({ item }: { item: TodayControlCenterWorkItem }) {
+  const actionAvailable = isSafeInternalRoute(item.route_path);
+  const badgeTone = severityToBadgeTone[item.severity_code];
+
+  return (
+    <article className="rounded-[var(--ui-radius-lg)] border border-ui-border bg-ui-surface p-4" data-testid="today-work-item-mobile">
+      <div className="flex flex-wrap items-start gap-2">
+        <StatusBadge tone={badgeTone}>{severityMeta[item.severity_code].label}</StatusBadge>
+        <span className="text-xs text-ui-text-muted">{workTypeLabels[item.work_type_code]}</span>
+      </div>
+      <h2 className="mt-3 text-base font-semibold text-ui-text">{item.title}</h2>
+      <p className="mt-2 text-sm leading-6 text-ui-text-muted">{item.summary}</p>
+      <dl className="mt-3 grid gap-2 text-xs text-ui-text-muted sm:grid-cols-2">
+        <div><dt className="font-mono uppercase tracking-wide text-ui-text-muted">Terjadi</dt><dd className="mt-0.5 text-ui-text">{formatDate(item.occurred_at)}</dd></div>
+        <div><dt className="font-mono uppercase tracking-wide text-ui-text-muted">Tenggat</dt><dd className="mt-0.5 text-ui-text">{formatDate(item.due_at)}</dd></div>
+        <div><dt className="font-mono uppercase tracking-wide text-ui-text-muted">Sumber</dt><dd className="mt-0.5 break-all text-ui-text">{item.source_reference ?? "Referensi tidak tersedia"}</dd></div>
+        <div><dt className="font-mono uppercase tracking-wide text-ui-text-muted">Status episode</dt><dd className="mt-0.5 text-ui-text">{item.resolution_status === "ACKNOWLEDGED" ? "Sudah diakui" : "Aktif"}</dd></div>
+      </dl>
+      {actionAvailable ? (
+        <Link
+          href={item.route_path as string}
+          className="mt-3 inline-flex w-full min-h-[var(--ui-control-height)] items-center justify-center rounded-[var(--ui-radius-md)] border border-ui-primary bg-ui-primary text-ui-text-on-primary text-sm font-semibold hover:bg-ui-primary-hover transition-colors"
+          data-testid="today-work-item-link-mobile"
+        >
+          Buka tindakan
+        </Link>
+      ) : (
+        <span className="mt-3 inline-flex w-full min-h-[var(--ui-control-height)] items-center justify-center rounded-[var(--ui-radius-md)] border border-ui-border bg-ui-surface-subtle text-sm text-ui-text-muted" data-testid="today-work-item-blocked-mobile">
+          Detail tindakan belum tersedia
+        </span>
+      )}
+    </article>
+  );
+}
+
+function SeveritySummaryCard({ severity, count }: { severity: TodayControlCenterSeverity; count: number }) {
+  const badgeTone = severityToBadgeTone[severity];
+
+  return (
+    <article className="rounded-[var(--ui-radius-lg)] border border-ui-border bg-ui-surface p-4" data-testid="today-severity-summary-card">
+      <StatusBadge tone={badgeTone}>{severityMeta[severity].label}</StatusBadge>
+      <p className="mt-3 text-2xl font-semibold text-ui-text">{count}</p>
+      <p className="mt-1 text-xs text-ui-text-muted">item pada halaman ini</p>
     </article>
   );
 }
@@ -234,57 +296,140 @@ export default async function TodayControlCenterPage({
   }));
   const nextStack = data?.nextCursor ? [...state.cursorStack, data.nextCursor] : state.cursorStack;
 
+  const severityDefaultValue = state.severity === "ALL" ? "" : state.severity;
+  const workTypeDefaultValue = state.workType === "ALL" ? "" : state.workType;
+
   return (
-    <main className="min-h-screen bg-slate-950 text-slate-100">
+    <main className="min-h-screen bg-ui-canvas text-ui-text">
       <div className="mx-auto w-full max-w-[1500px] px-5 py-8 lg:px-8">
         <PageHeader
           breadcrumb={getBreadcrumbItems("/today")}
           description="Antrean kerja read-only dari sinyal operasional aktif. Membuka atau menyaring daftar ini tidak mengubah stok maupun status bisnis."
           status={
-            <span className="status-pill status-neutral">
-              Read-only
-            </span>
+            <StatusBadge tone="neutral">Read-only</StatusBadge>
           }
           title="Pusat Kendali Hari Ini"
         />
 
-        {state.invalidState ? <div className="mt-6 rounded-2xl border border-amber-400/20 bg-amber-400/10 p-4 text-sm text-amber-100" role="status">Filter atau tautan halaman tidak valid. Menampilkan antrean dari awal dengan filter aman.</div> : null}
-        {loadFailed ? <div className="mt-6 rounded-2xl border border-rose-400/20 bg-rose-400/10 p-4 text-sm text-rose-100" role="alert">Antrean belum dapat dimuat. Coba muat ulang; tidak ada perubahan data yang dilakukan.</div> : null}
+        {state.invalidState ? (
+          <Alert tone="warning" className="mt-6" title="Filter atau tautan halaman tidak valid.">
+            Menampilkan antrean dari awal dengan filter aman.
+          </Alert>
+        ) : null}
+        {loadFailed ? (
+          <Alert tone="danger" className="mt-6" title="Antrean belum dapat dimuat.">
+            Coba muat ulang; tidak ada perubahan data yang dilakukan.
+          </Alert>
+        ) : null}
 
         <section className="mt-8" aria-labelledby="severity-summary-title">
-          <div className="mb-4 flex flex-wrap items-end justify-between gap-3"><div><p className="section-kicker">Ringkasan halaman</p><h2 id="severity-summary-title" className="section-title">Prioritas pada halaman ini</h2></div><p className="text-xs text-slate-500">Urutan: Kritis, Segera, Perhatian, Rutin.</p></div>
+          <div className="mb-4 flex flex-wrap items-end justify-between gap-3">
+            <div>
+              <p className="text-xs font-mono uppercase tracking-[0.1em] text-ui-text-muted">Ringkasan halaman</p>
+              <h2 id="severity-summary-title" className="mt-1 text-2xl font-semibold text-ui-text">Prioritas pada halaman ini</h2>
+            </div>
+            <p className="text-xs text-ui-text-muted">Urutan: Kritis, Segera, Perhatian, Rutin.</p>
+          </div>
           <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4" data-testid="today-severity-summary">
             {severityCounts.map(({ severity, count }) => (
-              <article key={severity} className="metric-card">
-                <SeverityBadge severity={severity} />
-                <p className="mt-3 text-3xl font-semibold text-white">{count}</p>
-                <p className="mt-2 text-xs text-slate-500">item pada halaman ini</p>
-              </article>
+              <SeveritySummaryCard key={severity} severity={severity} count={count} />
             ))}
           </div>
         </section>
 
-        <section className="panel-card mt-8" aria-labelledby="today-filters-title">
-          <div><p className="section-kicker">Filter</p><h2 id="today-filters-title" className="section-title">Saring tindakan</h2></div>
-          <form method="get" className="mt-5 grid gap-4 md:grid-cols-[minmax(0,1fr)_minmax(0,1fr)_auto]" data-testid="today-filter-form">
-            <label className="field-label">Severity<select name="severity" defaultValue={state.severity}>{severityOptions.map(([value, label]) => <option key={value} value={value === "ALL" ? "" : value}>{label}</option>)}</select></label>
-            <label className="field-label">Jenis pekerjaan<select name="workType" defaultValue={state.workType}><option value="">Semua jenis pekerjaan</option>{TODAY_CONTROL_CENTER_WORK_TYPES.map((workType) => <option key={workType} value={workType}>{workTypeLabels[workType]}</option>)}</select></label>
-            <div className="flex items-end gap-2"><button className="primary-button" type="submit">Terapkan</button><Link className="nav-link" href="/today">Reset</Link></div>
+        <section className="mt-8 rounded-[var(--ui-radius-lg)] border border-ui-border bg-ui-surface p-4 sm:p-5" aria-labelledby="today-filters-title">
+          <div>
+            <p className="text-xs font-mono uppercase tracking-[0.1em] text-ui-text-muted">Filter</p>
+            <h2 id="today-filters-title" className="mt-1 text-lg font-semibold text-ui-text">Saring tindakan</h2>
+          </div>
+          <form method="get" className="mt-4 grid gap-3 sm:grid-cols-[1fr_1fr_auto]" data-testid="today-filter-form">
+            <Field id="today-severity-filter" label="Severity">
+              {({ id, ...fieldProps }) => (
+                <Select {...fieldProps} id={id} name="severity" defaultValue={severityDefaultValue}>
+                  {severityOptions.map(([value, label]) => (
+                    <option key={value} value={value === "ALL" ? "" : value}>{label}</option>
+                  ))}
+                </Select>
+              )}
+            </Field>
+            <Field id="today-worktype-filter" label="Jenis pekerjaan">
+              {({ id, ...fieldProps }) => (
+                <Select {...fieldProps} id={id} name="workType" defaultValue={workTypeDefaultValue}>
+                  <option value="">Semua jenis pekerjaan</option>
+                  {TODAY_CONTROL_CENTER_WORK_TYPES.map((workType) => (
+                    <option key={workType} value={workType}>{workTypeLabels[workType]}</option>
+                  ))}
+                </Select>
+              )}
+            </Field>
+            <div className="flex items-end gap-2">
+              <Button type="submit" className="min-w-[120px]">Terapkan</Button>
+              <Link
+                href="/today"
+                className="inline-flex min-h-[var(--ui-control-height)] items-center justify-center rounded-[var(--ui-radius-md)] border border-ui-border bg-ui-surface px-4 text-sm font-semibold text-ui-text transition-colors hover:border-ui-border-strong hover:bg-ui-surface-subtle"
+              >
+                Reset
+              </Link>
+            </div>
           </form>
         </section>
 
         <section className="mt-8" aria-labelledby="today-list-title">
-          <div className="flex flex-wrap items-end justify-between gap-3"><div><p className="section-kicker">Tindakan hari ini</p><h2 id="today-list-title" className="section-title">Sinyal aktif yang perlu diperiksa</h2></div><p className="text-xs text-slate-500">Sumber yang sudah selesai tidak tampil lagi setelah refresh.</p></div>
+          <div className="mb-4 flex flex-wrap items-end justify-between gap-3">
+            <div>
+              <p className="text-xs font-mono uppercase tracking-[0.1em] text-ui-text-muted">Tindakan hari ini</p>
+              <h2 id="today-list-title" className="mt-1 text-2xl font-semibold text-ui-text">Sinyal aktif yang perlu diperiksa</h2>
+            </div>
+            <p className="text-xs text-ui-text-muted">Sumber yang sudah selesai tidak tampil lagi setelah refresh.</p>
+          </div>
           {loadFailed ? null : rows.length === 0 ? (
-            <div className="mt-5 rounded-2xl border border-dashed border-white/15 p-8 text-center text-sm leading-6 text-slate-400" data-testid="today-empty-state">Tidak ada tindakan aktif untuk filter ini. Episode yang sudah selesai atau ditutup tidak ditampilkan.</div>
+            <EmptyState
+              className="mt-5"
+              title="Tidak ada tindakan aktif untuk filter ini"
+              description="Episode yang sudah selesai atau ditutup tidak ditampilkan."
+              data-testid="today-empty-state"
+            />
           ) : (
-            <div className="mt-5 space-y-4">{rows.map((item) => <WorkItemCard key={item.work_item_id} item={item} />)}</div>
+            <>
+              <div className="mt-5 space-y-3 hidden sm:block" data-testid="today-work-list-desktop">
+                {rows.map((item) => (
+                  <WorkItemCard key={item.work_item_id} item={item} />
+                ))}
+              </div>
+              <div className="mt-5 space-y-3 sm:hidden" data-testid="today-work-list-mobile">
+                {rows.map((item) => (
+                  <WorkItemCardMobile key={item.work_item_id} item={item} />
+                ))}
+              </div>
+            </>
           )}
 
-          {!loadFailed ? <nav className="mt-6 flex flex-wrap items-center justify-between gap-3" aria-label="Pagination tindakan hari ini">
-            {state.cursorStack.length > 0 ? <Link className="nav-link" href={todayHref(state, { cursorStack: state.cursorStack.slice(0, -1) })} data-testid="today-previous-page">Sebelumnya</Link> : <span className="text-sm text-slate-600">Halaman pertama</span>}
-            {data?.hasNextPage && data.nextCursor ? <Link className="nav-link" href={todayHref(state, { cursorStack: nextStack })} data-testid="today-next-page">Berikutnya</Link> : <span className="text-sm text-slate-600">Tidak ada halaman berikutnya</span>}
-          </nav> : null}
+          {!loadFailed && (
+            <nav className="mt-6 flex flex-wrap items-center justify-between gap-3" aria-label="Pagination tindakan hari ini">
+              {state.cursorStack.length > 0 ? (
+                <Link
+                  href={todayHref(state, { cursorStack: state.cursorStack.slice(0, -1) })}
+                  className="inline-flex min-h-[var(--ui-control-height)] items-center justify-center rounded-[var(--ui-radius-md)] border border-ui-border bg-ui-surface px-4 text-sm font-semibold text-ui-text transition-colors hover:border-ui-border-strong hover:bg-ui-surface-subtle"
+                  data-testid="today-previous-page"
+                >
+                  Sebelumnya
+                </Link>
+              ) : (
+                <span className="text-sm text-ui-text-muted">Halaman pertama</span>
+              )}
+              {data?.hasNextPage && data.nextCursor ? (
+                <Link
+                  href={todayHref(state, { cursorStack: nextStack })}
+                  className="inline-flex min-h-[var(--ui-control-height)] items-center justify-center rounded-[var(--ui-radius-md)] border border-ui-primary bg-ui-primary text-ui-text-on-primary px-4 text-sm font-semibold hover:bg-ui-primary-hover transition-colors"
+                  data-testid="today-next-page"
+                >
+                  Berikutnya
+                </Link>
+              ) : (
+                <span className="text-sm text-ui-text-muted">Tidak ada halaman berikutnya</span>
+              )}
+            </nav>
+          )}
         </section>
       </div>
     </main>
