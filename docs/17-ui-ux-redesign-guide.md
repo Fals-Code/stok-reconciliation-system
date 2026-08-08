@@ -636,6 +636,36 @@ Saat submit:
 
 Tombol tidak boleh dapat ditekan ulang sampai hasil request diketahui.
 
+### Preview menjadi tidak berlaku saat input berubah
+
+Authoritative preview hanya berlaku untuk input dan basis data yang diperiksa saat preview dibuat.
+
+Jika user mengubah field yang dapat memengaruhi request, eligibility, allocation, atau dampak stok setelah preview tampil, preview lama langsung dianggap tidak berlaku.
+
+Contoh:
+
+```text
+Periksa Sebelum Simpan
+✓ Sudah diperiksa
+
+Jumlah diubah
+10 → 12 unit
+
+⚠ Perlu diperiksa ulang
+Dampak sebelumnya sudah tidak berlaku.
+
+[ Periksa Lagi ]
+```
+
+Sampai preview baru berhasil:
+
+- final mutation tidak tersedia;
+- preview lama tidak boleh tetap terlihat sebagai evidence yang masih sah;
+- input user tetap dipertahankan;
+- frontend tidak menghitung ulang FEFO, eligibility, atau stock effect sebagai pengganti authoritative server preview.
+
+Perubahan alasan, waktu kejadian, reference, quantity, item, atau field lain yang masuk kontrak preview mengikuti prinsip yang sama.
+
 ### Retry vs Batalkan
 
 - **Coba Lagi** = operasi sebelumnya belum berhasil.
@@ -877,7 +907,7 @@ Search sebaiknya toleran terhadap variasi manusia seperti kapitalisasi atau tand
 Contoh:
 
 ```text
-[ Menipis × ] [ Serum × ]
+[ Ditahan × ] [ Serum × ]
 Menampilkan 4 dari 128 produk
 [ Hapus Semua Filter ]
 ```
@@ -1076,6 +1106,31 @@ Sekarang: 15 unit
 ```
 
 Jangan menampilkan `row version mismatch`, `stale preview`, atau raw concurrency error sebagai pesan utama.
+
+### Konflik perubahan dari Admin lain
+
+Satu role `ADMIN` dapat dipakai oleh beberapa akun manusia. Edit lama tidak boleh menimpa perubahan yang lebih baru secara diam-diam.
+
+Jika master atau data editable berubah setelah user mulai mengedit:
+
+```text
+Produk ini berubah sejak kamu mulai mengedit.
+
+Data terbaru tersedia.
+Perubahan kamu belum disimpan dan tidak ditimpa.
+
+[ Lihat Data Terbaru ]
+```
+
+Setelah data terbaru dibuka:
+
+- pertahankan input user yang masih aman untuk dibandingkan;
+- jelaskan field yang sudah berubah bila datanya tersedia;
+- minta user meninjau ulang sebelum menyimpan;
+- jangan melakukan blind retry dengan versi lama;
+- jangan mengklaim siapa yang mengubah data bila actor tidak tersedia dari source authoritative.
+
+`row_version`, optimistic lock token, dan kode conflict tetap detail teknis, bukan bahasa utama.
 
 ### Empty state
 
@@ -1435,6 +1490,30 @@ Terakhir diperiksa 10:40 WIB
 ```
 
 hanya jika pemeriksaan yang mendasarinya benar-benar berhasil dan masih fresh menurut rule backend.
+
+#### “Semua aman” juga membutuhkan coverage yang lengkap
+
+Fresh belum tentu lengkap.
+
+Global healthy state hanya boleh digunakan bila seluruh sumber pemeriksaan yang diwajibkan untuk summary tersebut berhasil berpartisipasi dan coverage-nya dapat dibuktikan.
+
+Jika pemeriksaan yang tersedia berhasil tetapi sebagian sumber belum tercakup:
+
+```text
+Tidak ada pekerjaan ditemukan
+dari pemeriksaan yang tersedia.
+```
+
+Jika coverage yang diwajibkan gagal, terlambat, atau belum tersedia:
+
+```text
+⚠ Pemeriksaan belum lengkap
+
+Beberapa sumber pekerjaan belum dapat diperiksa.
+[ Lihat Status Sistem ]
+```
+
+Jangan mengubah partial coverage menjadi `Semua aman`, sekalipun pemeriksaan yang sempat berjalan masih fresh.
 
 #### Bedakan waktu dimuat dan waktu data berubah
 
@@ -2128,7 +2207,7 @@ Jumlah fisik
 
 ⚠ Nilai stok 0 dimasukkan.
 
-☐ Ya, barang fisik benar-benar tidak ada.
+☐ Ya, barang fisik benar-benar tidak ada.
 ```
 
 Nilai kosong tidak pernah dianggap nol.
@@ -2177,6 +2256,31 @@ Tetap tampilkan:
 - batch dengan provenance bermasalah yang perlu tindakan.
 
 Master tidak aktif bersaldo nol boleh masuk filter histori, tetapi tetap searchable.
+
+### Tidak Aktif membatasi transaksi baru, bukan investigasi dan hitung fisik
+
+Produk atau batch tidak aktif yang masih memiliki saldo fisik tetap merupakan benda gudang yang harus dapat diverifikasi.
+
+Karena itu, sesuai scope authoritative:
+
+- saldo fisiknya tetap terlihat;
+- record tetap dapat dicari dan dibuka;
+- riwayat dan audit tetap tersedia;
+- record bersaldo tetap dapat masuk scope **Hitung Stok**;
+- historical return atau exact correction yang memang masih sah tetap dapat menelusuri identity lama.
+
+UI dapat menjelaskan:
+
+```text
+Tidak Aktif
+
+Tidak dapat digunakan untuk transaksi baru.
+Stok fisik dan riwayat tetap dapat diperiksa.
+
+[ Lihat Riwayat ] [ Hitung Stok ]
+```
+
+`Hitung Stok` hanya ditampilkan bila record memang termasuk scope stocktake authoritative. Jangan mengaktifkan kembali master hanya agar stok fisiknya dapat dihitung.
 
 ### Kedaluwarsa tidak membuat movement otomatis
 
@@ -2323,6 +2427,33 @@ Diretur              1
 
 Action hanya tersedia untuk quantity yang masih eligible.
 
+### Quantity pembatalan menjelaskan unit yang sudah terikat retur
+
+Jumlah yang sudah menjadi expected return tidak boleh terlihat seolah masih bebas dibatalkan setelah shipment.
+
+Contoh:
+
+```text
+Serum A
+
+Sudah dikirim                5
+Akan diretur                 2
+Sudah dibatalkan             1
+Masih dapat dibatalkan       2
+```
+
+Jika user memasukkan 3 unit:
+
+```text
+Maksimal 2 unit dapat dibatalkan.
+
+2 unit lainnya sudah tercatat akan diretur.
+```
+
+Jangan hanya menampilkan `quantity exceeds eligible amount`.
+
+Nilai `Masih dapat dibatalkan` tetap berasal dari source authoritative. Frontend tidak menghitung sendiri batas pembatalan dari angka yang kebetulan terlihat pada layar.
+
 ### Bundle ditampilkan sebagai produk pelanggan dan komponen stok
 
 ```text
@@ -2381,6 +2512,34 @@ Tidak ada perubahan stok baru
 ```
 
 Hanya outcome Layak Dijual membuat inbound ke batch RETURN baru.
+
+### Provenance retur Belum Diverifikasi membatasi tindakan secara jelas
+
+Jika asal barang belum dapat dibuktikan, UI harus menjelaskan bahwa blocker berasal dari provenance, bukan dari kondisi fisik semata.
+
+```text
+Asal barang belum terverifikasi
+
+Barang belum dapat dimasukkan kembali
+sebagai Layak Dijual.
+
+[ Verifikasi Asal Barang ]
+```
+
+CTA hanya ditampilkan bila verifikasi provenance memang tersedia end-to-end.
+
+Jika kondisi fisik `Rusak` masih boleh dicatat sebagai audit-only menurut kontrak server:
+
+```text
+Rusak · 1 unit
+
+Dampak stok
+Tidak ada perubahan stok baru.
+
+Asal barang masih belum terverifikasi.
+```
+
+Jangan membuat outcome audit-only terlihat seperti penambahan stok `DAMAGED`, dan jangan menawarkan `Layak Dijual` sampai server menyatakan provenance yang diperlukan sudah valid.
 
 ### Claim process, result, dan stock effect dipisahkan
 
