@@ -29,9 +29,9 @@ const MAX_CURSOR_STACK = 20;
 const severityOptions: ReadonlyArray<["ALL" | TodayControlCenterSeverity, string]> = [
   ["ALL", "Semua severity"],
   ["CRITICAL", "Kritis"],
-  ["HIGH", "Segera"],
-  ["WARNING", "Perhatian"],
-  ["INFO", "Rutin"],
+  ["HIGH", "Mendesak"],
+  ["WARNING", "Perlu Diperiksa"],
+  ["INFO", "Informasi"],
 ];
 
 const workTypeLabels: Record<TodayControlCenterWorkType, string> = {
@@ -55,9 +55,27 @@ const severityToBadgeTone: Record<TodayControlCenterSeverity, "neutral" | "warni
 
 const severityMeta: Record<TodayControlCenterSeverity, { label: string }> = {
   CRITICAL: { label: "Kritis" },
-  HIGH: { label: "Segera" },
-  WARNING: { label: "Perhatian" },
-  INFO: { label: "Rutin" },
+  HIGH: { label: "Mendesak" },
+  WARNING: { label: "Perlu Diperiksa" },
+  INFO: { label: "Informasi" },
+};
+
+const systemFailureTypes = new Set<TodayControlCenterWorkType>([
+  "RECONCILIATION_RUN_FAILED",
+  "NOTIFICATION_OUTBOX_FAILURE",
+  "NOTIFICATION_RULE_RUN_FAILURE",
+]);
+
+const dueLabelByWorkType: Record<TodayControlCenterWorkType, string> = {
+  RECONCILIATION_ISSUE: "Batas tindak",
+  RECONCILIATION_RUN_FAILED: "Waktu gangguan",
+  TIKTOK_CLAIM_DEADLINE: "Batas klaim",
+  RETURN_INSPECTION_PENDING: "Periksa sebelum",
+  BATCH_EXPIRY: "Kedaluwarsa",
+  STOCKTAKE_RECOUNT_REQUIRED: "Batas hitung ulang",
+  STOCKTAKE_POST_FAILED: "Batas posting ulang",
+  NOTIFICATION_OUTBOX_FAILURE: "Waktu gangguan",
+  NOTIFICATION_RULE_RUN_FAILURE: "Waktu gangguan",
 };
 
 type SearchValue = string | string[] | undefined;
@@ -186,38 +204,44 @@ function WorkItemCard({ item }: { item: TodayControlCenterWorkItem }) {
   const badgeTone = severityToBadgeTone[item.severity_code];
 
   return (
-    <article className="rounded-[var(--ui-radius-lg)] border border-ui-border bg-ui-surface p-4 sm:p-5 hover:bg-ui-surface-subtle transition-colors" data-testid="today-work-item">
-      <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+    <article className="border-b border-ui-border py-4 first:pt-0 last:border-b-0" data-testid="today-work-item">
+      <div className="grid gap-3 xl:grid-cols-[minmax(0,1.8fr)_minmax(220px,0.8fr)_auto] xl:items-start">
         <div className="min-w-0">
           <div className="flex flex-wrap items-center gap-2">
             <StatusBadge tone={badgeTone}>{severityMeta[item.severity_code].label}</StatusBadge>
             <span className="text-xs text-ui-text-muted">{workTypeLabels[item.work_type_code]}</span>
           </div>
-          <h2 className="mt-3 text-lg font-semibold text-ui-text">{item.title}</h2>
-          <p className="mt-2 max-w-4xl text-sm leading-6 text-ui-text-muted">{item.summary}</p>
+          <h2 className="mt-2 text-base font-semibold text-ui-text">{item.title}</h2>
+          <p className="mt-1 text-sm leading-6 text-ui-text-muted">{item.summary}</p>
         </div>
+        <dl className="grid gap-2 text-xs text-ui-text-muted sm:grid-cols-2 xl:min-w-[340px]">
+          <div><dt className="font-mono uppercase tracking-wide text-ui-text-muted">Terjadi</dt><dd className="mt-1 text-ui-text">{formatDate(item.occurred_at)}</dd></div>
+          <div><dt className="font-mono uppercase tracking-wide text-ui-text-muted">{dueLabelByWorkType[item.work_type_code]}</dt><dd className="mt-1 text-ui-text">{formatDate(item.due_at)}</dd></div>
+          <div><dt className="font-mono uppercase tracking-wide text-ui-text-muted">Sumber</dt><dd className="mt-1 break-all text-ui-text">{item.source_reference ?? "Referensi tidak tersedia"}</dd></div>
+          <div><dt className="font-mono uppercase tracking-wide text-ui-text-muted">Status</dt><dd className="mt-1 text-ui-text">{item.resolution_status === "ACKNOWLEDGED" ? "Sedang Ditangani" : "Aktif"}</dd></div>
+        </dl>
         {actionAvailable ? (
           <Link
             href={item.route_path as string}
-            className="inline-flex min-h-[var(--ui-control-height)] items-center justify-center rounded-[var(--ui-radius-md)] border border-transparent bg-transparent px-4 text-sm font-semibold text-ui-text-muted hover:bg-ui-surface-subtle hover:text-ui-text transition-colors motion-reduce:transition-none focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ui-focus shrink-0"
+            className="inline-flex min-h-[var(--ui-control-height)] items-center justify-center rounded-[var(--ui-radius-md)] border border-ui-border bg-ui-surface px-4 text-sm font-semibold text-ui-text transition-colors hover:border-ui-border-strong hover:bg-ui-surface-subtle xl:justify-self-end"
             data-testid="today-work-item-link"
           >
             Buka tindakan
           </Link>
         ) : (
-          <span className="shrink-0 rounded-[var(--ui-radius-md)] border border-ui-border bg-ui-surface-subtle px-3 py-2 text-sm text-ui-text-muted" data-testid="today-work-item-blocked">
+          <span className="inline-flex min-h-[var(--ui-control-height)] items-center justify-center rounded-[var(--ui-radius-md)] border border-ui-border bg-ui-surface-subtle px-4 text-sm text-ui-text-muted xl:justify-self-end" data-testid="today-work-item-blocked">
             Detail tindakan belum tersedia
           </span>
         )}
       </div>
-      <dl className="mt-4 grid gap-3 text-xs text-ui-text-muted sm:grid-cols-2 xl:grid-cols-4">
-        <div><dt className="font-mono uppercase tracking-wide text-ui-text-muted">Terjadi</dt><dd className="mt-1 text-ui-text">{formatDate(item.occurred_at)}</dd></div>
-        <div><dt className="font-mono uppercase tracking-wide text-ui-text-muted">Tenggat</dt><dd className="mt-1 text-ui-text">{formatDate(item.due_at)}</dd></div>
-        <div><dt className="font-mono uppercase tracking-wide text-ui-text-muted">Sumber</dt><dd className="mt-1 break-all text-ui-text">{item.source_reference ?? "Referensi tidak tersedia"}</dd></div>
-        <div><dt className="font-mono uppercase tracking-wide text-ui-text-muted">Status episode</dt><dd className="mt-1 text-ui-text">{item.resolution_status === "ACKNOWLEDGED" ? "Sudah diakui" : "Aktif"}</dd></div>
-      </dl>
     </article>
   );
+}
+
+function getTodayWorkItemReactKey(item: TodayControlCenterWorkItem) {
+  return item.notification_id
+    ? `${item.work_item_id}:${item.notification_id}`
+    : `${item.work_item_id}:${item.source_entity_id}`;
 }
 
 function WorkItemCardMobile({ item }: { item: TodayControlCenterWorkItem }) {
@@ -234,9 +258,9 @@ function WorkItemCardMobile({ item }: { item: TodayControlCenterWorkItem }) {
       <p className="mt-2 text-sm leading-6 text-ui-text-muted">{item.summary}</p>
       <dl className="mt-3 grid gap-2 text-xs text-ui-text-muted sm:grid-cols-2">
         <div><dt className="font-mono uppercase tracking-wide text-ui-text-muted">Terjadi</dt><dd className="mt-0.5 text-ui-text">{formatDate(item.occurred_at)}</dd></div>
-        <div><dt className="font-mono uppercase tracking-wide text-ui-text-muted">Tenggat</dt><dd className="mt-0.5 text-ui-text">{formatDate(item.due_at)}</dd></div>
+        <div><dt className="font-mono uppercase tracking-wide text-ui-text-muted">{dueLabelByWorkType[item.work_type_code]}</dt><dd className="mt-0.5 text-ui-text">{formatDate(item.due_at)}</dd></div>
         <div><dt className="font-mono uppercase tracking-wide text-ui-text-muted">Sumber</dt><dd className="mt-0.5 break-all text-ui-text">{item.source_reference ?? "Referensi tidak tersedia"}</dd></div>
-        <div><dt className="font-mono uppercase tracking-wide text-ui-text-muted">Status episode</dt><dd className="mt-0.5 text-ui-text">{item.resolution_status === "ACKNOWLEDGED" ? "Sudah diakui" : "Aktif"}</dd></div>
+        <div><dt className="font-mono uppercase tracking-wide text-ui-text-muted">Status</dt><dd className="mt-0.5 text-ui-text">{item.resolution_status === "ACKNOWLEDGED" ? "Sedang Ditangani" : "Aktif"}</dd></div>
       </dl>
       {actionAvailable ? (
         <Link
@@ -290,9 +314,11 @@ export default async function TodayControlCenterPage({
   }
 
   const rows = data?.rows ?? [];
+  const operationalRows = rows.filter((item) => !systemFailureTypes.has(item.work_type_code));
+  const systemFailureRows = rows.filter((item) => systemFailureTypes.has(item.work_type_code));
   const severityCounts = TODAY_CONTROL_CENTER_SEVERITIES.map((severity) => ({
     severity,
-    count: rows.filter((item) => item.severity_code === severity).length,
+    count: operationalRows.filter((item) => item.severity_code === severity).length,
   }));
   const nextStack = data?.nextCursor ? [...state.cursorStack, data.nextCursor] : state.cursorStack;
 
@@ -305,10 +331,7 @@ export default async function TodayControlCenterPage({
         <PageHeader
           breadcrumb={getBreadcrumbItems("/today")}
           description="Antrean kerja read-only dari sinyal operasional aktif. Membuka atau menyaring daftar ini tidak mengubah stok maupun status bisnis."
-          status={
-            <StatusBadge tone="neutral">Read-only</StatusBadge>
-          }
-          title="Pusat Kendali Hari Ini"
+          title="Hari Ini"
         />
 
         {state.invalidState ? (
@@ -328,7 +351,7 @@ export default async function TodayControlCenterPage({
               <p className="text-xs font-mono uppercase tracking-[0.1em] text-ui-text-muted">Ringkasan halaman</p>
               <h2 id="severity-summary-title" className="mt-1 text-2xl font-semibold text-ui-text">Prioritas pada halaman ini</h2>
             </div>
-            <p className="text-xs text-ui-text-muted">Urutan: Kritis, Segera, Perhatian, Rutin.</p>
+            <p className="text-xs text-ui-text-muted">Urutan: Kritis, Mendesak, Perlu Diperiksa, Informasi.</p>
           </div>
           <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4" data-testid="today-severity-summary">
             {severityCounts.map(({ severity, count }) => (
@@ -340,10 +363,10 @@ export default async function TodayControlCenterPage({
         <section className="mt-8 rounded-[var(--ui-radius-lg)] border border-ui-border bg-ui-surface p-4 sm:p-5" aria-labelledby="today-filters-title">
           <div>
             <p className="text-xs font-mono uppercase tracking-[0.1em] text-ui-text-muted">Filter</p>
-            <h2 id="today-filters-title" className="mt-1 text-lg font-semibold text-ui-text">Saring tindakan</h2>
+            <h2 id="today-filters-title" className="mt-1 text-lg font-semibold text-ui-text">Saring prioritas</h2>
           </div>
           <form method="get" className="mt-4 grid gap-3 sm:grid-cols-[1fr_1fr_auto]" data-testid="today-filter-form">
-            <Field id="today-severity-filter" label="Severity">
+            <Field id="today-severity-filter" label="Prioritas">
               {({ id, ...fieldProps }) => (
                 <Select {...fieldProps} id={id} name="severity" defaultValue={severityDefaultValue}>
                   {severityOptions.map(([value, label]) => (
@@ -391,14 +414,28 @@ export default async function TodayControlCenterPage({
             />
           ) : (
             <>
-              <div className="mt-5 space-y-3 hidden sm:block" data-testid="today-work-list-desktop">
-                {rows.map((item) => (
-                  <WorkItemCard key={item.work_item_id} item={item} />
+              <div className="mt-5 hidden sm:block rounded-[var(--ui-radius-lg)] border border-ui-border bg-ui-surface px-4" data-testid="today-work-list-desktop">
+                {operationalRows.map((item) => (
+                  <WorkItemCard key={getTodayWorkItemReactKey(item)} item={item} />
                 ))}
               </div>
+              <section className="mt-6" aria-labelledby="today-system-failures-title" data-testid="today-system-failures">
+                <div className="mb-3 flex items-end justify-between gap-3">
+                  <div>
+                    <p className="text-xs font-mono uppercase tracking-[0.1em] text-ui-text-muted">Status sistem</p>
+                    <h3 id="today-system-failures-title" className="mt-1 text-lg font-semibold text-ui-text">Status Sistem</h3>
+                  </div>
+                  <p className="text-xs text-ui-text-muted">Gangguan di luar pekerjaan gudang.</p>
+                </div>
+                <div className="space-y-3" data-testid="today-work-list-desktop-system">
+                  {systemFailureRows.map((item) => (
+                    <WorkItemCard key={getTodayWorkItemReactKey(item)} item={item} />
+                  ))}
+                </div>
+              </section>
               <div className="mt-5 space-y-3 sm:hidden" data-testid="today-work-list-mobile">
                 {rows.map((item) => (
-                  <WorkItemCardMobile key={item.work_item_id} item={item} />
+                  <WorkItemCardMobile key={getTodayWorkItemReactKey(item)} item={item} />
                 ))}
               </div>
             </>
