@@ -1193,3 +1193,10 @@ Jika user masih perlu bertanya kepada pembuat sistem untuk pekerjaan umum, desai
 10. Jalankan usability scenarios sebelum cleanup legacy UI dinyatakan selesai.
 
 Setiap kelompok harus dapat direview dan divalidasi secara terpisah. Penyederhanaan presentasi tidak boleh mengubah kontrak domain yang sudah lolos test.
+
+## Operator-First UX Contract Hardening
+
+To ensure risky operations never become defaults:
+- All non-terminal work states must display explicit next-action buttons.
+- Empty, partial, or error data states must be explicitly distinguished from zero inventory.
+- Proof-based reconciliation must link directly to verified ledger entries.
