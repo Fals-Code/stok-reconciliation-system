@@ -28,283 +28,76 @@ const navigationModuleUrl =
   `data:text/javascript;base64,${Buffer.from(compiledNavigation).toString("base64")}`;
 
 const {
-  APP_NAV_SECTIONS,
-  findActiveNavItem,
+  primaryNavigation,
+  settingsNavigation,
   getActiveNavHref,
-  getBreadcrumbItems,
   isNavItemActive,
 } = await import(navigationModuleUrl);
 
-const expectedRoutes = [
-  "/",
-  "/entry-corrections",
-  "/ledger",
-  "/manual-outbounds",
-  "/marketplace",
-  "/marketplace/import",
-  "/notifications",
-  "/notifications/operations",
-  "/opening-balances",
-  "/products",
-  "/reconciliation",
-  "/returns",
-  "/stock-disposals",
-  "/stocktakes",
-  "/today",
-];
+// 1. Menu utama hanya area yang memang perlu dikenal user
+assert.equal(primaryNavigation.length, 3, "Primary navigation harus memiliki 3 menu utama");
+assert.equal(primaryNavigation[0].label, "Beranda");
+assert.equal(primaryNavigation[0].href, "/");
+assert.equal(primaryNavigation[1].label, "Stok");
+assert.equal(primaryNavigation[1].href, "/products");
+assert.equal(primaryNavigation[2].label, "Pesanan");
+assert.equal(primaryNavigation[2].href, "/marketplace");
 
-const items = APP_NAV_SECTIONS.flatMap((section) =>
-  section.items.map((item) => ({
-    ...item,
-    sectionLabel: section.label,
-  })),
+assert.equal(settingsNavigation.label, "Pengaturan");
+assert.equal(settingsNavigation.href, "/settings");
+
+// 2. Pembuktian route contextual mapping
+assert.equal(getActiveNavHref("/"), "/");
+assert.equal(getActiveNavHref("/products"), "/products");
+assert.equal(getActiveNavHref("/products/product-123"), "/products");
+assert.equal(getActiveNavHref("/products/product-123/batches/batch-456"), "/products");
+assert.equal(getActiveNavHref("/receipts/new"), "/products");
+assert.equal(getActiveNavHref("/manual-outbounds"), "/products");
+assert.equal(getActiveNavHref("/stock-disposals"), "/products");
+assert.equal(getActiveNavHref("/stocktakes"), "/products");
+assert.equal(getActiveNavHref("/stocktakes/new"), "/products");
+assert.equal(getActiveNavHref("/stock-issues"), "/products");
+assert.equal(getActiveNavHref("/ledger"), "/products");
+assert.equal(getActiveNavHref("/ledger/tx-123"), "/products");
+assert.equal(getActiveNavHref("/entry-corrections"), "/products");
+
+assert.equal(getActiveNavHref("/marketplace"), "/marketplace");
+assert.equal(getActiveNavHref("/marketplace/order-123"), "/marketplace");
+assert.equal(getActiveNavHref("/returns"), "/marketplace");
+assert.equal(getActiveNavHref("/returns/return-123"), "/marketplace");
+
+assert.equal(getActiveNavHref("/settings"), "/settings");
+assert.equal(getActiveNavHref("/opening-balances"), "/settings");
+
+assert.equal(getActiveNavHref("/route-tidak-dikenal"), null);
+
+// 3. Pembuktian isNavItemActive helper
+assert.equal(isNavItemActive("/", "/"), true);
+assert.equal(isNavItemActive("/products", "/receipts/new"), true);
+assert.equal(isNavItemActive("/marketplace", "/returns/return-123"), true);
+assert.equal(isNavItemActive("/settings", "/opening-balances"), true);
+assert.equal(isNavItemActive("/", "/products"), false);
+
+// 4. Metadata Identity & content restriction assertions (dari Commit 01)
+const layoutSource = await readFile(
+  new URL("../src/app/layout.tsx", import.meta.url),
+  "utf8",
 );
 
-assert.equal(
-  items.every(
-    (item) =>
-      typeof item.icon === "string" &&
-      item.icon.length > 0,
-  ),
-  true,
-  "Setiap tujuan navigasi harus memiliki ikon",
+assert.ok(
+  layoutSource.includes("Sistem Rekonsiliasi Stok"),
+  "Metadata layout wajib mencantumkan Sistem Rekonsiliasi Stok",
 );
 
-assert.equal(
-  new Set(items.map((item) => item.icon)).size,
-  items.length,
-  "Ikon utama setiap tujuan navigasi harus jelas dan tidak duplikat",
-);
-assert.equal(
-  items.some((item) =>
-    Object.hasOwn(item, "shortLabel"),
-  ),
-  false,
-  "Kotak inisial navigasi lama tidak boleh tersisa",
-);
-
-const actualRoutes = items
-  .map((item) => item.href)
-  .sort((left, right) => left.localeCompare(right));
-
-assert.deepEqual(
-  actualRoutes,
-  expectedRoutes,
-  "Seluruh tujuan navigasi lama harus tetap tersedia",
-);
-
-assert.equal(
-  new Set(actualRoutes).size,
-  actualRoutes.length,
-  "Route navigasi tidak boleh duplikat",
-);
-
-assert.deepEqual(
-  APP_NAV_SECTIONS.map((section) => section.label),
-  [
-    "Utama",
-    "Pekerjaan Gudang",
-    "Kontrol Stok",
-    "Data & Sistem",
-  ],
-  "Navigasi dikelompokkan berdasarkan pekerjaan Admin",
-);
-
-for (const forbiddenLabel of [
-  "Dashboard",
-  "Ledger Explorer",
-  "Notification Center",
-  "Notification Operations",
+for (const forbidden of [
+  "GlowLab Inventory",
+  "Stok Management",
 ]) {
   assert.equal(
-    items.some((item) => item.label === forbiddenLabel),
+    layoutSource.includes(forbidden),
     false,
-    `Label teknis lama tidak boleh tersisa: ${forbiddenLabel}`,
+    `Root layout tidak boleh memakai ${forbidden}`,
   );
 }
 
-assert.equal(isNavItemActive("/", "/"), true);
-assert.equal(isNavItemActive("/today", "/"), false);
-assert.equal(
-  isNavItemActive(
-    "/marketplace/import",
-    "/marketplace",
-  ),
-  true,
-);
-
-assert.equal(getActiveNavHref("/"), "/");
-assert.equal(getActiveNavHref("/today"), "/today");
-assert.equal(getActiveNavHref("/today/detail"), "/today");
-
-assert.equal(
-  getActiveNavHref("/marketplace"),
-  "/marketplace",
-);
-assert.equal(
-  getActiveNavHref("/marketplace/listings"),
-  "/marketplace",
-);
-assert.equal(
-  getActiveNavHref("/marketplace/import"),
-  "/marketplace/import",
-);
-assert.equal(
-  getActiveNavHref("/marketplace/import/job-123"),
-  "/marketplace/import",
-);
-
-assert.equal(
-  getActiveNavHref("/notifications"),
-  "/notifications",
-);
-assert.equal(
-  getActiveNavHref("/notifications/detail-123"),
-  "/notifications",
-);
-assert.equal(
-  getActiveNavHref("/notifications/operations"),
-  "/notifications/operations",
-);
-assert.equal(
-  getActiveNavHref(
-    "/notifications/operations/outbox",
-  ),
-  "/notifications/operations",
-);
-
-assert.equal(
-  getActiveNavHref("/route-tidak-dikenal"),
-  null,
-);
-
-const marketplaceImport = findActiveNavItem(
-  "/marketplace/import/job-123",
-);
-
-assert.equal(
-  marketplaceImport?.sectionLabel,
-  "Pekerjaan Gudang",
-);
-assert.equal(
-  marketplaceImport?.item.label,
-  "Impor Marketplace",
-);
-
-const notificationOperations = findActiveNavItem(
-  "/notifications/operations/outbox",
-);
-
-assert.equal(
-  notificationOperations?.sectionLabel,
-  "Data & Sistem",
-);
-assert.equal(
-  notificationOperations?.item.label,
-  "Pemrosesan Notifikasi",
-);
-
-const todayBreadcrumb =
-  getBreadcrumbItems("/today");
-
-assert.deepEqual(
-  todayBreadcrumb,
-  [
-    {
-      label: "Utama",
-    },
-    {
-      label: "Pusat Kendali",
-    },
-  ],
-  "Breadcrumb route statis harus berasal dari metadata navigasi",
-);
-
-const productId =
-  "11111111-1111-4111-8111-111111111111";
-
-const dynamicProductBreadcrumb =
-  getBreadcrumbItems(
-    `/products/${productId}`,
-    {
-      currentLabel:
-        "Serum Brightening",
-    },
-  );
-
-assert.deepEqual(
-  dynamicProductBreadcrumb,
-  [
-    {
-      label: "Data & Sistem",
-    },
-    {
-      label: "Produk & Batch",
-      href: "/products",
-    },
-    {
-      label: "Serum Brightening",
-    },
-  ],
-  "Breadcrumb dinamis harus memakai label bisnis yang diberikan halaman",
-);
-
-const uuidBreadcrumb =
-  getBreadcrumbItems(
-    `/products/${productId}`,
-    {
-      currentLabel: productId,
-    },
-  );
-
-assert.equal(
-  uuidBreadcrumb.some(
-    (item) =>
-      item.label.includes(productId),
-  ),
-  false,
-  "UUID tidak boleh menjadi label utama breadcrumb",
-);
-
-assert.deepEqual(
-  uuidBreadcrumb,
-  [
-    {
-      label: "Data & Sistem",
-    },
-    {
-      label: "Produk & Batch",
-    },
-  ],
-  "Route dinamis tanpa label bisnis aman harus kembali ke label navigasi",
-);
-
-assert.deepEqual(
-  getBreadcrumbItems(
-    "/route-tidak-dikenal",
-  ),
-  [
-    {
-      label: "Halaman",
-    },
-  ],
-  "Route tanpa metadata harus memakai fallback aman tanpa membocorkan path",
-);
-
-assert.deepEqual(
-  getBreadcrumbItems(
-    "/route-tidak-dikenal",
-    {
-      currentLabel:
-        "Detail Operasional",
-    },
-  ),
-  [
-    {
-      label:
-        "Detail Operasional",
-    },
-  ],
-  "Route tanpa metadata boleh memakai label bisnis eksplisit",
-);
 console.log("Navigation contract focused checks: PASS");
