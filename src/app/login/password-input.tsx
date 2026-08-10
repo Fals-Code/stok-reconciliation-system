@@ -1,30 +1,80 @@
 "use client";
 
-import { useState } from "react";
+import {
+  useState,
+} from "react";
 
 import {
   IconButton,
   Input,
+  type InputProps,
 } from "@/components/ui";
 
-export type PasswordInputProps = {
-  id: string;
-  name: string;
-  autoComplete?: string;
-  placeholder?: string;
-  required?: boolean;
-  "aria-describedby"?: string;
-  "aria-invalid"?: boolean;
-};
+export type PasswordInputProps =
+  Omit<
+    InputProps,
+    "type"
+  >;
+
+function EyeIcon({
+  hidden,
+}: {
+  hidden: boolean;
+}) {
+  return (
+    <svg
+      aria-hidden="true"
+      className="h-5 w-5"
+      fill="none"
+      focusable="false"
+      viewBox="0 0 24 24"
+    >
+      {hidden ? (
+        <>
+          <path
+            d="M3 3l18 18"
+            stroke="currentColor"
+            strokeLinecap="round"
+            strokeWidth="1.7"
+          />
+          <path
+            d="M10.6 10.7a2 2 0 0 0 2.7 2.7"
+            stroke="currentColor"
+            strokeLinecap="round"
+            strokeWidth="1.7"
+          />
+          <path
+            d="M9.9 5.2A10.7 10.7 0 0 1 12 5c5.4 0 9 7 9 7a15.8 15.8 0 0 1-2.5 3.4M6.6 6.7C4.3 8.2 3 12 3 12s3.6 7 9 7c1.1 0 2.2-.3 3.1-.7"
+            stroke="currentColor"
+            strokeLinecap="round"
+            strokeLinejoin="round"
+            strokeWidth="1.7"
+          />
+        </>
+      ) : (
+        <>
+          <path
+            d="M3 12s3.6-7 9-7 9 7 9 7-3.6 7-9 7-9-7-9-7Z"
+            stroke="currentColor"
+            strokeLinejoin="round"
+            strokeWidth="1.7"
+          />
+          <circle
+            cx="12"
+            cy="12"
+            r="2.5"
+            stroke="currentColor"
+            strokeWidth="1.7"
+          />
+        </>
+      )}
+    </svg>
+  );
+}
 
 export function PasswordInput({
-  id,
-  name,
-  autoComplete,
-  placeholder,
-  required,
-  "aria-describedby": ariaDescribedBy,
-  "aria-invalid": ariaInvalid,
+  className,
+  ...props
 }: PasswordInputProps) {
   const [visible, setVisible] =
     useState(false);
@@ -32,14 +82,13 @@ export function PasswordInput({
   return (
     <div className="relative">
       <Input
-        aria-describedby={ariaDescribedBy}
-        aria-invalid={ariaInvalid}
-        autoComplete={autoComplete}
-        className="pr-14"
-        id={id}
-        name={name}
-        placeholder={placeholder}
-        required={required}
+        {...props}
+        className={[
+          "pr-14",
+          className,
+        ]
+          .filter(Boolean)
+          .join(" ")}
         type={
           visible
             ? "text"
@@ -62,51 +111,7 @@ export function PasswordInput({
         }
         type="button"
       >
-        {visible ? (
-          <svg
-            aria-hidden="true"
-            fill="none"
-            height="18"
-            viewBox="0 0 18 18"
-            width="18"
-          >
-            <path
-              d="M3 3L15 15"
-              stroke="currentColor"
-              strokeLinecap="round"
-              strokeWidth="1.6"
-            />
-            <path
-              d="M7.2 5.2A6.5 6.5 0 0 1 9 5C13.2 5 16 9 16 9a11.8 11.8 0 0 1-2.1 2.4M10.9 12.8A6.8 6.8 0 0 1 9 13C4.8 13 2 9 2 9a12.3 12.3 0 0 1 2.2-2.5"
-              stroke="currentColor"
-              strokeLinecap="round"
-              strokeLinejoin="round"
-              strokeWidth="1.6"
-            />
-          </svg>
-        ) : (
-          <svg
-            aria-hidden="true"
-            fill="none"
-            height="18"
-            viewBox="0 0 18 18"
-            width="18"
-          >
-            <path
-              d="M2 9S4.8 5 9 5s7 4 7 4-2.8 4-7 4-7-4-7-4Z"
-              stroke="currentColor"
-              strokeLinejoin="round"
-              strokeWidth="1.6"
-            />
-            <circle
-              cx="9"
-              cy="9"
-              r="2"
-              stroke="currentColor"
-              strokeWidth="1.6"
-            />
-          </svg>
-        )}
+        <EyeIcon hidden={visible} />
       </IconButton>
     </div>
   );

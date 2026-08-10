@@ -1,33 +1,156 @@
 "use server";
 
-import { redirect } from "next/navigation";
-import { logoutSession, signInWithPassword } from "@/lib/auth";
+import {
+  redirect,
+} from "next/navigation";
 
-function required(formData: FormData, key: string) {
-  const value = formData.get(key);
+import {
+  logoutSession,
+  signInWithPassword,
+} from "@/lib/auth";
 
-  if (typeof value !== "string" || value.trim() === "") {
-    throw new Error(`${key} wajib diisi.`);
+type LoginErrorCode =
+  | "EMAIL_REQUIRED"
+  | "EMAIL_FORMAT"
+  | "PASSWORD_REQUIRED"
+  | "CREDENTIALS_INVALID"
+  | "ADMIN_INACTIVE"
+  | "AUTH_UNAVAILABLE";
+
+function fieldValue(
+  formData: FormData,
+  key: string,
+) {
+  const value =
+    formData.get(key);
+
+  if (typeof value !== "string") {
+    return "";
   }
 
   return value.trim();
 }
 
-export async function loginAction(formData: FormData) {
-  let errorMessage: string | null = null;
-
-  try {
-    const email = required(formData, "email");
-    const password = required(formData, "password");
-    await signInWithPassword(email, password);
-  } catch (error) {
-    errorMessage =
-      error instanceof Error ? error.message : "Login gagal karena kesalahan yang tidak diketahui.";
+function isValidEmailShape(
+  email: string,
+) {
+  if (
+    email.length > 254 ||
+    /\s/.test(email)
+  ) {
+    return false;
   }
 
-  if (errorMessage) {
-    const params = new URLSearchParams({ error: errorMessage });
-    redirect(`/login?${params.toString()}`);
+  const at =
+    email.indexOf("@");
+
+  if (
+    at <= 0 ||
+    at !==
+      email.lastIndexOf("@")
+  ) {
+    return false;
+  }
+
+  const domain =
+    email.slice(at + 1);
+
+  return (
+    domain.length > 2 &&
+    domain.includes(".") &&
+    !domain.startsWith(".") &&
+    !domain.endsWith(".")
+  );
+}
+
+function loginFailure(
+  code: LoginErrorCode,
+): never {
+  redirect(
+    `/login?error=${code}`,
+  );
+}
+
+export async function loginAction(
+  formData: FormData,
+) {
+  const email =
+    fieldValue(
+      formData,
+      "email",
+    ).toLowerCase();
+
+  const passwordValue =
+    formData.get("password");
+
+  const password =
+    typeof passwordValue ===
+    "string"
+      ? passwordValue
+      : "";
+
+  if (!email) {
+    loginFailure(
+      "EMAIL_REQUIRED",
+    );
+  }
+
+  if (
+    !isValidEmailShape(email)
+  ) {
+    loginFailure(
+      "EMAIL_FORMAT",
+    );
+  }
+
+  if (!password) {
+    loginFailure(
+      "PASSWORD_REQUIRED",
+    );
+  }
+
+  let failure:
+    LoginErrorCode | null = null;
+
+  try {
+    await signInWithPassword(
+      email,
+      password,
+    );
+  } catch (error) {
+    if (
+      error instanceof Error &&
+      error.message ===
+        "Akun tidak memiliki akses Admin aktif."
+    ) {
+      failure =
+        "ADMIN_INACTIVE";
+    } else if (
+      error instanceof TypeError ||
+      (
+        error instanceof Error &&
+        error.message.includes(
+          "belum dikonfigurasi",
+        )
+      )
+    ) {
+      failure =
+        "AUTH_UNAVAILABLE";
+    } else {
+      /*
+       * Sengaja generik.
+       *
+       * Jangan membedakan email tidak
+       * terdaftar dan password salah.
+       * Itu membuka account enumeration.
+       */
+      failure =
+        "CREDENTIALS_INVALID";
+    }
+  }
+
+  if (failure) {
+    loginFailure(failure);
   }
 
   redirect("/");
@@ -35,5 +158,8 @@ export async function loginAction(formData: FormData) {
 
 export async function logoutAction() {
   await logoutSession();
-  redirect("/login?message=Sesi+Admin+telah+diakhiri.");
+
+  redirect(
+    "/login?message=SIGNED_OUT",
+  );
 }

@@ -14,7 +14,7 @@ export function proxy(request: NextRequest) {
 
   if (!accessToken) {
     const loginUrl = new URL("/login", request.url);
-    loginUrl.searchParams.set("error", "Sesi Admin diperlukan.");
+    loginUrl.searchParams.set("error", "SESSION_REQUIRED");
     return NextResponse.redirect(loginUrl);
   }
 

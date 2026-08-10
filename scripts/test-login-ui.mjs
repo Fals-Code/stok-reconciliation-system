@@ -1,154 +1,137 @@
-import { readFile } from "node:fs/promises";
+import assert from "node:assert/strict";
+import {
+  readFile,
+} from "node:fs/promises";
 import path from "node:path";
-import process from "node:process";
 
 const root = process.cwd();
-const failures = [];
-
-function assert(condition, message) {
-  if (!condition) {
-    failures.push(message);
-    console.error(`[FAIL] ${message}`);
-    return;
-  }
-
-  console.log(`[PASS] ${message}`);
-}
 
 async function read(relativePath) {
   return readFile(
-    path.join(root, relativePath),
+    path.join(
+      root,
+      relativePath,
+    ),
     "utf8",
   );
 }
 
-const packageJson =
-  JSON.parse(
-    await read("package.json"),
-  );
-
-const login =
-  await read(
-    "src/app/login/page.tsx",
-  );
-
-const passwordInput =
-  await read(
+const [
+  packageSource,
+  login,
+  passwordInput,
+  authActions,
+] = await Promise.all([
+  read("package.json"),
+  read("src/app/login/page.tsx"),
+  read(
     "src/app/login/password-input.tsx",
-  );
+  ),
+  read("src/app/auth-actions.ts"),
+]);
 
-const sources =
-  `${login}\n${passwordInput}`;
+const packageJson =
+  JSON.parse(packageSource);
 
-assert(
-  packageJson.scripts?.["test:login-ui"] ===
-    "node scripts/test-login-ui.mjs",
+assert.equal(
+  packageJson.scripts[
+    "test:login-ui"
+  ],
+  "node scripts/test-login-ui.mjs",
   "package.json menyediakan test:login-ui",
 );
 
-assert(
+assert.ok(
   login.includes(
-    'data-login-layout="simple-admin-login"',
+    'data-login-layout="operator-login"',
   ) &&
     login.includes(
       'data-login-card="admin-auth"',
     ) &&
-    /id="login-title"[\s\S]*?>\s*Masuk\s*<\/h1>/.test(
-      login,
+    login.includes(
+      "Sistem Rekonsiliasi Stok",
     ) &&
     login.includes(
-      "Gunakan akun Admin gudang.",
+      'id="login-title"',
+    ) &&
+    login.includes(
+      "Masuk",
     ),
-  "Login tetap memakai form tunggal yang sederhana",
+  "Login memakai identity dan layout baru",
 );
 
-assert(
+assert.ok(
   login.includes(
-    'import { loginAction } from "@/app/auth-actions";',
+    'from "@/app/auth-actions"',
   ) &&
     login.includes(
-      'import { PasswordInput } from "@/app/login/password-input";',
+      'from "@/lib/auth"',
     ) &&
     login.includes(
-      'from "@/components/ui";',
+      "await getAdminSession()",
     ) &&
     login.includes(
-      'import { getAdminSession } from "@/lib/auth";',
+      'redirect("/")',
     ),
-  "Login memakai auth contract dan shared UI primitives",
+  "Login mempertahankan session dan redirect contract",
 );
 
-assert(
-  login.includes(
-    "const session = await getAdminSession();",
-  ) &&
-    login.includes(
-      'redirect("/");',
-    ),
-  "Admin yang sudah login diarahkan ke aplikasi",
-);
-
-assert(
+assert.ok(
   login.includes(
     "action={loginAction}",
   ) &&
     login.includes(
-      'aria-label="Masuk ke Stok Management"',
+      'name="email"',
+    ) &&
+    login.includes(
+      'name="password"',
     ) &&
     login.includes(
       'autoComplete="email"',
     ) &&
     login.includes(
       'autoComplete="current-password"',
-    ) &&
-    login.includes(
-      'type="submit"',
     ),
-  "Form mempertahankan kontrak autentikasi",
+  "Field autentikasi tetap memakai contract server",
 );
 
-assert(
+assert.ok(
   login.includes(
-    'feedback.error ===',
+    "credentialError",
   ) &&
     login.includes(
-      '"Sesi Admin diperlukan."',
+      "Login belum berhasil",
     ) &&
     login.includes(
-      "errorMessage ? (",
-    ) &&
-    login.includes(
-      'tone="danger"',
-    ) &&
-    login.includes(
-      "feedback.message ? (",
-    ) &&
-    login.includes(
-      'tone="success"',
+      "Email atau password tidak",
     ),
-  "Entry tanpa sesi tetap netral dan feedback nyata terlihat",
+  "Login gagal menggunakan pesan generik",
 );
 
-assert(
-  login.includes(
-    '<Field',
+assert.ok(
+  authActions.includes(
+    'CREDENTIALS_INVALID',
   ) &&
-    login.includes(
-      'id="login-email"',
+    !authActions.includes(
+      "error: error.message",
     ) &&
-    login.includes(
-      'id="login-password"',
-    ) &&
-    login.includes(
-      "<Input",
-    ) &&
-    login.includes(
-      "<PasswordInput",
+    !authActions.includes(
+      "errorMessage",
     ),
-  "Login memakai shared Field tanpa mengubah nama input",
+  "Auth action tidak memantulkan raw provider error",
 );
 
-assert(
+assert.ok(
+  authActions.includes(
+    "signInWithPassword",
+  ) &&
+    authActions.includes(
+      'redirect("/")',
+    ),
+  "Auth mutation contract tetap dipertahankan",
+);
+
+assert.ok(
   passwordInput.includes(
     '"use client"',
   ) &&
@@ -159,46 +142,45 @@ assert(
       "<IconButton",
     ) &&
     passwordInput.includes(
-      'aria-pressed={visible}',
-    ) &&
-    passwordInput.includes(
-      'visible\n            ? "Sembunyikan password"',
+      "aria-pressed={visible}",
     ) &&
     passwordInput.includes(
       'type="button"',
+    ) &&
+    passwordInput.includes(
+      "Tampilkan password",
+    ) &&
+    passwordInput.includes(
+      "Sembunyikan password",
     ),
-  "Tombol tampilkan password tetap aksesibel dan tidak submit form",
+  "Password visibility accessible dan tidak submit form",
 );
 
+const sources = [
+  login,
+  passwordInput,
+].join("\n");
+
 for (const forbidden of [
+  "GlowLab",
+  "Stok Management",
   "Lupa password",
   "Buat akun",
+  "Daftar",
   "<img",
-  "lg:grid-cols",
   "data-login-visual",
   "LedgerPreview",
   "StockFlowIllustration",
-  "InventoryCurveDivider",
-  "Setiap pergerakan tercatat dan dapat ditelusuri.",
-  "Stok jelas. Keputusan cepat.",
-  "primary-button",
-  "field-label",
   "TODO",
   "FIXME",
 ]) {
-  assert(
-    !sources.includes(forbidden),
-    `Login tidak mengandung ${forbidden}`,
+  assert.equal(
+    sources.includes(forbidden),
+    false,
+    `Login tidak boleh mengandung ${forbidden}`,
   );
-}
-
-if (failures.length > 0) {
-  console.error(
-    `\n${failures.length} pemeriksaan login gagal.`,
-  );
-  process.exit(1);
 }
 
 console.log(
-  "\nSemua login UI contract checks PASS.",
+  "Fresh login UI contract checks: PASS",
 );
