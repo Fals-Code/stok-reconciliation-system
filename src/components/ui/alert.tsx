@@ -3,7 +3,7 @@ import type {
   ReactNode,
 } from "react";
 
-import { cx } from "@/components/ui/class-names";
+import { cx } from "@/components/ui/cx";
 
 export type AlertTone =
   | "info"
@@ -25,7 +25,7 @@ const toneClasses: Record<
   string
 > = {
   info:
-    "border-ui-border-strong bg-ui-primary-subtle text-ui-primary",
+    "border-ui-border-strong bg-ui-primary-subtle text-ui-text",
   success:
     "border-ui-border-strong bg-ui-primary-subtle text-ui-primary",
   warning:
@@ -43,9 +43,12 @@ export function Alert({
   ...props
 }: AlertProps) {
   const resolvedRole =
-    role ?? (tone === "danger"
-      ? "alert"
-      : "status");
+    role ??
+    (
+      tone === "danger"
+        ? "alert"
+        : "status"
+    );
 
   return (
     <div
@@ -55,14 +58,14 @@ export function Alert({
         toneClasses[tone],
         className,
       )}
-      data-alert="shared"
+      data-ui-alert
       data-tone={tone}
       role={resolvedRole}
     >
       {title ? (
-        <p className="font-semibold">
+        <div className="font-semibold">
           {title}
-        </p>
+        </div>
       ) : null}
 
       {children ? (

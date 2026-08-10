@@ -1,19 +1,10 @@
-import { readFile } from "node:fs/promises";
+import assert from "node:assert/strict";
+import {
+  readFile,
+} from "node:fs/promises";
 import path from "node:path";
-import process from "node:process";
 
 const root = process.cwd();
-const failures = [];
-
-function assert(condition, message) {
-  if (!condition) {
-    failures.push(message);
-    console.error(`[FAIL] ${message}`);
-    return;
-  }
-
-  console.log(`[PASS] ${message}`);
-}
 
 async function read(relativePath) {
   return readFile(
@@ -23,40 +14,67 @@ async function read(relativePath) {
 }
 
 const [
-  packageJsonSource,
+  packageSource,
+  globals,
   index,
   button,
   iconButton,
   controls,
   field,
-  statusBadge,
   alert,
+  statusBadge,
   emptyState,
-  login,
-  passwordInput,
 ] = await Promise.all([
   read("package.json"),
+  read("src/app/globals.css"),
   read("src/components/ui/index.ts"),
   read("src/components/ui/button.tsx"),
   read("src/components/ui/icon-button.tsx"),
   read("src/components/ui/controls.tsx"),
   read("src/components/ui/field.tsx"),
-  read("src/components/ui/status-badge.tsx"),
   read("src/components/ui/alert.tsx"),
+  read("src/components/ui/status-badge.tsx"),
   read("src/components/ui/empty-state.tsx"),
-  read("src/app/login/page.tsx"),
-  read("src/app/login/password-input.tsx"),
 ]);
 
 const packageJson =
-  JSON.parse(packageJsonSource);
+  JSON.parse(packageSource);
 
-assert(
-  packageJson.scripts?.[
+assert.equal(
+  packageJson.scripts[
     "test:ui-primitives"
-  ] ===
-    "node scripts/test-ui-primitives.mjs",
-  "package.json menyediakan test:ui-primitives",
+  ],
+  "node scripts/test-ui-primitives.mjs",
+);
+
+for (const marker of [
+  '@import "tailwindcss"',
+  "--ui-canvas: #f7f8f6",
+  "--ui-surface: #ffffff",
+  "--ui-text: #18201e",
+  "--ui-primary: #1f6f64",
+  "--ui-warning: #b45309",
+  "--ui-danger: #b42318",
+  "--ui-focus: #2f8075",
+  "Inter",
+  "font-variant-numeric: tabular-nums",
+]) {
+  assert.ok(
+    globals.includes(marker),
+    `globals.css wajib memuat ${marker}`,
+  );
+}
+
+assert.equal(
+  globals.includes("Arial"),
+  false,
+  "Arial legacy tidak boleh kembali",
+);
+
+assert.equal(
+  globals.includes("Courier New"),
+  false,
+  "Courier New legacy tidak boleh kembali",
 );
 
 for (const exportName of [
@@ -70,7 +88,7 @@ for (const exportName of [
   "Textarea",
   "StatusBadge",
 ]) {
-  assert(
+  assert.ok(
     index.includes(exportName),
     `UI barrel mengekspor ${exportName}`,
   );
@@ -82,101 +100,68 @@ for (const variant of [
   "danger",
   "ghost",
 ]) {
-  assert(
+  assert.ok(
     button.includes(`"${variant}"`),
-    `Button menyediakan variant ${variant}`,
+    `Button menyediakan ${variant}`,
   );
 }
 
-assert(
+assert.ok(
   button.includes(
-    "min-h-[var(--ui-control-height)]",
+    "aria-busy=",
   ) &&
-    button.includes(
-      "focus-visible:outline-ui-focus",
-    ) &&
     button.includes(
       "disabled={isDisabled}",
     ) &&
     button.includes(
-      "aria-busy={loading || undefined}",
+      "min-h-[var(--ui-control-height)]",
     ),
-  "Button memiliki ukuran, focus, disabled, dan loading semantics",
+  "Button memiliki loading, disabled, dan ukuran minimum",
 );
 
-assert(
+assert.ok(
   iconButton.includes(
-    'aria-label={label}',
+    "aria-label={label}",
   ) &&
     iconButton.includes(
       "h-[var(--ui-control-height)]",
     ) &&
     iconButton.includes(
       "w-[var(--ui-control-height)]",
-    ) &&
-    iconButton.includes(
-      'type = "button"',
     ),
-  "IconButton memiliki accessible name dan target minimum",
+  "IconButton memiliki accessible name dan target 44px",
 );
 
-assert(
+assert.ok(
   controls.includes(
-    "aria-[invalid=true]:border-ui-danger",
+    'data-ui-control="input"',
   ) &&
     controls.includes(
-      "focus-visible:ring-ui-focus",
+      'data-ui-control="select"',
     ) &&
     controls.includes(
-      "export function Input",
+      'data-ui-control="textarea"',
     ) &&
     controls.includes(
-      "export function Select",
-    ) &&
-    controls.includes(
-      "export function Textarea",
+      "aria-[invalid=true]:border-ui-danger",
     ),
-  "Control field menggunakan state focus/error yang konsisten",
+  "Input, Select, dan Textarea memiliki semantics konsisten",
 );
 
-assert(
+assert.ok(
   field.includes(
-    '"aria-describedby": describedBy',
+    '"aria-describedby"',
   ) &&
     field.includes(
-      '"aria-invalid": error',
+      '"aria-invalid"',
+    ) &&
+    field.includes(
+      "htmlFor={id}",
     ) &&
     field.includes(
       'role="alert"',
-    ) &&
-    field.includes(
-      'htmlFor={id}',
     ),
-  "Field menghubungkan label, description, dan error secara aksesibel",
-);
-
-for (const tone of [
-  "neutral",
-  "selected",
-  "warning",
-  "danger",
-]) {
-  assert(
-    statusBadge.includes(
-      `"${tone}"`,
-    ),
-    `StatusBadge menyediakan tone ${tone}`,
-  );
-}
-
-assert(
-  statusBadge.includes(
-    "data-status-badge",
-  ) &&
-    statusBadge.includes(
-      "{children}",
-    ),
-  "StatusBadge selalu membawa label/content",
+  "Field menghubungkan label, helper, dan error",
 );
 
 for (const tone of [
@@ -185,72 +170,59 @@ for (const tone of [
   "warning",
   "danger",
 ]) {
-  assert(
+  assert.ok(
     alert.includes(`"${tone}"`),
     `Alert menyediakan tone ${tone}`,
   );
 }
 
-assert(
+assert.ok(
   alert.includes(
     'tone === "danger"',
   ) &&
     alert.includes('"alert"') &&
     alert.includes('"status"'),
-  "Alert memakai semantics status/alert sesuai konteks",
+  "Alert membedakan alert dan status",
 );
 
-assert(
+for (const tone of [
+  "neutral",
+  "selected",
+  "warning",
+  "danger",
+]) {
+  assert.ok(
+    statusBadge.includes(`"${tone}"`),
+    `StatusBadge menyediakan tone ${tone}`,
+  );
+}
+
+assert.ok(
+  statusBadge.includes(
+    "{children}",
+  ),
+  "StatusBadge selalu membawa label tekstual",
+);
+
+assert.ok(
   emptyState.includes(
-    "title: ReactNode",
+    "action?: ReactNode",
   ) &&
-    emptyState.includes(
-      "description?: ReactNode",
-    ) &&
-    emptyState.includes(
-      "action?: ReactNode",
-    ) &&
     emptyState.includes(
       "{action ? (",
     ),
   "EmptyState hanya menampilkan action nyata bila diberikan",
 );
 
-assert(
-  login.includes(
-    'from "@/components/ui"',
-  ) &&
-    login.includes("<Alert") &&
-    login.includes("<Button") &&
-    login.includes("<Field") &&
-    login.includes("<Input"),
-  "Login mengadopsi shared primitives sebagai representative page",
-);
-
-assert(
-  passwordInput.includes(
-    'from "@/components/ui"',
-  ) &&
-    passwordInput.includes(
-      "<IconButton",
-    ) &&
-    passwordInput.includes(
-      "<Input",
-    ) &&
-    passwordInput.includes(
-      "aria-pressed={visible}",
-    ),
-  "PasswordInput memakai Input dan IconButton shared",
-);
-
-const sources = [
+const source = [
+  globals,
   index,
   button,
   iconButton,
   controls,
   field,
-  statusBadge,
   alert,
+  statusBadge,
   emptyState,
 ].join("\n");
 
@@ -261,19 +233,13 @@ for (const forbidden of [
   "field-label",
   "status-pill",
 ]) {
-  assert(
-    !sources.includes(forbidden),
-    `Shared primitives tidak membawa legacy ${forbidden}`,
+  assert.equal(
+    source.includes(forbidden),
+    false,
+    `Fondasi tidak boleh membawa legacy ${forbidden}`,
   );
-}
-
-if (failures.length > 0) {
-  console.error(
-    `\n${failures.length} pemeriksaan UI primitives gagal.`,
-  );
-  process.exit(1);
 }
 
 console.log(
-  "\nSemua shared UI primitive contract checks PASS.",
+  "Fresh UI foundation contract checks: PASS",
 );

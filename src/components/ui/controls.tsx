@@ -4,17 +4,17 @@ import type {
   TextareaHTMLAttributes,
 } from "react";
 
-import { cx } from "@/components/ui/class-names";
+import { cx } from "@/components/ui/cx";
 
 const controlClassName = [
   "min-h-[var(--ui-control-height)] w-full rounded-[var(--ui-radius-md)]",
   "border border-ui-border bg-ui-surface px-3.5 text-sm text-ui-text",
-  "shadow-[var(--ui-shadow-sm)] outline-none transition-colors motion-reduce:transition-none",
+  "outline-none transition-colors motion-reduce:transition-none",
   "placeholder:text-ui-text-muted",
   "hover:border-ui-border-strong",
-  "focus-visible:border-ui-primary focus-visible:ring-2 focus-visible:ring-ui-focus",
+
   "disabled:cursor-not-allowed disabled:bg-ui-surface-subtle disabled:text-ui-text-muted",
-  "aria-[invalid=true]:border-ui-danger aria-[invalid=true]:focus-visible:ring-ui-danger",
+  "aria-[invalid=true]:border-ui-danger",
 ].join(" ");
 
 export type InputProps =
@@ -27,7 +27,11 @@ export function Input({
   return (
     <input
       {...props}
-      className={cx(controlClassName, className)}
+      className={cx(
+        controlClassName,
+        className,
+      )}
+      data-ui-control="input"
     />
   );
 }
@@ -47,6 +51,7 @@ export function Select({
         "pr-9",
         className,
       )}
+      data-ui-control="select"
     />
   );
 }
@@ -66,6 +71,7 @@ export function Textarea({
         "min-h-28 resize-y py-3",
         className,
       )}
+      data-ui-control="textarea"
     />
   );
 }
