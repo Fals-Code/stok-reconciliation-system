@@ -943,60 +943,106 @@ async function readCancellationByEventRef(eventRef) {
 }
 
 async function selectSplitFixture() {
-  const encodedOrganizationId = encodeURIComponent(organizationId);
+  const product = await rpc("create_product", {
+    p_organization_id: organizationId,
+    p_idempotency_key: `${FIXTURE_PREFIX}split-fixture-product:v1`,
+    p_name: "Marketplace Cancellation Smoke Fixture",
+    p_size_ml: 987,
+    p_unit_code: "UNIT",
+    p_description:
+      "Durable split-FEFO fixture for marketplace cancellation smoke.",
+    p_note: "Smoke fixture; stock changes remain ledger-backed.",
+  });
+
+  if (!UUID_PATTERN.test(product?.productId ?? "")) {
+    throw new Error(
+      `Fixture product gagal dipastikan: ${JSON.stringify(product)}`,
+    );
+  }
+
+  await rpc("post_receipt", {
+    p_organization_id: organizationId,
+    p_idempotency_key: `${FIXTURE_PREFIX}split-fixture-receipt:v1`,
+    p_source_ref: `${FIXTURE_PREFIX}split-fixture-receipt:v1`,
+    p_occurred_at: "2026-08-11T00:00:00+00:00",
+    p_lines: [
+      {
+        productId: product.productId,
+        batchCode: "MCS-FEFO-A",
+        expiryDate: "2099-01-01",
+        manufacturedDate: "2026-01-01",
+        quantity: 2,
+        sourceLineRef: "FIXTURE-A",
+      },
+      {
+        productId: product.productId,
+        batchCode: "MCS-FEFO-B",
+        expiryDate: "2099-02-01",
+        manufacturedDate: "2026-01-01",
+        quantity: 20,
+        sourceLineRef: "FIXTURE-B",
+      },
+    ],
+    p_note: "Durable two-batch stock for split-FEFO cancellation smoke.",
+    p_metadata: {
+      source: "marketplace-cancellation-ui-smoke",
+      fixture: "split-fefo",
+      version: 1,
+    },
+  });
+
   const rows = await restRows(
     "batch_inventory" +
-      `?organization_id=eq.${encodedOrganizationId}` +
+      `?organization_id=eq.${encodeURIComponent(organizationId)}` +
+      `&product_id=eq.${encodeURIComponent(product.productId)}` +
       "&status_code=eq.ACTIVE" +
-      "&sellable_qty=gt.0" +
       "&select=batch_id,product_id,sku,product_name,batch_code," +
       "expiry_date,received_first_at,status_code,sellable_qty" +
-      "&order=product_id.asc,expiry_date.asc,received_first_at.asc.nullslast,batch_code.asc",
+      "&order=expiry_date.asc,received_first_at.asc.nullslast,batch_code.asc",
   );
-  const byProduct = new Map();
+  const expected = new Map([
+    ["MCS-FEFO-A", 2],
+    ["MCS-FEFO-B", 20],
+  ]);
+  const batches = rows.filter((row) => expected.has(row.batch_code));
 
-  for (const row of rows) {
-    const current = byProduct.get(row.product_id) ?? [];
-    current.push(row);
-    byProduct.set(row.product_id, current);
-  }
-
-  for (const batches of byProduct.values()) {
-    if (batches.length < 2) continue;
-
-    const first = batches[0];
-    const second = batches[1];
-    const firstQuantity = Number(first.sellable_qty);
-    const secondQuantity = Number(second.sellable_qty);
-
-    if (firstQuantity < 2 || secondQuantity < 1) continue;
-
-    const productRows = await restRows(
-      "product_inventory" +
-        `?organization_id=eq.${encodedOrganizationId}` +
-        `&product_id=eq.${encodeURIComponent(first.product_id)}` +
-        "&select=product_id,available_qty,sellable_qty,reserved_qty",
+  if (
+    batches.length !== 2 ||
+    batches.some(
+      (batch) =>
+        Number(batch.sellable_qty) !== expected.get(batch.batch_code),
+    )
+  ) {
+    throw new Error(
+      `Fixture split-FEFO tidak pada baseline 2 + 20: ${JSON.stringify(batches)}`,
     );
-    const product = productRows[0];
-
-    if (!product) continue;
-
-    const shipQuantity = firstQuantity + 1;
-
-    if (Number(product.available_qty) < shipQuantity + 4) continue;
-
-    return {
-      productId: first.product_id,
-      sku: first.sku,
-      productName: first.product_name,
-      batches: [first, second],
-      shipQuantity,
-    };
   }
 
-  throw new Error(
-    "Fixture membutuhkan produk dengan dua batch aktif, batch pertama minimal 2 unit, dan available stock mencukupi.",
+  const productRows = await restRows(
+    "product_inventory" +
+      `?organization_id=eq.${encodeURIComponent(organizationId)}` +
+      `&product_id=eq.${encodeURIComponent(product.productId)}` +
+      "&select=product_id,available_qty,sellable_qty,reserved_qty",
   );
+  const productInventory = productRows[0];
+  const shipQuantity = 3;
+
+  if (
+    !productInventory ||
+    Number(productInventory.available_qty) < shipQuantity + 4
+  ) {
+    throw new Error(
+      `Fixture split-FEFO memiliki reservasi/stok kotor: ${JSON.stringify(productInventory)}`,
+    );
+  }
+
+  return {
+    productId: product.productId,
+    sku: product.sku,
+    productName: product.name,
+    batches,
+    shipQuantity,
+  };
 }
 
 function normalizePreviewApplications(preview) {
@@ -1147,9 +1193,8 @@ async function main(args) {
     "scripts/create-demo-admin.mjs",
     "scripts/test-marketplace-cancellation-ui.mjs",
     "src/app/marketplace/cancellations/actions.ts",
-    "src/app/marketplace/cancellations/components/draft-form.tsx",
     "src/app/marketplace/cancellations/draft.ts",
-    "src/app/marketplace/cancellations/page.tsx",
+    "src/app/marketplace/[orderId]/page.tsx",
     "src/app/marketplace/page.tsx",
     "src/lib/supabase-rest.ts",
     "supabase/migrations/202607200008_marketplace_partial_cancellation.sql",
@@ -1390,50 +1435,30 @@ returning organization_id::text;
 
   assertTest(serverReady, "Next.js server siap");
 
-  const cancellationUrl =
-    `${args.baseUrl}/marketplace/cancellations`;
+  const anonymousOrderUrl =
+    `${args.baseUrl}/marketplace/${randomUUID()}`;
   const unauthenticated =
-    await getUnauthenticated(cancellationUrl);
+    await getUnauthenticated(anonymousOrderUrl);
 
   assertTest(
     [302, 303, 307, 308].includes(
       unauthenticated.statusCode,
     ) &&
       String(unauthenticated.location ?? "").includes("/login"),
-    "Halaman cancellation menolak sesi anonim",
+    "Detail pesanan menolak sesi anonim",
     `Status=${unauthenticated.statusCode} ` +
       `Location=${unauthenticated.location ?? ""}`,
   );
 
-  let page = await getPage(cancellationUrl);
-
-  const cancellationReadyOrEmpty =
-    containsText(page.html, "Tinjau dampak pembatalan") ||
-    containsText(
-      page.html,
-      "Tidak ada item marketplace yang masih dapat dibatalkan",
-    );
-
-  assertTest(
-    containsText(page.html, "Marketplace cancellation") &&
-      cancellationReadyOrEmpty &&
-      containsText(
-        page.html,
-        "Tanpa pemilihan batch manual",
-      ),
-    "Halaman authenticated cancellation dan empty state dirender",
-  );
-
+  let page;
   const marketplacePage = await getPage(
     `${args.baseUrl}/marketplace`,
   );
 
   assertTest(
-    containsText(
-      marketplacePage.html,
-      "Kelola pembatalan parsial",
-    ),
-    "Halaman Marketplace memiliki shortcut cancellation",
+    containsText(marketplacePage.html, "Pesanan") &&
+      containsText(marketplacePage.html, "Daftar pesanan"),
+    "Workspace Pesanan authenticated dirender",
   );
 
   fixture = await selectSplitFixture();
@@ -1461,7 +1486,7 @@ returning organization_id::text;
     eventRef: `${FIXTURE_PREFIX}pre-cancel:${runId}`,
     orderRef: preOrderRef,
     occurredAt: jakartaDateTimeLocal(nextEventDate()),
-    sourceStatus: "CANCELLED_BEFORE_SHIPMENT",
+    sourceStatus: "CANCELLED",
     lines: [
       {
         productId: fixture.productId,
@@ -1489,40 +1514,66 @@ returning organization_id::text;
     JSON.stringify(preDirect),
   );
 
+  const preCandidateBefore = await readCandidate(
+    preOrderRef,
+    preItemRef,
+  );
+
+  assertTest(
+    UUID_PATTERN.test(preCandidateBefore?.order_id ?? "") &&
+      UUID_PATTERN.test(preCandidateBefore?.order_item_id ?? ""),
+    "Fixture pre-shipment tersedia pada detail Pesanan",
+    JSON.stringify(preCandidateBefore),
+  );
+
+  const preOrderUrl =
+    args.baseUrl +
+    "/marketplace/" +
+    encodeURIComponent(preCandidateBefore.order_id);
+  const prePreviewUrl = new URL(preOrderUrl);
+  prePreviewUrl.searchParams.set(
+    "cancelItem",
+    preCandidateBefore.order_item_id,
+  );
+  prePreviewUrl.searchParams.set("cancelPhase", "PRE_SHIPMENT");
+  prePreviewUrl.searchParams.set("cancelQty", "2");
+  prePreviewUrl.searchParams.set("cancelEventRef", preDraft.eventRef);
+  prePreviewUrl.searchParams.set(
+    "cancelOccurredAt",
+    preDraft.occurredAt,
+  );
+
   const preInventoryBefore = await readInventorySnapshot(
     fixture.productId,
     fixture.batches.map((batch) => batch.batch_id),
   );
   const preLedgerBefore = readLedgerWatermark();
 
-  page = await invokeServerActionForm({
-    pageUri: cancellationUrl,
-    pageHtml: (await getPage(cancellationUrl)).html,
-    marker: "Tinjau dampak pembatalan",
-    fields: {
-      draft: JSON.stringify(preDraft),
-    },
-    baseUrl: args.baseUrl,
-  });
+  page = await getPage(prePreviewUrl.toString());
 
   assertTest(
-    containsText(page.html, "Preview authoritative") &&
-      containsText(page.html, "Sebelum shipment") &&
-      containsText(page.html, "Release reservation") &&
-      hasForm(page.html, "Lepaskan reservasi"),
-    "UI merender preview pre-shipment dan commit form",
+    containsText(page.html, "Yang akan terjadi") &&
+      containsText(page.html, "Belum dikirim") &&
+      containsText(
+        page.html,
+        "Reservasi dilepas. Stok fisik tidak berubah.",
+      ) &&
+      hasForm(page.html, "Simpan pembatalan"),
+    "UI detail Pesanan merender preview pre-shipment dan commit form",
   );
 
-  const preForm = findForm(page.html, "Lepaskan reservasi");
+  const preForm = findForm(page.html, "Simpan pembatalan");
   const preHash = findInputValue(
     preForm,
     "previewBasisHash",
   );
   const preIntentId = findInputValue(preForm, "intentId");
   const preHiddenDraft = findInputValue(preForm, "draft");
+  const preHiddenOrderId = findInputValue(preForm, "orderId");
 
   assertTest(
     preHash === preDirect.basisHash &&
+      preHiddenOrderId === preCandidateBefore.order_id &&
       UUID_PATTERN.test(preIntentId) &&
       !formHasInput(preForm, "confirmation"),
     "Pre-shipment memakai exact basis hash tanpa konfirmasi reversal",
@@ -1546,8 +1597,9 @@ returning organization_id::text;
   const preSuccessPage = await invokeServerActionForm({
     pageUri: page.uri,
     pageHtml: page.html,
-    marker: "Lepaskan reservasi",
+    marker: "Simpan pembatalan",
     fields: {
+      orderId: preHiddenOrderId,
       draft: preHiddenDraft,
       previewBasisHash: preHash,
       intentId: preIntentId,
@@ -1562,12 +1614,15 @@ returning organization_id::text;
     preOrderRef,
     preItemRef,
   );
+  const prePersisted = await readCancellationByEventRef(
+    preDraft.eventRef,
+  );
 
   assertTest(
     UUID_PATTERN.test(preCancellationId ?? "") &&
       containsText(
         preSuccessPage.html,
-        "dilepas dari reservasi tanpa pergerakan stok fisik",
+        "dilepas dari reservasi. Stok fisik tidak berubah.",
       ) &&
       preEffect.eventCount === 1 &&
       preEffect.cancellationCount === 1 &&
@@ -1586,17 +1641,21 @@ returning organization_id::text;
   assertTest(
     containsText(
       preRefreshPage.html,
-      "dilepas dari reservasi tanpa pergerakan stok fisik",
+      "dilepas dari reservasi. Stok fisik tidak berubah.",
     ) &&
-      containsText(preRefreshPage.html, preDraft.eventRef),
-    "Feedback pre-shipment dan drill-down bertahan setelah refresh",
+      containsText(
+        preRefreshPage.html,
+        prePersisted.header.cancellation_no,
+      ),
+    "Feedback pre-shipment dan riwayat pembatalan bertahan setelah refresh",
   );
 
   await invokeServerActionForm({
     pageUri: page.uri,
     pageHtml: page.html,
-    marker: "Lepaskan reservasi",
+    marker: "Simpan pembatalan",
     fields: {
+      orderId: preHiddenOrderId,
       draft: preHiddenDraft,
       previewBasisHash: preHash,
       intentId: preIntentId,
@@ -1674,7 +1733,7 @@ returning organization_id::text;
     eventRef: `${FIXTURE_PREFIX}post-cancel:${runId}`,
     orderRef: postOrderRef,
     occurredAt: jakartaDateTimeLocal(nextEventDate()),
-    sourceStatus: "CANCELLED_AFTER_SHIPMENT",
+    sourceStatus: "CANCELLED",
     lines: [
       {
         productId: fixture.productId,
@@ -1701,6 +1760,39 @@ returning organization_id::text;
     JSON.stringify(postDirect),
   );
 
+  const postCandidateBefore = await readCandidate(
+    postOrderRef,
+    postItemRef,
+  );
+
+  assertTest(
+    UUID_PATTERN.test(postCandidateBefore?.order_id ?? "") &&
+      UUID_PATTERN.test(postCandidateBefore?.order_item_id ?? ""),
+    "Fixture post-shipment tersedia pada detail Pesanan",
+    JSON.stringify(postCandidateBefore),
+  );
+
+  const postOrderUrl =
+    args.baseUrl +
+    "/marketplace/" +
+    encodeURIComponent(postCandidateBefore.order_id);
+  const postPreviewUrl = new URL(postOrderUrl);
+  postPreviewUrl.searchParams.set(
+    "cancelItem",
+    postCandidateBefore.order_item_id,
+  );
+  postPreviewUrl.searchParams.set("cancelPhase", "POST_SHIPMENT");
+  postPreviewUrl.searchParams.set(
+    "cancelQty",
+    String(postCancelQuantity),
+  );
+  postPreviewUrl.searchParams.set("cancelEventRef", postDraft.eventRef);
+  postPreviewUrl.searchParams.set(
+    "cancelOccurredAt",
+    postDraft.occurredAt,
+  );
+  postPreviewUrl.searchParams.set("cancelNote", postDraft.note);
+
   const postInventoryBeforePreview =
     await readInventorySnapshot(
       fixture.productId,
@@ -1708,42 +1800,22 @@ returning organization_id::text;
     );
   const postLedgerBeforePreview = readLedgerWatermark();
 
-  const postPreviewPage = await invokeServerActionForm({
-    pageUri: cancellationUrl,
-    pageHtml: (await getPage(cancellationUrl)).html,
-    marker: "Tinjau dampak pembatalan",
-    fields: {
-      draft: JSON.stringify(postDraft),
-    },
-    baseUrl: args.baseUrl,
-  });
+  const postPreviewPage = await getPage(postPreviewUrl.toString());
 
   assertTest(
-    containsText(
-      postPreviewPage.html,
-      "Batch dan ledger shipment yang akan dibalik",
-    ) &&
-      postPreviewApplications.every(
-        (application) =>
-          containsText(
-            postPreviewPage.html,
-            application.batchCode,
-          ) &&
-          containsText(
-            postPreviewPage.html,
-            application.originalLedgerEntryId,
-          ),
-      ) &&
-      hasForm(
+    containsText(postPreviewPage.html, "Yang akan terjadi") &&
+      containsText(postPreviewPage.html, "Sudah dikirim") &&
+      containsText(
         postPreviewPage.html,
-        "Posting reversal pembatalan",
-      ),
-    "UI menampilkan exact original batch dan ledger restoration",
+        "Sistem mengembalikan stok ke batch kiriman asal dan mencatat pembalikannya untuk jejak audit.",
+      ) &&
+      hasForm(postPreviewPage.html, "Simpan pembatalan"),
+    "UI detail Pesanan merender preview post-shipment dan commit form",
   );
 
   const postForm = findForm(
     postPreviewPage.html,
-    "Posting reversal pembatalan",
+    "Simpan pembatalan",
   );
   const postHash = findInputValue(
     postForm,
@@ -1751,9 +1823,11 @@ returning organization_id::text;
   );
   const postIntentId = findInputValue(postForm, "intentId");
   const postHiddenDraft = findInputValue(postForm, "draft");
+  const postHiddenOrderId = findInputValue(postForm, "orderId");
 
   assertTest(
     postHash === postDirect.basisHash &&
+      postHiddenOrderId === postCandidateBefore.order_id &&
       UUID_PATTERN.test(postIntentId) &&
       formHasInput(postForm, "confirmation"),
     "Post-shipment memakai exact basis hash dan explicit confirmation",
@@ -1780,8 +1854,9 @@ returning organization_id::text;
     await invokeServerActionForm({
       pageUri: postPreviewPage.uri,
       pageHtml: postPreviewPage.html,
-      marker: "Posting reversal pembatalan",
+      marker: "Simpan pembatalan",
       fields: {
+        orderId: postHiddenOrderId,
         draft: postHiddenDraft,
         previewBasisHash: postHash,
         intentId: postIntentId,
@@ -1805,8 +1880,9 @@ returning organization_id::text;
   const postSuccessPage = await invokeServerActionForm({
     pageUri: postPreviewPage.uri,
     pageHtml: postPreviewPage.html,
-    marker: "Posting reversal pembatalan",
+    marker: "Simpan pembatalan",
     fields: {
+      orderId: postHiddenOrderId,
       draft: postHiddenDraft,
       previewBasisHash: postHash,
       intentId: postIntentId,
@@ -1834,7 +1910,7 @@ returning organization_id::text;
       UUID_PATTERN.test(postTransactionId ?? "") &&
       containsText(
         postSuccessPage.html,
-        "dipulihkan ke batch shipment asal",
+        "dikembalikan ke batch kiriman asal",
       ) &&
       postEffect.eventCount === 1 &&
       postEffect.cancellationCount === 1 &&
@@ -1862,29 +1938,29 @@ returning organization_id::text;
   const postRefreshPage = await getPage(postSuccessPage.uri);
 
   assertTest(
-    containsText(
-      postRefreshPage.html,
-      postPersisted.header.cancellation_no,
-    ) &&
-      postPersisted.applications.every(
-        (application) =>
-          containsText(
-            postRefreshPage.html,
-            application.original_transaction_no ?? "non-physical",
-          ) &&
-          containsText(
-            postRefreshPage.html,
-            application.batch_code_snapshot ?? "—",
-          ),
-      ),
-    "Refresh-safe drill-down menampilkan shipment, reversal, dan batch",
+    containsText(postRefreshPage.html, "Pembatalan") &&
+      containsText(
+        postRefreshPage.html,
+        postPersisted.header.cancellation_no,
+      ) &&
+      containsText(postRefreshPage.html, "unit") &&
+      containsText(postRefreshPage.html, "sebelum kirim") &&
+      containsText(postRefreshPage.html, "sesudah kirim"),
+    "Refresh-safe riwayat Pembatalan menampilkan ringkasan operator",
+    JSON.stringify({
+      cancellationNo: postPersisted.header.cancellation_no,
+      totalQuantity: postPersisted.header.total_quantity,
+      preShipmentQuantity: postPersisted.header.pre_shipment_quantity,
+      postShipmentQuantity: postPersisted.header.post_shipment_quantity,
+    }),
   );
 
   await invokeServerActionForm({
     pageUri: postPreviewPage.uri,
     pageHtml: postPreviewPage.html,
-    marker: "Posting reversal pembatalan",
+    marker: "Simpan pembatalan",
     fields: {
+      orderId: postHiddenOrderId,
       draft: postHiddenDraft,
       previewBasisHash: postHash,
       intentId: postIntentId,
@@ -1908,7 +1984,7 @@ returning organization_id::text;
     eventRef: `${FIXTURE_PREFIX}blocked:${runId}`,
     orderRef: postOrderRef,
     occurredAt: jakartaDateTimeLocal(nextEventDate()),
-    sourceStatus: "CANCELLED_AFTER_SHIPMENT",
+    sourceStatus: "CANCELLED",
     lines: [
       {
         productId: fixture.productId,
@@ -1922,23 +1998,39 @@ returning organization_id::text;
   };
   const blockedBefore =
     readCancellationEffect(blockedDraft.eventRef);
-  const blockedPage = await invokeServerActionForm({
-    pageUri: cancellationUrl,
-    pageHtml: (await getPage(cancellationUrl)).html,
-    marker: "Tinjau dampak pembatalan",
-    fields: {
-      draft: JSON.stringify(blockedDraft),
-    },
-    baseUrl: args.baseUrl,
-  });
+  const blockedPreviewUrl = new URL(postOrderUrl);
+  blockedPreviewUrl.searchParams.set(
+    "cancelItem",
+    postCandidateBefore.order_item_id,
+  );
+  blockedPreviewUrl.searchParams.set("cancelPhase", "POST_SHIPMENT");
+  blockedPreviewUrl.searchParams.set(
+    "cancelQty",
+    String(blockedDraft.lines[0].quantity),
+  );
+  blockedPreviewUrl.searchParams.set(
+    "cancelEventRef",
+    blockedDraft.eventRef,
+  );
+  blockedPreviewUrl.searchParams.set(
+    "cancelOccurredAt",
+    blockedDraft.occurredAt,
+  );
+  blockedPreviewUrl.searchParams.set("cancelNote", blockedDraft.note);
+
+  const blockedPage = await getPage(blockedPreviewUrl.toString());
   const blockedAfter =
     readCancellationEffect(blockedDraft.eventRef);
 
   assertTest(
     containsText(blockedPage.html, "Diblokir") &&
+      containsText(
+        blockedPage.html,
+        "Pembatalan tidak dapat dilanjutkan",
+      ) &&
       !hasForm(
         blockedPage.html,
-        "Posting reversal pembatalan",
+        "Simpan pembatalan",
       ) &&
       JSON.stringify(blockedAfter) === JSON.stringify(blockedBefore),
     "Over-cancellation diblokir tanpa final action atau domain effect",

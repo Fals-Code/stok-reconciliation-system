@@ -326,12 +326,6 @@ export default async function MarketplaceListingsPage({
             <Link className="nav-link inline-flex" href="/marketplace">
               Simulator dan lifecycle
             </Link>
-            <Link
-              className="nav-link inline-flex"
-              href="/marketplace/cancellations"
-            >
-              Pembatalan parsial
-            </Link>
           </div>
 
           <div className="mt-7 grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
