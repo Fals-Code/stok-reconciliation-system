@@ -80,6 +80,6 @@ export function isNavItemActive(itemHref: string, pathname: string): boolean {
 }
 
 // Temporary bridge function for isolated worktree typechecks on legacy pages
-export function getBreadcrumbItems(pathname: string, options?: unknown): never[] {
+export function getBreadcrumbItems(pathname: string, options?: unknown): unknown[] {
   return [];
 }

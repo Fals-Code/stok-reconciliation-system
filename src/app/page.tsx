@@ -1,451 +1,612 @@
 import Link from "next/link";
 
-import PageSectionNav from "@/app/app-shell/page-section-nav";
-
-import { postReceiptAction } from "@/app/actions";
 import {
-  type BatchInventory,
+  AppShell,
+} from "@/app/app-shell/app-shell";
+import {
+  PageHeader,
+} from "@/app/app-shell/page-header";
+import {
+  Alert,
+  EmptyState,
+  StatusBadge,
+} from "@/components/ui";
+import {
+  requireAdminSession,
+} from "@/lib/auth";
+import {
   getDashboardData,
-  type ProductInventory,
+  getTodayControlCenterWorkItems,
+  type BatchInventory,
   type StockLedgerEntry,
+  type TodayControlCenterSeverity,
+  type TodayControlCenterWorkItem,
+  type TodayControlCenterWorkType,
 } from "@/lib/supabase-rest";
 
 export const dynamic = "force-dynamic";
 
 const numberFormatter = new Intl.NumberFormat("id-ID");
 
-function formatNumber(value: number) {
-  return numberFormatter.format(value);
+const nonOperationalWorkTypes = new Set<TodayControlCenterWorkType>([
+  "RECONCILIATION_RUN_FAILED",
+  "NOTIFICATION_OUTBOX_FAILURE",
+  "NOTIFICATION_RULE_RUN_FAILURE",
+]);
+
+type OperationalWorkType = Exclude<
+  TodayControlCenterWorkType,
+  "RECONCILIATION_RUN_FAILED" | "NOTIFICATION_OUTBOX_FAILURE" | "NOTIFICATION_RULE_RUN_FAILURE"
+>;
+
+const severityLabel: Record<TodayControlCenterSeverity, string> = {
+  CRITICAL: "Kritis",
+  HIGH: "Mendesak",
+  WARNING: "Perlu Diperiksa",
+  INFO: "Informasi",
+};
+
+const severityTone: Record<
+  TodayControlCenterSeverity,
+  "danger" | "warning" | "neutral"
+> = {
+  CRITICAL: "danger",
+  HIGH: "warning",
+  WARNING: "warning",
+  INFO: "neutral",
+};
+
+const workTypeLabel: Record<OperationalWorkType, string> = {
+  RECONCILIATION_ISSUE: "Masalah stok",
+  TIKTOK_CLAIM_DEADLINE: "Klaim TikTok",
+  RETURN_INSPECTION_PENDING: "Retur",
+  BATCH_EXPIRY: "Batch",
+  STOCKTAKE_RECOUNT_REQUIRED: "Hitung stok",
+  STOCKTAKE_POST_FAILED: "Hitung stok",
+};
+
+const workAction: Record<
+  OperationalWorkType,
+  { href: string; label: string }
+> = {
+  RECONCILIATION_ISSUE: {
+    href: "/stock-issues",
+    label: "Periksa Selisih",
+  },
+  TIKTOK_CLAIM_DEADLINE: {
+    href: "/returns",
+    label: "Buka Klaim",
+  },
+  RETURN_INSPECTION_PENDING: {
+    href: "/returns",
+    label: "Buka Retur",
+  },
+  BATCH_EXPIRY: {
+    href: "/products",
+    label: "Lihat Batch",
+  },
+  STOCKTAKE_RECOUNT_REQUIRED: {
+    href: "/stocktakes",
+    label: "Lanjutkan Hitung",
+  },
+  STOCKTAKE_POST_FAILED: {
+    href: "/stocktakes",
+    label: "Periksa Hasil",
+  },
+};
+
+const activityLabel: Record<string, string> = {
+  INITIAL_BALANCE: "Stok Awal",
+  RECEIPT: "Barang Masuk",
+  MARKETPLACE_OUTBOUND: "Barang Keluar",
+  OUTBOUND_MARKETPLACE: "Barang Keluar",
+  MANUAL_OUTBOUND: "Barang Keluar",
+  RETURN_SELLABLE_INBOUND: "Retur Layak Dijual",
+  STOCKTAKE_ADJUSTMENT: "Penyesuaian Hasil Hitung",
+  DISPOSAL: "Barang Rusak / Kedaluwarsa",
+  REVERSAL: "Koreksi",
+};
+
+function quantity(value: number) {
+  return numberFormatter.format(Number(value));
 }
 
-function formatDate(value: string | null, includeTime = false) {
-  if (!value) return "—";
+function formatDate(value: string | null, includeYear = false) {
+  if (!value) return null;
+
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return null;
+
+  return new Intl.DateTimeFormat("id-ID", {
+    timeZone: "Asia/Jakarta",
+    day: "2-digit",
+    month: "short",
+    ...(includeYear ? { year: "numeric" } : {}),
+    hour: "2-digit",
+    minute: "2-digit",
+    hour12: false,
+  }).format(date);
+}
+
+function formatExpiryDate(value: string) {
+  const date = new Date(`${value}T00:00:00+07:00`);
+
+  if (Number.isNaN(date.getTime())) return value;
 
   return new Intl.DateTimeFormat("id-ID", {
     timeZone: "Asia/Jakarta",
     day: "2-digit",
     month: "short",
     year: "numeric",
-    ...(includeTime
-      ? { hour: "2-digit", minute: "2-digit", hour12: false }
-      : {}),
-  }).format(new Date(value));
+  }).format(date);
 }
 
-function defaultDateTimeLocal() {
-  const parts = new Intl.DateTimeFormat("en-CA", {
-    timeZone: "Asia/Jakarta",
-    year: "numeric",
-    month: "2-digit",
-    day: "2-digit",
-    hour: "2-digit",
-    minute: "2-digit",
-    hour12: false,
-  }).formatToParts(new Date());
-
-  const values = Object.fromEntries(parts.map((part) => [part.type, part.value]));
-  return `${values.year}-${values.month}-${values.day}T${values.hour}:${values.minute}`;
-}
-
-type PillTone = "success" | "warning" | "danger" | "neutral";
-
-type StatusBadge = {
-  label: string;
-  tone: PillTone;
-};
-
-function inventoryStatus(product: ProductInventory): StatusBadge {
-  if (product.available_qty <= 0) return { label: "Habis", tone: "danger" };
-  if (product.available_qty <= 10) return { label: "Menipis", tone: "warning" };
-  return { label: "Aman", tone: "success" };
-}
-
-function expiryStatus(batch: BatchInventory): StatusBadge {
-  const today = new Date();
+function expiryDays(batch: BatchInventory) {
   const expiry = new Date(`${batch.expiry_date}T00:00:00+07:00`);
-  const days = Math.ceil((expiry.getTime() - today.getTime()) / 86_400_000);
-
-  if (days < 0) return { label: "Kedaluwarsa", tone: "danger" };
-  if (days <= 30) return { label: `${days} hari`, tone: "danger" };
-  if (days <= 90) return { label: `${days} hari`, tone: "warning" };
-  return { label: `${days} hari`, tone: "neutral" };
+  return Math.ceil((expiry.getTime() - Date.now()) / 86_400_000);
 }
 
-function quantityTone(entry: StockLedgerEntry) {
-  return entry.quantity_delta >= 0 ? "text-emerald-300" : "text-rose-300";
+function getTodayWorkItemReactKey(item: TodayControlCenterWorkItem) {
+  return item.notification_id
+    ? `${item.work_item_id}:${item.notification_id}`
+    : `${item.work_item_id}:${item.source_entity_id}`;
 }
 
-function Pill({
-  label,
-  tone,
-}: {
-  label: string;
-  tone: PillTone;
-}) {
-  const tones = {
-    success: "border-emerald-400/20 bg-emerald-400/10 text-emerald-300",
-    warning: "border-amber-400/20 bg-amber-400/10 text-amber-200",
-    danger: "border-rose-400/20 bg-rose-400/10 text-rose-200",
-    neutral: "border-white/10 bg-white/[0.04] text-slate-300",
-  };
-
-  return (
-    <span className={`inline-flex rounded-full border px-2.5 py-1 text-xs ${tones[tone]}`}>
-      {label}
-    </span>
-  );
+function isOperationalWorkItem(
+  item: TodayControlCenterWorkItem,
+): item is TodayControlCenterWorkItem & {
+  work_type_code: OperationalWorkType;
+} {
+  return !nonOperationalWorkTypes.has(item.work_type_code);
 }
 
-function ConfigurationError({ message }: { message: string }) {
-  return (
-    <main className="min-h-screen bg-slate-950 px-6 py-16 text-slate-100">
-      <section className="mx-auto max-w-3xl rounded-3xl border border-amber-400/20 bg-amber-400/[0.06] p-8">
-        <p className="font-mono text-xs uppercase tracking-[0.2em] text-amber-300">
-          Konfigurasi diperlukan
-        </p>
-        <h1 className="mt-3 text-3xl font-semibold">Dashboard belum terhubung ke Supabase.</h1>
-        <p className="mt-4 leading-7 text-slate-300">{message}</p>
-        <div className="mt-7 rounded-2xl border border-white/10 bg-slate-950/70 p-5 font-mono text-sm leading-7 text-slate-300">
-          <div>npx supabase status -o env</div>
-          <div>Copy-Item .env.example .env.local</div>
-          <div>Isi SUPABASE_SECRET_KEY di .env.local</div>
-          <div>npm run dev</div>
-        </div>
-      </section>
-    </main>
-  );
-}
-
-export default async function Home({
-  searchParams,
-}: {
-  searchParams: Promise<{
-    success?: string;
-    error?: string;
-    batchId?: string;
-  }>;
-}) {
-  const feedback = await searchParams;
-  let data;
+function isSafeInternalRoute(value: string | null) {
+  if (!value) return false;
+  if (!value.startsWith("/") || value.startsWith("//")) return false;
+  if (value.includes("\\") || /[\u0000-\u001F\u007F]/.test(value)) return false;
 
   try {
-    data = await getDashboardData();
-  } catch (error) {
-    return (
-      <ConfigurationError
-        message={error instanceof Error ? error.message : "Konfigurasi tidak valid."}
-      />
-    );
+    const parsed = new URL(value, "http://internal.local");
+    return parsed.origin === "http://internal.local";
+  } catch {
+    return false;
+  }
+}
+
+function getWorkHref(
+  item: TodayControlCenterWorkItem & {
+    work_type_code: OperationalWorkType;
+  },
+) {
+  return isSafeInternalRoute(item.route_path)
+    ? item.route_path!
+    : workAction[item.work_type_code].href;
+}
+
+function getDueLabel(item: TodayControlCenterWorkItem) {
+  if (item.work_type_code === "TIKTOK_CLAIM_DEADLINE") {
+    return "Batas klaim";
   }
 
-  const { products, batches, receiptBatches, ledger } = data;
-  const receiptOptions = receiptBatches.map((batch) => ({
-    ...batch,
-    sku: batch.product_sku,
-  }));
-  const selectedBatchId = feedback.batchId?.trim() || null;
-  const selectedBatch = selectedBatchId
-    ? batches.find((batch) => batch.batch_id === selectedBatchId) ?? null
-    : null;
-  const sellable = products.reduce((sum, product) => sum + product.sellable_qty, 0);
-  const reserved = products.reduce((sum, product) => sum + product.reserved_qty, 0);
-  const available = products.reduce((sum, product) => sum + product.available_qty, 0);
-  const riskBatches = batches.filter((batch) => {
-    const status = expiryStatus(batch);
-    return status.tone === "warning" || status.tone === "danger";
-  }).length;
-  const currentDateTime = defaultDateTimeLocal();
+  if (item.work_type_code === "BATCH_EXPIRY") {
+    return "Kedaluwarsa";
+  }
+
+  return "Perlu ditindaklanjuti";
+}
+
+function PrioritySummary({
+  rows,
+}: {
+  rows: Array<TodayControlCenterWorkItem & { work_type_code: OperationalWorkType }>;
+}) {
+  const urgent = rows.filter(
+    (item) => item.severity_code === "CRITICAL" || item.severity_code === "HIGH",
+  ).length;
+  const review = rows.filter((item) => item.severity_code === "WARNING").length;
+  const info = rows.filter((item) => item.severity_code === "INFO").length;
+
+  const items = [
+    { label: "Mendesak", value: urgent, accent: "bg-ui-danger" },
+    { label: "Perlu Diperiksa", value: review, accent: "bg-ui-warning" },
+    { label: "Informasi", value: info, accent: "bg-ui-primary" },
+  ];
 
   return (
-    <main className="min-h-screen bg-slate-950 text-slate-100">
-      <PageSectionNav
-        items={[
-          { href: "#overview", label: "Ringkasan" },
-          { href: "#actions", label: "Transaksi" },
-          { href: "#inventory", label: "Inventory" },
-          { href: "#ledger", label: "Ledger" },
-        ]}
+    <dl className="grid gap-3 sm:grid-cols-3">
+      {items.map((item) => (
+        <div
+          className="relative overflow-hidden rounded-[var(--ui-radius-lg)] border border-ui-border bg-ui-surface px-4 py-3"
+          key={item.label}
+        >
+          <span
+            aria-hidden="true"
+            className={`absolute inset-y-2 left-0 w-0.5 rounded-full opacity-70 ${item.accent}`}
+          />
+          <dt className="text-xs font-medium text-ui-text-muted">
+            {item.label}
+          </dt>
+          <dd className="ui-number mt-1 text-[1.4rem] font-semibold tracking-tight text-ui-text">
+            {quantity(item.value)}
+          </dd>
+        </div>
+      ))}
+    </dl>
+  );
+}
+function WorkItem({
+  item,
+}: {
+  item: TodayControlCenterWorkItem & {
+    work_type_code: OperationalWorkType;
+  };
+}) {
+  const fallbackAction = workAction[item.work_type_code];
+  const due = formatDate(item.due_at, true);
+  const accentClass =
+    item.severity_code === "CRITICAL"
+      ? "bg-ui-danger"
+      : item.severity_code === "HIGH" || item.severity_code === "WARNING"
+        ? "bg-ui-warning"
+        : "bg-ui-primary";
+
+  return (
+    <article className="relative border-b border-ui-border px-4 py-3.5 last:border-b-0 sm:px-5">
+      <span
+        aria-hidden="true"
+        className={`absolute left-0 top-1/2 h-8 w-0.5 -translate-y-1/2 rounded-full opacity-80 ${accentClass}`}
       />
 
-      <div className="mx-auto max-w-[1500px] px-5 py-8 lg:px-8">
-        <section id="overview" className="scroll-mt-24">
-          <div className="flex flex-col gap-5 lg:flex-row lg:items-end lg:justify-between">
-            <div>
-              <p className="font-mono text-xs uppercase tracking-[0.2em] text-slate-500">
-                Dashboard operasional
-              </p>
-              <h1 className="mt-3 text-3xl font-semibold tracking-tight sm:text-4xl">
-                Stok yang bisa dijelaskan, bukan sekadar dihitung.
-              </h1>
-              <p className="mt-3 max-w-2xl text-sm leading-6 text-slate-400 sm:text-base">
-                Posisi produk, kondisi batch, penerimaan, outbound FEFO, dan ledger
-                berada dalam satu alur yang dapat diaudit.
-              </p>
-            </div>
-            <div className="rounded-2xl border border-white/10 bg-white/[0.03] px-4 py-3 text-sm text-slate-400">
-              Update terakhir: {formatDate(new Date().toISOString(), true)} WIB
-            </div>
-          </div>
-
-          <div className="mt-7 grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
-            {[
-              ["Sellable", sellable, "Total fisik layak jual"],
-              ["Reserved", reserved, "Belum keluar fisik"],
-              ["Available", available, "Dapat dialokasikan"],
-              ["Batch berisiko", riskBatches, "≤ 90 hari / expired"],
-            ].map(([label, value, description]) => (
-              <article key={label} className="metric-card">
-                <p className="text-sm text-slate-400">{label}</p>
-                <p className="mt-3 text-3xl font-semibold text-white">
-                  {formatNumber(Number(value))}
-                </p>
-                <p className="mt-2 text-xs text-slate-500">{description}</p>
-              </article>
-            ))}
-          </div>
-        </section>
-
-        <section id="actions" className="mt-10 scroll-mt-24">
-          <div className="mb-5 flex items-end justify-between gap-4">
-            <div>
-              <p className="section-kicker">Posting transaksi</p>
-              <h2 className="section-title">Gerakkan stok melalui jalur resmi.</h2>
-            </div>
-            <span className="hidden rounded-full border border-white/10 px-3 py-1 text-xs text-slate-500 sm:inline-flex">
-              Atomic RPC + idempotency
+      <div className="grid gap-3 sm:grid-cols-[minmax(0,1fr)_auto] sm:items-start sm:gap-x-6">
+        <div className="min-w-0">
+          <div className="flex flex-wrap items-center gap-2">
+            <StatusBadge tone={severityTone[item.severity_code]}>
+              {severityLabel[item.severity_code]}
+            </StatusBadge>
+            <span className="text-xs font-medium text-ui-text-muted">
+              {workTypeLabel[item.work_type_code]}
             </span>
           </div>
 
-          {feedback.success ? (
-            <div className="mb-5 rounded-2xl border border-emerald-400/20 bg-emerald-400/10 px-5 py-4 text-sm text-emerald-200">
-              {feedback.success}
-            </div>
+          <h3 className="mt-2 text-[0.9375rem] font-semibold leading-5 text-ui-text">
+            {item.title}
+          </h3>
+
+          <p className="mt-1 max-w-3xl text-sm leading-6 text-ui-text-muted">
+            {item.summary}
+          </p>
+
+          {due ? (
+            <p className="mt-2 text-xs font-medium text-ui-text-muted">
+              {getDueLabel(item)}: {due} WIB
+            </p>
           ) : null}
-          {feedback.error ? (
-            <div className="mb-5 rounded-2xl border border-rose-400/20 bg-rose-400/10 px-5 py-4 text-sm text-rose-200">
-              {feedback.error}
-            </div>
-          ) : null}
+        </div>
 
-          <div className="grid gap-5 xl:grid-cols-2">
-            <form action={postReceiptAction} className="panel-card">
-              <div className="flex items-start justify-between gap-4">
-                <div>
-                  <p className="section-kicker">Inbound</p>
-                  <h3 className="mt-1 text-xl font-semibold">Penerimaan maklon</h3>
-                </div>
-                <Pill label="SELLABLE +" tone="success" />
-              </div>
-              <div className="form-grid mt-6">
-                <label className="field-label">
-                  Referensi penerimaan
-                  <input name="sourceRef" required placeholder="SJ-MAKLON-2026-001" />
-                </label>
-                <label className="field-label">
-                  Waktu diterima
-                  <input name="occurredAt" type="datetime-local" defaultValue={currentDateTime} required />
-                </label>
-                <label className="field-label sm:col-span-2">
-                  Produk dan batch
-                  <select name="batchSelection" required defaultValue="">
-                    <option value="" disabled>Pilih batch terdaftar</option>
-                    {receiptOptions.map((batch) => (
-                      <option key={batch.batch_id} value={`${batch.product_id}:${batch.batch_id}`}>
-                        {batch.sku} · {batch.batch_code} · exp {batch.expiry_date}
-                      </option>
-                    ))}
-                  </select>
-                </label>
-                <label className="field-label">
-                  Quantity
-                  <input name="quantity" type="number" min="1" step="1" required placeholder="10" />
-                </label>
-                <label className="field-label">
-                  Catatan
-                  <input name="note" placeholder="Opsional" />
-                </label>
-              </div>
-              <button className="primary-button mt-6" type="submit">Post receipt</button>
-            </form>
-
-            <article className="panel-card">
-              <div className="flex items-start justify-between gap-4">
-                <div>
-                  <p className="section-kicker">Outbound</p>
-                  <h3 className="mt-1 text-xl font-semibold">
-                    Barang Keluar dengan preview FEFO
-                  </h3>
-                </div>
-                <Pill label="PREVIEW WAJIB" tone="warning" />
-              </div>
-              <p className="mt-5 text-sm leading-6 text-slate-400">
-                Pengeluaran manual tidak lagi diposting langsung dari
-                dashboard. Tinjau alokasi batch, reserved stock, dan saldo
-                setelah transaksi sebelum konfirmasi final.
-              </p>
-              <Link
-                className="primary-button mt-6 inline-flex"
-                href="/manual-outbounds"
-              >
-                Buka workflow Barang Keluar
-              </Link>
-            </article>
-          </div>
-        </section>
-
-        <section id="inventory" className="mt-10 scroll-mt-24">
-          <div>
-            <p className="section-kicker">Inventory position</p>
-            <h2 className="section-title">Produk dan batch aktif.</h2>
-          </div>
-
-          {selectedBatchId ? (
-            <div
-              className={[
-                "mt-5 rounded-2xl border px-5 py-4 text-sm",
-                selectedBatch
-                  ? "border-emerald-400/25 bg-emerald-400/[0.07] text-emerald-100"
-                  : "border-amber-400/25 bg-amber-400/[0.07] text-amber-100",
-              ].join(" ")}
-              role="status"
-            >
-              {selectedBatch
-                ? `Batch ${selectedBatch.batch_code} dipilih dari Notification Center.`
-                : "Batch sumber notifikasi tidak ditemukan dalam organisasi aktif."}
-            </div>
-          ) : null}
-
-          <div className="mt-5 overflow-hidden rounded-2xl border border-white/10 bg-white/[0.025]">
-            <div className="overflow-x-auto">
-              <table>
-                <thead>
-                  <tr>
-                    <th>Produk</th>
-                    <th>Sellable</th>
-                    <th>Reserved</th>
-                    <th>Available</th>
-                    <th>Quarantine</th>
-                    <th>Damaged</th>
-                    <th>Status</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {products.map((product) => {
-                    const status = inventoryStatus(product);
-                    return (
-                      <tr key={product.product_id}>
-                        <td>
-                          <div className="font-medium text-white">{product.name}</div>
-                          <div className="mt-1 font-mono text-xs text-slate-500">{product.sku}</div>
-                        </td>
-                        <td>{formatNumber(product.sellable_qty)}</td>
-                        <td>{formatNumber(product.reserved_qty)}</td>
-                        <td className="font-semibold text-white">{formatNumber(product.available_qty)}</td>
-                        <td>{formatNumber(product.quarantine_qty)}</td>
-                        <td>{formatNumber(product.damaged_qty)}</td>
-                        <td><Pill label={status.label} tone={status.tone} /></td>
-                      </tr>
-                    );
-                  })}
-                </tbody>
-              </table>
-            </div>
-          </div>
-
-          <div className="mt-5 grid gap-4 md:grid-cols-2 xl:grid-cols-4">
-            {batches.map((batch) => {
-              const status = expiryStatus(batch);
-              return (
-                <article
-                  className={[
-                    "batch-card scroll-mt-28",
-                    selectedBatchId === batch.batch_id
-                      ? "border-emerald-400/45 bg-emerald-400/[0.08] ring-1 ring-emerald-400/20"
-                      : "",
-                  ].join(" ")}
-                  id={`batch-${batch.batch_id}`}
-                  key={batch.batch_id}
-                >
-                  <div className="flex items-start justify-between gap-3">
-                    <div>
-                      <p className="font-mono text-xs text-emerald-300">{batch.batch_code}</p>
-                      <h3 className="mt-2 font-medium text-white">{batch.product_name}</h3>
-                    </div>
-                    <Pill label={status.label} tone={status.tone} />
-                  </div>
-                  <dl className="mt-5 grid grid-cols-2 gap-4 text-sm">
-                    <div>
-                      <dt className="text-slate-500">Sellable</dt>
-                      <dd className="mt-1 text-xl font-semibold text-white">{formatNumber(batch.sellable_qty)}</dd>
-                    </div>
-                    <div>
-                      <dt className="text-slate-500">Expiry</dt>
-                      <dd className="mt-1 text-slate-300">{formatDate(batch.expiry_date)}</dd>
-                    </div>
-                    <div>
-                      <dt className="text-slate-500">First received</dt>
-                      <dd className="mt-1 text-slate-300">{formatDate(batch.received_first_at)}</dd>
-                    </div>
-                    <div>
-                      <dt className="text-slate-500">Status</dt>
-                      <dd className="mt-1 text-slate-300">{batch.status_code}</dd>
-                    </div>
-                  </dl>
-                </article>
-              );
-            })}
-          </div>
-        </section>
-
-        <section id="ledger" className="mt-10 scroll-mt-24 pb-12">
-          <div className="flex items-end justify-between gap-5">
-            <div>
-              <p className="section-kicker">Immutable ledger</p>
-              <h2 className="section-title">Jejak transaksi terbaru.</h2>
-            </div>
-            <span className="font-mono text-xs text-slate-500">Last {ledger.length} entries</span>
-          </div>
-
-          <div className="mt-5 overflow-hidden rounded-2xl border border-white/10 bg-white/[0.025]">
-            <div className="overflow-x-auto">
-              <table>
-                <thead>
-                  <tr>
-                    <th>Seq</th>
-                    <th>Waktu</th>
-                    <th>Transaksi</th>
-                    <th>Produk / batch</th>
-                    <th>Reason</th>
-                    <th>Bucket</th>
-                    <th className="text-right">Delta</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {ledger.map((entry) => (
-                    <tr key={entry.ledger_entry_id}>
-                      <td className="font-mono text-xs text-slate-500">#{entry.ledger_seq}</td>
-                      <td className="whitespace-nowrap">{formatDate(entry.occurred_at, true)}</td>
-                      <td>
-                        <div className="font-medium text-white">{entry.transaction_no}</div>
-                        <div className="mt-1 text-xs text-slate-500">{entry.source_ref_snapshot}</div>
-                      </td>
-                      <td>
-                        <div>{entry.product_sku_snapshot}</div>
-                        <div className="mt-1 font-mono text-xs text-slate-500">{entry.batch_code_snapshot}</div>
-                      </td>
-                      <td>{entry.reason_code_snapshot}</td>
-                      <td><Pill label={entry.bucket_code} tone="neutral" /></td>
-                      <td className={`text-right font-mono font-semibold ${quantityTone(entry)}`}>
-                        {entry.quantity_delta > 0 ? "+" : ""}{formatNumber(entry.quantity_delta)}
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          </div>
-        </section>
+        <Link
+          className="inline-flex min-h-9 shrink-0 items-center gap-1.5 self-start px-1 text-sm font-semibold text-ui-primary hover:underline"
+          href={getWorkHref(item)}
+        >
+          {fallbackAction.label}
+          <span aria-hidden="true">{"\u2192"}</span>
+        </Link>
       </div>
-    </main>
+    </article>
+  );
+}
+function StockSnapshot({
+  available,
+  reserved,
+  updatedAt,
+}: {
+  available: number;
+  reserved: number;
+  updatedAt: string | null;
+}) {
+  const updatedLabel = formatDate(updatedAt);
+
+  return (
+    <section aria-labelledby="stock-snapshot-heading">
+      <div className="flex items-start justify-between gap-6">
+        <div>
+          <h2 className="text-sm font-medium text-ui-text-muted" id="stock-snapshot-heading">
+            Stok tersedia
+          </h2>
+          <p className="ui-number mt-1 text-2xl font-semibold tracking-tight text-ui-primary">
+            {quantity(available)}
+            <span className="ml-1.5 text-sm font-medium text-ui-text-muted">unit</span>
+          </p>
+        </div>
+
+        <div className="text-right">
+          <p className="text-sm text-ui-text-muted">Sudah dipesan</p>
+          <p className="ui-number mt-1 text-lg font-semibold text-ui-text">
+            {quantity(reserved)}
+          </p>
+        </div>
+      </div>
+
+      {updatedLabel ? (
+        <p className="mt-3 text-xs text-ui-text-muted">
+          Diperbarui {updatedLabel} WIB
+        </p>
+      ) : null}
+    </section>
+  );
+}
+function BatchRiskList({
+  rows,
+}: {
+  rows: Array<{ batch: BatchInventory; days: number }>;
+}) {
+  return (
+    <section aria-labelledby="batch-risk-heading" className="border-t border-ui-border pt-5">
+      <div className="flex items-baseline justify-between gap-4">
+        <div>
+          <h2 className="text-base font-semibold text-ui-text" id="batch-risk-heading">
+            Batch perlu diperhatikan
+          </h2>
+          <p className="mt-1 text-sm text-ui-text-muted">
+            Batch dengan tindakan aktif.
+          </p>
+        </div>
+
+        <span className="ui-number text-sm font-semibold text-ui-text">
+          {quantity(rows.length)}
+        </span>
+      </div>
+
+      {rows.length === 0 ? (
+        <p className="mt-4 text-sm text-ui-text-muted">
+          Tidak ada batch yang perlu diperhatikan.
+        </p>
+      ) : (
+        <div className="mt-3 divide-y divide-ui-border">
+          {rows.slice(0, 4).map(({ batch, days }) => (
+            <Link
+              className="flex items-start justify-between gap-4 py-3 first:pt-0 last:pb-0 hover:text-ui-primary"
+              href={`/products/${batch.product_id}/batches/${batch.batch_id}`}
+              key={batch.batch_id}
+            >
+              <div className="min-w-0">
+                <p className="truncate text-sm font-semibold text-ui-text">
+                  {batch.product_name}
+                </p>
+                <p className="mt-1 text-xs text-ui-text-muted">
+                  Batch {batch.batch_code}
+                </p>
+              </div>
+
+              <div className="shrink-0 text-right">
+                <p className={days < 0 ? "text-xs font-semibold text-ui-danger" : "text-xs font-semibold text-ui-warning"}>
+                  {days < 0 ? "Kedaluwarsa" : `${days} hari lagi`}
+                </p>
+                <p className="mt-1 text-xs text-ui-text-muted">
+                  {formatExpiryDate(batch.expiry_date)}
+                </p>
+              </div>
+            </Link>
+          ))}
+        </div>
+      )}
+    </section>
+  );
+}
+function RecentActivity({
+  rows,
+}: {
+  rows: StockLedgerEntry[];
+}) {
+  return (
+    <section aria-labelledby="recent-activity-heading">
+      <div className="flex flex-col gap-2 sm:flex-row sm:items-end sm:justify-between">
+        <div>
+          <h2 className="text-base font-semibold text-ui-text" id="recent-activity-heading">
+            Pergerakan terbaru
+          </h2>
+          <p className="mt-1 text-sm text-ui-text-muted">
+            Perubahan stok fisik yang terakhir tercatat.
+          </p>
+        </div>
+
+        <Link
+          className="inline-flex min-h-9 items-center gap-1.5 text-sm font-semibold text-ui-primary hover:underline"
+          href="/ledger"
+        >
+          Lihat semua riwayat
+          <span aria-hidden="true">{"\u2192"}</span>
+        </Link>
+      </div>
+
+      {rows.length === 0 ? (
+        <p className="mt-4 rounded-[var(--ui-radius-lg)] border border-ui-border bg-ui-surface px-4 py-4 text-sm text-ui-text-muted">
+          Belum ada pergerakan stok.
+        </p>
+      ) : (
+        <div className="mt-4 overflow-hidden rounded-[var(--ui-radius-lg)] border border-ui-border bg-ui-surface">
+          {rows.slice(0, 6).map((entry) => {
+            const label = activityLabel[entry.transaction_type_code] ?? "Pergerakan Stok";
+            const occurredAt = formatDate(entry.occurred_at);
+            const quantityLabel = `${entry.quantity_delta > 0 ? "+" : ""}${quantity(entry.quantity_delta)}`;
+
+            return (
+              <article
+                className="grid gap-1 border-b border-ui-border px-4 py-3 last:border-b-0 sm:grid-cols-[9rem_minmax(0,1fr)_auto] sm:items-center sm:gap-4 sm:px-5"
+                key={entry.ledger_entry_id}
+              >
+                <p className="text-sm font-semibold text-ui-text">
+                  {label}
+                </p>
+
+                <p className="min-w-0 truncate text-xs text-ui-text-muted">
+                  {entry.product_sku_snapshot} {"\u00B7"} Batch {entry.batch_code_snapshot}
+                </p>
+
+                <div className="flex items-baseline justify-between gap-4 sm:block sm:text-right">
+                  <p className={entry.quantity_delta > 0 ? "ui-number text-sm font-semibold text-ui-primary" : "ui-number text-sm font-semibold text-ui-text"}>
+                    {quantityLabel}
+                  </p>
+                  {occurredAt ? (
+                    <p className="mt-0.5 whitespace-nowrap text-xs text-ui-text-muted">
+                      {occurredAt} WIB
+                    </p>
+                  ) : null}
+                </div>
+              </article>
+            );
+          })}
+        </div>
+      )}
+    </section>
+  );
+}
+export default async function HomePage() {
+  const session = await requireAdminSession();
+
+  const [dashboardResult, workResult] = await Promise.allSettled([
+    getDashboardData(),
+    getTodayControlCenterWorkItems({ pageSize: 10 }),
+  ]);
+
+  const dashboard =
+    dashboardResult.status === "fulfilled"
+      ? dashboardResult.value
+      : null;
+  const work =
+    workResult.status === "fulfilled"
+      ? workResult.value
+      : null;
+
+  const products = dashboard?.products ?? [];
+  const allWorkRows = work?.rows ?? [];
+  const operationalRows = allWorkRows.filter(isOperationalWorkItem);
+
+  const activeBatchIds = new Set(
+    operationalRows
+      .filter((item) => item.work_type_code === "BATCH_EXPIRY")
+      .map((item) => item.source_entity_id),
+  );
+
+  const riskBatches = (dashboard?.batches ?? [])
+    .filter((batch) => activeBatchIds.has(batch.batch_id))
+    .map((batch) => ({ batch, days: expiryDays(batch) }))
+    .sort((left, right) => left.days - right.days);
+
+  const reserved = products.reduce(
+    (sum, product) => sum + Number(product.reserved_qty),
+    0,
+  );
+  const available = products.reduce(
+    (sum, product) => sum + Number(product.available_qty),
+    0,
+  );
+  const stockUpdatedAt = products.reduce<string | null>((latest, product) => {
+    if (!product.stock_updated_at) return latest;
+    return !latest || product.stock_updated_at > latest
+      ? product.stock_updated_at
+      : latest;
+  }, null);
+
+  return (
+    <AppShell profile={session.profile}>
+      <div className="mx-auto w-full max-w-[1200px] px-4 py-6 sm:px-6 lg:px-8 lg:py-8">
+        <PageHeader
+          description="Yang perlu Anda kerjakan dan perhatikan sekarang."
+          title="Hari Ini"
+        />
+
+        <div className="mt-6">
+          {workResult.status === "rejected" ? (
+            <Alert title="Pekerjaan belum dapat dimuat" tone="danger">
+              Coba muat ulang halaman. Data yang tidak berhasil dimuat tidak dianggap aman.
+            </Alert>
+          ) : (
+            <PrioritySummary rows={operationalRows} />
+          )}
+        </div>
+
+        <div className="mt-8 grid gap-8 lg:grid-cols-[minmax(0,1fr)_320px] lg:items-start">
+          <section aria-labelledby="worklist-heading">
+            <div className="flex items-baseline justify-between gap-4">
+              <div>
+                <h2 className="text-lg font-semibold text-ui-text" id="worklist-heading">
+                  Perlu tindakan
+                </h2>
+                <p className="mt-1 text-sm text-ui-text-muted">
+                  Kerjakan dari prioritas tertinggi.
+                </p>
+              </div>
+
+              {workResult.status === "fulfilled" ? (
+                <span className="ui-number text-sm font-semibold text-ui-text">
+                  {quantity(operationalRows.length)} perlu ditangani
+                </span>
+              ) : null}
+            </div>
+
+            <div className="mt-4 overflow-hidden rounded-[var(--ui-radius-lg)] border border-ui-border bg-ui-surface">
+              {workResult.status === "rejected" ? (
+                <p className="py-5 text-sm text-ui-text-muted">
+                  Daftar pekerjaan belum tersedia.
+                </p>
+              ) : operationalRows.length > 0 ? (
+                operationalRows.map((item) => (
+                  <WorkItem
+                    item={item}
+                    key={getTodayWorkItemReactKey(item)}
+                  />
+                ))
+              ) : (
+                <EmptyState
+                  className="border-y-0"
+                  description="Tidak ada pekerjaan yang membutuhkan tindakan sekarang."
+                  title="Tidak ada pekerjaan tertunda"
+                />
+              )}
+            </div>
+          </section>
+
+          <aside className="content-start">
+            <div className="rounded-[var(--ui-radius-lg)] border border-ui-border bg-ui-surface p-5">
+              <p className="mb-5 text-xs font-semibold uppercase tracking-[0.08em] text-ui-text-muted">
+                Ringkasan Hari Ini
+              </p>
+
+              {dashboardResult.status === "rejected" ? (
+                <Alert title="Ringkasan stok belum dapat dimuat" tone="danger">
+                  Coba muat ulang halaman. Data yang gagal dimuat tidak dianggap nol.
+                </Alert>
+              ) : (
+                <StockSnapshot
+                  available={available}
+                  reserved={reserved}
+                  updatedAt={stockUpdatedAt}
+                />
+              )}
+
+              <div className="mt-5">
+                {dashboardResult.status === "fulfilled" && workResult.status === "fulfilled" ? (
+                  <BatchRiskList rows={riskBatches} />
+                ) : (
+                  <Alert title="Batch belum dapat diperiksa" tone="danger">
+                    Muat ulang halaman untuk melihat batch yang membutuhkan tindakan.
+                  </Alert>
+                )}
+              </div>
+            </div>
+          </aside>
+        </div>
+
+        <div className="mt-10 pt-1">
+          {dashboardResult.status === "rejected" ? (
+            <Alert title="Pergerakan terbaru belum dapat dimuat" tone="danger">
+              Coba muat ulang halaman.
+            </Alert>
+          ) : (
+            <RecentActivity rows={dashboard?.ledger ?? []} />
+          )}
+        </div>
+      </div>
+    </AppShell>
   );
 }
