@@ -313,6 +313,25 @@ export type MarketplaceShipAllocation = {
   source_line_ref: string;
   created_at: string;
 };
+export type MarketplaceShipAllocationContext = {
+  allocation_id: string;
+  organization_id: string;
+  event_id: string;
+  event_line_id: string;
+  order_item_id: string;
+  allocation_no: number;
+  product_id: string;
+  batch_id: string;
+  quantity_allocated: number;
+  quantity_referenced: number;
+  remaining_quantity: number;
+  product_sku_snapshot: string;
+  batch_code_snapshot: string;
+  expiry_date_snapshot: string;
+  received_first_at_snapshot: string | null;
+  source_line_ref: string;
+  created_at: string;
+};
 
 export type ReturnHeader = {
   return_id: string;
@@ -2201,6 +2220,88 @@ export async function getMarketplaceData(
   };
 }
 
+export async function getMarketplaceShipAllocationContext(
+  organizationId: string | undefined,
+  orderItemIds: readonly string[],
+): Promise<MarketplaceShipAllocationContext[]> {
+  const resolvedOrganizationId =
+    await resolveOrganizationId(organizationId);
+  const encodedOrganizationId =
+    encodeURIComponent(resolvedOrganizationId);
+
+  const normalizedOrderItemIds = Array.from(
+    new Set(
+      orderItemIds
+        .map((value) => value.trim())
+        .filter((value) => UUID_PATTERN.test(value)),
+    ),
+  ).sort();
+
+  if (normalizedOrderItemIds.length === 0) {
+    return [];
+  }
+
+  const orderItemFilter = normalizedOrderItemIds
+    .map(encodeURIComponent)
+    .join(",");
+
+  const contexts = await apiFetchAll<
+    Omit<
+      MarketplaceShipAllocationContext,
+      "quantity_referenced" | "remaining_quantity"
+    >
+  >(
+    `marketplace_ship_allocation_context?organization_id=eq.${encodedOrganizationId}` +
+      `&order_item_id=in.(${orderItemFilter})` +
+      "&select=*&order=order_item_id.asc,allocation_no.asc,allocation_id.asc",
+  );
+
+  if (contexts.length === 0) {
+    return [];
+  }
+
+  const allocationIds = contexts
+    .map((row) => encodeURIComponent(row.allocation_id))
+    .join(",");
+
+  const references = await apiFetchAll<{
+    marketplace_ship_allocation_id: string | null;
+    quantity_received: number;
+  }>(
+    `return_receipt_lines?organization_id=eq.${encodedOrganizationId}` +
+      `&marketplace_ship_allocation_id=in.(${allocationIds})` +
+      "&select=marketplace_ship_allocation_id,quantity_received",
+  );
+
+  const referencedByAllocation = new Map<string, number>();
+
+  for (const row of references) {
+    if (!row.marketplace_ship_allocation_id) {
+      continue;
+    }
+
+    referencedByAllocation.set(
+      row.marketplace_ship_allocation_id,
+      (referencedByAllocation.get(
+        row.marketplace_ship_allocation_id,
+      ) ?? 0) + Number(row.quantity_received),
+    );
+  }
+
+  return contexts.map((row) => {
+    const quantityReferenced =
+      referencedByAllocation.get(row.allocation_id) ?? 0;
+
+    return {
+      ...row,
+      quantity_referenced: quantityReferenced,
+      remaining_quantity: Math.max(
+        0,
+        Number(row.quantity_allocated) - quantityReferenced,
+      ),
+    };
+  });
+}
 export async function getReturnData(
   organizationId?: string,
   selectedReturnId?: string,
@@ -2275,6 +2376,10 @@ export async function getReturnClaimData(
   const claimId = query.claimId?.trim() ?? "";
   const validClaimId = UUID_PATTERN.test(claimId);
   const filters = [org];
+  const requestedReturnId = query.returnId?.trim() ?? "";
+  if (UUID_PATTERN.test(requestedReturnId)) {
+    filters.push(`return_id=eq.${encodeURIComponent(requestedReturnId)}`);
+  }
   if (query.claimStatus) filters.push(`status_code=eq.${encodeURIComponent(query.claimStatus)}`);
   if (query.claimStage === "DUE_SOON") {
     filters.push("derived_deadline_stage=in.(D14,D7,D3,D1,DUE_TODAY)");
@@ -2294,7 +2399,6 @@ export async function getReturnClaimData(
     ? selectedClaimRows[0] ?? null
     : claims[0] ?? null;
   const selectedClaimId = selectedClaim?.id ?? null;
-  const requestedReturnId = query.returnId?.trim() ?? "";
   const capacityReturnId = selectedClaim?.return_id ?? (UUID_PATTERN.test(requestedReturnId) ? requestedReturnId : null);
   const activeClaims = capacityReturnId
     ? await apiFetch<ReturnClaimHeader[]>(
@@ -2363,6 +2467,144 @@ export type LateArrivalCommandResponse = {
   lines: Array<Record<string, unknown>>;
 };
 
+export type ConfirmReturnReceiptCommandResponse = {
+  status: string;
+  returnId: string;
+  returnRef: string;
+  receiptId: string;
+  receiptRef: string;
+  eventId: string;
+  transactionId: null;
+  transactionNo: null;
+  stockEffectCode: "NONE";
+  lineCount: number;
+  totalQuantity: number;
+};
+
+export type InspectReturnCommandResponse = {
+  status: string;
+  returnId: string;
+  returnRef: string;
+  inspectionId: string;
+  inspectionRef: string;
+  eventId: string;
+  transactionId: string | null;
+  transactionNo: string | null;
+  stockEffectCode: "NONE" | "SELLABLE_INBOUND";
+  allocationCount: number;
+  totalQuantity: number;
+  sellableQuantity: number;
+  damagedQuantity: number;
+};
+
+export type MarkReturnLostCommandResponse = {
+  status: string;
+  returnId: string;
+  returnRef: string;
+  eventId: string;
+  eventRef: string;
+  eventType: "LOST";
+  totalQuantity: number;
+  stockEffectCode: "NONE";
+};
+
+export async function confirmReturnReceipt(input: {
+  organizationId?: string;
+  idempotencyKey: string;
+  returnRef: string;
+  receiptRef: string;
+  occurredAt: string;
+  lines: Array<{
+    returnItemId: string;
+    quantity: number;
+    sourceLineRef: string;
+    marketplaceShipAllocationId?: string | null;
+  }>;
+  note?: string | null;
+  metadata?: Record<string, unknown>;
+}) {
+  const organizationId =
+    await resolveOrganizationId(input.organizationId);
+
+  return callRpc<ConfirmReturnReceiptCommandResponse>(
+    "confirm_return_receipt",
+    {
+      p_organization_id: organizationId,
+      p_idempotency_key: input.idempotencyKey,
+      p_return_ref: input.returnRef,
+      p_receipt_ref: input.receiptRef,
+      p_occurred_at: input.occurredAt,
+      p_lines: input.lines,
+      p_note: input.note ?? null,
+      p_metadata: input.metadata ?? {},
+    },
+  );
+}
+
+export async function inspectReturn(input: {
+  organizationId?: string;
+  idempotencyKey: string;
+  returnRef: string;
+  inspectionRef: string;
+  occurredAt: string;
+  lines: Array<{
+    receiptLineId: string;
+    sellableQuantity: number;
+    damagedQuantity: number;
+    sourceLineRef: string;
+  }>;
+  note?: string | null;
+  metadata?: Record<string, unknown>;
+}) {
+  const organizationId =
+    await resolveOrganizationId(input.organizationId);
+
+  return callRpc<InspectReturnCommandResponse>(
+    "inspect_return",
+    {
+      p_organization_id: organizationId,
+      p_idempotency_key: input.idempotencyKey,
+      p_return_ref: input.returnRef,
+      p_inspection_ref: input.inspectionRef,
+      p_occurred_at: input.occurredAt,
+      p_lines: input.lines,
+      p_note: input.note ?? null,
+      p_metadata: input.metadata ?? {},
+    },
+  );
+}
+
+export async function markReturnLost(input: {
+  organizationId?: string;
+  idempotencyKey: string;
+  returnRef: string;
+  eventRef: string;
+  occurredAt: string;
+  lines: Array<{
+    returnItemId: string;
+    quantity: number;
+    sourceLineRef: string;
+  }>;
+  note?: string | null;
+  metadata?: Record<string, unknown>;
+}) {
+  const organizationId =
+    await resolveOrganizationId(input.organizationId);
+
+  return callRpc<MarkReturnLostCommandResponse>(
+    "mark_return_lost",
+    {
+      p_organization_id: organizationId,
+      p_idempotency_key: input.idempotencyKey,
+      p_return_ref: input.returnRef,
+      p_event_ref: input.eventRef,
+      p_occurred_at: input.occurredAt,
+      p_lines: input.lines,
+      p_note: input.note ?? null,
+      p_metadata: input.metadata ?? {},
+    },
+  );
+}
 export async function createTikTokReturnClaim(input: {
   organizationId?: string;
   idempotencyKey: string;

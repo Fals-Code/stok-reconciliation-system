@@ -1,988 +1,507 @@
 import Link from "next/link";
-import PageSectionNav from "@/app/app-shell/page-section-nav";
-import { ReturnClaimWorkflow } from "@/app/returns/claim-workflow";
+import { redirect } from "next/navigation";
 
 import {
-  confirmReturnReceiptAction,
-  createExpectedReturnAction,
-  inspectReturnAction,
-  markReturnLostAction,
-} from "@/app/actions";
-import { CurrentDateTimeInput } from "@/app/returns/current-date-time-input";
+  AppShell,
+} from "@/app/app-shell/app-shell";
 import {
-  ReturnReceiptSourceSelect,
-  ReturnSourceSelect,
-  type ReturnReceiptSourceOption,
-  type ReturnSourceOption,
-} from "@/app/returns/return-selects";
+  OrderWorkspaceTabs,
+} from "@/app/marketplace/order-workspace-tabs";
 import {
-  getMarketplaceData,
+  PageHeader,
+} from "@/app/app-shell/page-header";
+import {
+  Alert,
+  EmptyState,
+  StatusBadge,
+} from "@/components/ui";
+import {
+  requireAdminSession,
+} from "@/lib/auth";
+import {
   getReturnClaimData,
   getReturnData,
-  type ReturnHeader,
-  type ReturnItem,
-  type ReturnReceiptLine,
 } from "@/lib/supabase-rest";
 
 export const dynamic = "force-dynamic";
 
-const numberFormatter = new Intl.NumberFormat("id-ID");
+type SearchParams = Record<
+  string,
+  string | string[] | undefined
+>;
 
-function formatNumber(value: number) {
-  return numberFormatter.format(Number(value));
+function first(
+  value: SearchParams[string],
+) {
+  return Array.isArray(value)
+    ? value[0]
+    : value;
 }
 
-function formatDate(value: string | null, includeTime = false) {
-  if (!value) return "—";
-
-  return new Intl.DateTimeFormat("id-ID", {
-    timeZone: "Asia/Jakarta",
-    day: "2-digit",
-    month: "short",
-    year: "numeric",
-    ...(includeTime
-      ? { hour: "2-digit", minute: "2-digit", hour12: false }
-      : {}),
-  }).format(new Date(value));
+function isUuid(value: string) {
+  return /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(
+    value,
+  );
 }
 
-function toDateTimeLocal(value: Date) {
-  const parts = new Intl.DateTimeFormat("en-CA", {
-    timeZone: "Asia/Jakarta",
-    year: "numeric",
-    month: "2-digit",
-    day: "2-digit",
-    hour: "2-digit",
-    minute: "2-digit",
-    hour12: false,
-  }).formatToParts(value);
-
-  const values = Object.fromEntries(parts.map((part) => [part.type, part.value]));
-  return `${values.year}-${values.month}-${values.day}T${values.hour}:${values.minute}`;
+function qty(value: number) {
+  return new Intl.NumberFormat("id-ID").format(Number(value));
 }
 
-type PillTone = "success" | "warning" | "danger" | "neutral";
+function channelLabel(code: string) {
+  if (code === "TIKTOK_SHOP") return "TikTok Shop";
+  if (code === "SHOPEE") return "Shopee";
+  return code;
+}
 
-function Pill({ label, tone }: { label: string; tone: PillTone }) {
-  const tones = {
-    success: "border-emerald-400/20 bg-emerald-400/10 text-emerald-300",
-    warning: "border-amber-400/20 bg-amber-400/10 text-amber-200",
-    danger: "border-rose-400/20 bg-rose-400/10 text-rose-200",
-    neutral: "border-white/10 bg-white/[0.04] text-slate-300",
+function statusLabel(status: string) {
+  switch (status) {
+    case "EXPECTED":
+      return { label: "Menunggu datang", tone: "warning" as const };
+    case "PARTIALLY_RECEIVED":
+      return { label: "Datang sebagian", tone: "warning" as const };
+    case "RECEIVED_PENDING_INSPECTION":
+      return { label: "Menunggu diperiksa", tone: "warning" as const };
+    case "PARTIALLY_INSPECTED":
+      return { label: "Diperiksa sebagian", tone: "warning" as const };
+    case "COMPLETED_SELLABLE":
+      return { label: "Selesai - layak jual", tone: "selected" as const };
+    case "COMPLETED_DAMAGED":
+      return { label: "Selesai - rusak", tone: "neutral" as const };
+    case "COMPLETED_MIXED":
+      return { label: "Selesai - campuran", tone: "selected" as const };
+    case "LOST":
+      return { label: "Hilang", tone: "danger" as const };
+    default:
+      return { label: status, tone: "neutral" as const };
+  }
+}
+
+function claimStatusLabel(status: string) {
+  const labels: Record<string, string> = {
+    NOT_STARTED: "Belum dikirim",
+    DUE_SOON: "Segera jatuh tempo",
+    SUBMITTED: "Sudah dikirim",
+    RESOLVED: "Selesai",
+    EXPIRED: "Lewat batas",
+    EXCEPTION: "Perlu ditangani",
+    CANCELLED: "Dibatalkan",
   };
 
-  return (
-    <span className={`inline-flex rounded-full border px-2.5 py-1 text-xs ${tones[tone]}`}>
-      {label}
-    </span>
-  );
+  return labels[status] ?? status;
 }
 
-function returnTone(status: string, outcome: string | null): PillTone {
-  if (status.startsWith("COMPLETED") && outcome !== "DAMAGED") return "success";
-  if (
-    status === "LOST" ||
-    status === "EXCEPTION" ||
-    outcome === "DAMAGED"
-  ) {
-    return "danger";
+function claimTone(status: string) {
+  if (["EXPIRED", "EXCEPTION"].includes(status)) {
+    return "danger" as const;
   }
-  if (
-    status.startsWith("PARTIALLY") ||
-    status === "RECEIVED_PENDING_INSPECTION" ||
-    outcome === "MIXED"
-  ) {
-    return "warning";
+
+  if (status === "DUE_SOON") {
+    return "warning" as const;
   }
-  return "neutral";
+
+  if (["SUBMITTED", "RESOLVED"].includes(status)) {
+    return "selected" as const;
+  }
+
+  return "neutral" as const;
 }
 
-function ConfigurationError({ message }: { message: string }) {
-  return (
-    <main className="min-h-screen bg-slate-950 px-6 py-16 text-slate-100">
-      <section className="mx-auto max-w-3xl rounded-3xl border border-amber-400/20 bg-amber-400/[0.06] p-8">
-        <p className="font-mono text-xs uppercase tracking-[0.2em] text-amber-300">
-          Return Admin tidak tersedia
-        </p>
-        <h1 className="mt-3 text-3xl font-semibold">Data retur gagal dimuat.</h1>
-        <p className="mt-4 leading-7 text-slate-300">{message}</p>
-        <Link className="nav-link mt-6 inline-flex" href="/">
-          Kembali ke dashboard
-        </Link>
-      </section>
-    </main>
-  );
+function claimTypeLabel(code: string) {
+  if (code === "LOST_RETURN") return "Barang retur hilang";
+  return code;
 }
 
-function quantityRows(returnHeader: ReturnHeader) {
-  return [
-    ["Expected", returnHeader.expected_qty],
-    ["Pending arrival", returnHeader.pending_arrival_qty],
-    ["Pending inspection", returnHeader.pending_inspection_qty],
-    ["Sellable", returnHeader.sellable_qty],
-    ["Damaged", returnHeader.damaged_qty],
-    ["Lost", returnHeader.lost_qty],
-  ];
-}
-
-function receiptRemaining(
-  line: ReturnReceiptLine,
-  inspectedByReceiptLine: Map<string, number>,
-) {
-  return Math.max(
-    0,
-    Number(line.quantity_received) -
-      Number(inspectedByReceiptLine.get(line.receipt_line_id) ?? 0),
-  );
+function nextReturnAction(status: string) {
+  switch (status) {
+    case "EXPECTED":
+    case "PARTIALLY_RECEIVED":
+      return "Tunggu kedatangan";
+    case "RECEIVED_PENDING_INSPECTION":
+    case "PARTIALLY_INSPECTED":
+      return "Periksa barang";
+    case "LOST":
+      return "Tinjau kehilangan";
+    case "COMPLETED_SELLABLE":
+    case "COMPLETED_DAMAGED":
+    case "COMPLETED_MIXED":
+      return "Selesai";
+    default:
+      return "Buka retur";
+  }
 }
 
 export default async function ReturnsPage({
   searchParams,
 }: {
-  searchParams: Promise<{
-    status?: string;
-    returnId?: string;
-    claimId?: string;
-    claimStatus?: string;
-    claimStage?: string;
-    claimPage?: string;
-    success?: string;
-    error?: string;
-  }>;
+  searchParams: Promise<SearchParams>;
 }) {
-  const params = await searchParams;
-  let returnData;
-  let marketplace;
-  let claimData;
+  const [session, query] = await Promise.all([
+    requireAdminSession(),
+    searchParams,
+  ]);
+
+  const legacyReturnId = first(query.returnId)?.trim() ?? "";
+  const legacyClaimId = first(query.claimId)?.trim() ?? "";
+  let legacyClaimNotFound = false;
+
+  if (legacyReturnId && isUuid(legacyReturnId)) {
+    const claimQuery =
+      legacyClaimId && isUuid(legacyClaimId)
+        ? `?claimId=${encodeURIComponent(legacyClaimId)}`
+        : "";
+    const hash = claimQuery ? "#claim-detail" : "";
+
+    redirect(
+      `/returns/${encodeURIComponent(legacyReturnId)}${claimQuery}${hash}`,
+    );
+  }
+
+  if (legacyClaimId) {
+    if (isUuid(legacyClaimId)) {
+      const selectedClaim = (
+        await getReturnClaimData({
+          organizationId: session.profile.organization_id,
+          claimId: legacyClaimId,
+          pageSize: 10,
+        })
+      ).selectedClaim;
+
+      if (selectedClaim) {
+        redirect(
+          `/returns/${encodeURIComponent(selectedClaim.return_id)}?claimId=${encodeURIComponent(selectedClaim.id)}#claim-detail`,
+        );
+      }
+    }
+
+    legacyClaimNotFound = true;
+  }
+
+  let data:
+    | Awaited<ReturnType<typeof getReturnData>>
+    | null = null;
+
+  let failed = false;
+
+  let claimData:
+    | Awaited<ReturnType<typeof getReturnClaimData>>
+    | null = null;
 
   try {
-    claimData = await getReturnClaimData({
-      claimId: params.claimId,
-      claimStatus: params.claimStatus,
-      claimStage: params.claimStage,
-      page: Math.max(0, Number.parseInt(params.claimPage ?? "0", 10) || 0),
-    });
-    const effectiveReturnId = claimData.selectedClaim?.return_id ?? params.returnId;
-    [returnData, marketplace] = await Promise.all([
-      getReturnData(undefined, effectiveReturnId),
-      getMarketplaceData(),
+    [data, claimData] = await Promise.all([
+      getReturnData(session.profile.organization_id),
+      getReturnClaimData({
+        organizationId: session.profile.organization_id,
+        pageSize: 100,
+      }),
     ]);
-  } catch (error) {
-    return (
-      <ConfigurationError
-        message={error instanceof Error ? error.message : "Konfigurasi tidak valid."}
-      />
-    );
+  } catch {
+    failed = true;
   }
 
-  const {
-    returns,
-    items,
-    events,
-    receiptLines,
-    inspectionAllocations,
-  } = returnData;
-  const { reservations, events: marketplaceEvents, allocations } = marketplace;
+  const returns = data?.returns ?? [];
+  const claims = claimData?.claims ?? [];
 
-  const statusFilter = params.status?.trim() || "ALL";
-  const filteredReturns =
-    statusFilter === "ALL"
-      ? returns
-      : returns.filter((returnHeader) => returnHeader.status_code === statusFilter);
+  const activeSection =
+    first(query.section) === "claims"
+      ? "claims"
+      : "returns";
 
-  const effectiveReturnId = claimData.selectedClaim?.return_id ?? params.returnId;
-  const selectedReturn = params.claimId?.trim() && !claimData.selectedClaim
-    ? null
-    : returns.find((returnHeader) => returnHeader.return_id === effectiveReturnId) ??
-      filteredReturns[0] ??
-      returns[0] ??
-      null;
-
-  const selectedItems = selectedReturn
-    ? items.filter((item) => item.return_id === selectedReturn.return_id)
-    : [];
-  const selectedEvents = selectedReturn
-    ? events.filter((event) => event.return_id === selectedReturn.return_id)
-    : [];
-  const selectedReceiptLines = selectedReturn
-    ? receiptLines.filter((line) => line.return_id === selectedReturn.return_id)
-    : [];
-  const selectedInspectionAllocations = selectedReturn
-    ? inspectionAllocations.filter(
-        (allocation) => allocation.return_id === selectedReturn.return_id,
-      )
-    : [];
-
-  const expectedByMarketplaceItem = new Map<string, number>();
-  for (const item of items) {
-    expectedByMarketplaceItem.set(
-      item.marketplace_order_item_id,
-      Number(expectedByMarketplaceItem.get(item.marketplace_order_item_id) ?? 0) +
-        Number(item.expected_qty),
-    );
-  }
-
-  const returnSources: ReturnSourceOption[] = reservations
-    .map((reservation) => {
-      const remaining =
-        Number(reservation.consumed_qty) -
-        Number(expectedByMarketplaceItem.get(reservation.order_item_id) ?? 0);
-
-      return {
-        id: reservation.order_item_id,
-        label: `${reservation.channel_code} / ${reservation.external_order_ref} / ${reservation.product_sku_snapshot} / dapat diretur ${Math.max(remaining, 0)}`,
-        channelCode: reservation.channel_code,
-        orderRef: reservation.external_order_ref,
-        productId: reservation.product_id,
-        sourceLineRef: reservation.external_item_ref,
-        remaining,
-      };
-    })
-    .filter((source) => source.remaining > 0)
-    .map((source) => ({
-      id: source.id,
-      label: source.label,
-      channelCode: source.channelCode,
-      orderRef: source.orderRef,
-      productId: source.productId,
-      sourceLineRef: source.sourceLineRef,
-    }));
-
-  const marketplaceEventById = new Map(
-    marketplaceEvents.map((event) => [event.event_id, event]),
-  );
-
-  const usedByShipAllocation = new Map<string, number>();
-  for (const line of receiptLines) {
-    if (!line.marketplace_ship_allocation_id) continue;
-    usedByShipAllocation.set(
-      line.marketplace_ship_allocation_id,
-      Number(
-        usedByShipAllocation.get(line.marketplace_ship_allocation_id) ?? 0,
-      ) + Number(line.quantity_received),
-    );
-  }
-
-  const receiptSources: ReturnReceiptSourceOption[] = [];
-  const lateArrivalSources: Array<{
-    returnItemId: string;
-    marketplaceShipAllocationId: string | null;
-    label: string;
-  }> = [];
-  if (selectedReturn) {
-    for (const item of selectedItems.filter(
-      (candidate) => Number(candidate.pending_arrival_qty) > 0,
-    )) {
-      const matchingAllocations = allocations.filter((allocation) => {
-        const event = marketplaceEventById.get(allocation.event_id);
-        return (
-          event?.order_id === selectedReturn.marketplace_order_id &&
-          allocation.product_id === item.product_id &&
-          allocation.source_line_ref === item.marketplace_item_ref
-        );
-      });
-
-      for (const allocation of matchingAllocations) {
-        const remaining =
-          Number(allocation.quantity_allocated) -
-          Number(usedByShipAllocation.get(allocation.allocation_id) ?? 0);
-
-        if (remaining <= 0) continue;
-
-        receiptSources.push({
-          id: `${item.return_item_id}:${allocation.allocation_id}`,
-          label: `${item.product_sku_snapshot} / ${allocation.batch_code_snapshot} / verified / allocation tersisa ${remaining}`,
-          returnItemId: item.return_item_id,
-          marketplaceShipAllocationId: allocation.allocation_id,
-        });
-        lateArrivalSources.push({
-          returnItemId: item.return_item_id,
-          marketplaceShipAllocationId: allocation.allocation_id,
-          label: `${allocation.batch_code_snapshot} / kedaluwarsa ${allocation.expiry_date_snapshot} / referensi shipment ${allocation.source_line_ref}`,
-        });
-      }
-
-      lateArrivalSources.push({
-        returnItemId: item.return_item_id,
-        marketplaceShipAllocationId: null,
-        label: "Belum teridentifikasi — SELLABLE akan diblokir sampai batch asal diverifikasi",
-      });
-
-      receiptSources.push({
-        id: `${item.return_item_id}:UNKNOWN`,
-        label: `${item.product_sku_snapshot} / batch tidak diketahui / maksimal ${item.pending_arrival_qty}`,
-        returnItemId: item.return_item_id,
-        marketplaceShipAllocationId: null,
-      });
-    }
-  }
-
-  const inspectedByReceiptLine = new Map<string, number>();
-  for (const allocation of inspectionAllocations) {
-    inspectedByReceiptLine.set(
-      allocation.receipt_line_id,
-      Number(inspectedByReceiptLine.get(allocation.receipt_line_id) ?? 0) +
-        Number(allocation.quantity_allocated),
-    );
-  }
-
-  const inspectableReceiptLines = selectedReceiptLines.filter(
-    (line) => receiptRemaining(line, inspectedByReceiptLine) > 0,
-  );
-  const lostCandidates = selectedItems.filter(
-    (item) => Number(item.pending_arrival_qty) > 0,
-  );
-
-  const pendingArrival = returns.reduce(
-    (sum, returnHeader) => sum + Number(returnHeader.pending_arrival_qty),
-    0,
-  );
-  const pendingInspection = returns.reduce(
-    (sum, returnHeader) => sum + Number(returnHeader.pending_inspection_qty),
-    0,
-  );
-  const completed = returns.filter(
-    (returnHeader) =>
-      returnHeader.status_code.startsWith("COMPLETED") ||
-      returnHeader.status_code === "LOST" ||
-      returnHeader.status_code === "CLOSED",
+  const pendingInspection = returns.filter(
+    (item) => Number(item.pending_inspection_qty) > 0,
   ).length;
 
-  const statuses = Array.from(
-    new Set(returns.map((returnHeader) => returnHeader.status_code)),
-  ).sort();
+  const pendingArrival = returns.filter(
+    (item) => Number(item.pending_arrival_qty) > 0,
+  ).length;
 
-  const latestRecordedAt = Math.max(
-    0,
-    ...events.map((event) => new Date(event.occurred_at).getTime()),
-    ...marketplaceEvents.map((event) => new Date(event.occurred_at).getTime()),
-  );
-  const minimumEventAt =
-    latestRecordedAt > 0
-      ? toDateTimeLocal(new Date(latestRecordedAt + 60_000))
-      : undefined;
+  const lostReturns = returns.filter(
+    (item) => Number(item.lost_qty) > 0,
+  ).length;
+
+  const claimsNotStarted = claims.filter(
+    (claim) => claim.status_code === "NOT_STARTED",
+  ).length;
+
+  const claimsDueSoon = claims.filter(
+    (claim) => claim.status_code === "DUE_SOON",
+  ).length;
+
+  const claimsNeedAction = claims.filter((claim) =>
+    ["EXPIRED", "EXCEPTION"].includes(claim.status_code),
+  ).length;
 
   return (
-    <main className="min-h-screen bg-slate-950 text-slate-100">
-      <PageSectionNav
-        items={[
-          { href: "#overview", label: "Ringkasan" },
-          { href: "#actions", label: "Actions" },
-          { href: "#claims", label: "TikTok claims" },
-          { href: "#returns", label: "Returns" },
-          { href: "#timeline", label: "Timeline" },
-        ]}
-      />
-
-      <div className="mx-auto max-w-[1500px] px-5 py-8 lg:px-8">
-        <section id="overview" className="scroll-mt-24">
-          <p className="section-kicker">Return operations</p>
-          <h1 className="mt-3 text-3xl font-semibold tracking-tight sm:text-4xl">
-            Retur diterima untuk diperiksa, lalu dampak stok ditetapkan dengan bukti.
-          </h1>
-          <p className="mt-3 max-w-3xl text-sm leading-6 text-slate-400 sm:text-base">
-            Expected return dan penerimaan fisik tidak mengubah stok. Setelah inspeksi,
-            hanya barang layak jual yang menambah stok melalui batch retur baru.
-            Barang rusak dan hilang tetap tercatat untuk audit tanpa movement kedua.
-          </p>
-
-          <div className="mt-7 grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
-            {[
-              ["Total returns", returns.length, "Seluruh lifecycle tercatat"],
-              ["Pending arrival", pendingArrival, "Belum diterima secara fisik"],
-              ["Pending inspection", pendingInspection, "Sudah diterima dan menunggu keputusan kondisi"],
-              ["Closed outcomes", completed, "Selesai atau dinyatakan lost"],
-            ].map(([label, value, description]) => (
-              <article key={label} className="metric-card">
-                <p className="text-sm text-slate-400">{label}</p>
-                <p className="mt-3 text-3xl font-semibold text-white">
-                  {formatNumber(Number(value))}
-                </p>
-                <p className="mt-2 text-xs text-slate-500">{description}</p>
-              </article>
-            ))}
-          </div>
-        </section>
-
-        <section id="actions" className="mt-10 scroll-mt-24">
-          <div className="mb-5 flex items-end justify-between gap-4">
-            <div>
-              <p className="section-kicker">Return commands</p>
-              <h2 className="section-title">Jalankan lifecycle melalui RPC atomik.</h2>
-            </div>
-            <Pill label="Idempotent" tone="success" />
-          </div>
-
-          {params.success ? (
-            <div className="mb-5 rounded-2xl border border-emerald-400/20 bg-emerald-400/10 px-5 py-4 text-sm text-emerald-200">
-              {params.success}
-            </div>
-          ) : null}
-          {params.error ? (
-            <div className="mb-5 rounded-2xl border border-rose-400/20 bg-rose-400/10 px-5 py-4 text-sm text-rose-200">
-              {params.error}
-            </div>
-          ) : null}
-
-          <div className="grid gap-5 xl:grid-cols-2">
-            <form action={createExpectedReturnAction} className="panel-card">
-              <div className="flex items-start justify-between gap-4">
-                <div>
-                  <p className="section-kicker">Step 1</p>
-                  <h3 className="mt-1 text-xl font-semibold">Buat expected return</h3>
-                </div>
-                <Pill label="Stock neutral" tone="neutral" />
-              </div>
-              <div className="form-grid mt-6">
-                <label className="field-label sm:col-span-2">
-                  Shipment source
-                  <ReturnSourceSelect options={returnSources} />
-                </label>
-                <label className="field-label">
-                  Return reference
-                  <input name="returnRef" required placeholder="RET-SHP-1001" />
-                </label>
-                <label className="field-label">
-                  Waktu expected
-                  <CurrentDateTimeInput minimumEventAt={minimumEventAt} />
-                </label>
-                <label className="field-label">
-                  Quantity
-                  <input
-                    name="quantity"
-                    type="number"
-                    min="1"
-                    step="1"
-                    required
-                    placeholder="1"
-                  />
-                </label>
-                <label className="field-label">
-                  Source status
-                  <input name="sourceStatus" placeholder="RETURN_REQUESTED" />
-                </label>
-                <label className="field-label sm:col-span-2">
-                  Catatan
-                  <input name="note" placeholder="Opsional" />
-                </label>
-              </div>
-              <button
-                className="primary-button mt-6"
-                type="submit"
-                disabled={returnSources.length === 0}
-              >
-                Create expected return
-              </button>
-            </form>
-
-            <form action={confirmReturnReceiptAction} className="panel-card">
-              <div className="flex items-start justify-between gap-4">
-                <div>
-                  <p className="section-kicker">Step 2</p>
-                  <h3 className="mt-1 text-xl font-semibold">Catat penerimaan fisik</h3>
-                </div>
-                <Pill label="Stok belum berubah" tone="neutral" />
-              </div>
-              <input
-                type="hidden"
-                name="returnRef"
-                value={selectedReturn?.external_return_ref ?? ""}
-              />
-              <div className="form-grid mt-6">
-                <label className="field-label sm:col-span-2">
-                  Return item dan batch source
-                  <ReturnReceiptSourceSelect options={receiptSources} />
-                </label>
-                <label className="field-label">
-                  Receipt reference
-                  <input name="receiptRef" required placeholder="RCV-RET-1001" />
-                </label>
-                <label className="field-label">
-                  Waktu diterima
-                  <CurrentDateTimeInput minimumEventAt={minimumEventAt} />
-                </label>
-                <label className="field-label">
-                  Source line reference
-                  <input name="sourceLineRef" required placeholder="RCV-LINE-1" />
-                </label>
-                <label className="field-label">
-                  Quantity
-                  <input
-                    name="quantity"
-                    type="number"
-                    min="1"
-                    step="1"
-                    required
-                    placeholder="1"
-                  />
-                </label>
-                <label className="field-label sm:col-span-2">
-                  Catatan
-                  <input name="note" placeholder="Opsional" />
-                </label>
-              </div>
-              <button
-                className="primary-button mt-6"
-                type="submit"
-                disabled={!selectedReturn || receiptSources.length === 0}
-              >
-                Confirm physical receipt
-              </button>
-            </form>
-
-            <form action={inspectReturnAction} className="panel-card">
-              <div className="flex items-start justify-between gap-4">
-                <div>
-                  <p className="section-kicker">Step 3</p>
-                  <h3 className="mt-1 text-xl font-semibold">Tetapkan kondisi fisik</h3>
-                </div>
-                <Pill label="Hanya layak jual masuk stok" tone="success" />
-              </div>
-              <input
-                type="hidden"
-                name="returnRef"
-                value={selectedReturn?.external_return_ref ?? ""}
-              />
-              <div className="form-grid mt-6">
-                <label className="field-label sm:col-span-2">
-                  Receipt line
-                  <select
-                    name="receiptLineId"
-                    defaultValue=""
-                    required
-                    disabled={inspectableReceiptLines.length === 0}
-                  >
-                    <option value="" disabled>
-                      {inspectableReceiptLines.length === 0
-                        ? "Tidak ada penerimaan yang menunggu inspeksi"
-                        : "Pilih receipt line"}
-                    </option>
-                    {inspectableReceiptLines.map((line) => (
-                      <option key={line.receipt_line_id} value={line.receipt_line_id}>
-                        {line.product_sku_snapshot} / {line.source_batch_code_snapshot ?? "batch tidak diketahui"} /{" "}
-                        {line.batch_identity_verified ? "batch asal terverifikasi" : "batch asal belum diketahui"} /
-                        sisa {receiptRemaining(line, inspectedByReceiptLine)} / stok{" "}{line.stock_effect_code === "NONE" ? "belum berubah" : "saldo karantina lama"}
-                      </option>
-                    ))}
-                  </select>
-                </label>
-                <label className="field-label">
-                  Inspection reference
-                  <input name="inspectionRef" required placeholder="INSP-RET-1001" />
-                </label>
-                <label className="field-label">
-                  Waktu inspeksi
-                  <CurrentDateTimeInput minimumEventAt={minimumEventAt} />
-                </label>
-                <label className="field-label">
-                  Sellable quantity
-                  <input
-                    name="sellableQuantity"
-                    type="number"
-                    min="0"
-                    step="1"
-                    defaultValue="0"
-                    required
-                  />
-                </label>
-                <label className="field-label">
-                  Damaged quantity
-                  <input
-                    name="damagedQuantity"
-                    type="number"
-                    min="0"
-                    step="1"
-                    defaultValue="0"
-                    required
-                  />
-                </label>
-                <label className="field-label">
-                  Source line reference
-                  <input name="sourceLineRef" required placeholder="INSP-LINE-1" />
-                </label>
-                <label className="field-label">
-                  Catatan
-                  <input name="note" placeholder="Opsional" />
-                </label>
-              </div>
-              <button
-                className="primary-button mt-6"
-                type="submit"
-                disabled={!selectedReturn || inspectableReceiptLines.length === 0}
-              >
-                Post inspection
-              </button>
-            </form>
-
-            <form action={markReturnLostAction} className="panel-card">
-              <div className="flex items-start justify-between gap-4">
-                <div>
-                  <p className="section-kicker">Alternative close</p>
-                  <h3 className="mt-1 text-xl font-semibold">Tandai lost</h3>
-                </div>
-                <Pill label="No stock effect" tone="danger" />
-              </div>
-              <input
-                type="hidden"
-                name="returnRef"
-                value={selectedReturn?.external_return_ref ?? ""}
-              />
-              <div className="form-grid mt-6">
-                <label className="field-label sm:col-span-2">
-                  Pending return item
-                  <select
-                    name="returnItemId"
-                    defaultValue=""
-                    required
-                    disabled={lostCandidates.length === 0}
-                  >
-                    <option value="" disabled>
-                      {lostCandidates.length === 0
-                        ? "Tidak ada pending arrival"
-                        : "Pilih return item"}
-                    </option>
-                    {lostCandidates.map((item) => (
-                      <option key={item.return_item_id} value={item.return_item_id}>
-                        {item.product_sku_snapshot} / pending{" "}
-                        {item.pending_arrival_qty}
-                      </option>
-                    ))}
-                  </select>
-                </label>
-                <label className="field-label">
-                  Event reference
-                  <input name="eventRef" required placeholder="LOST-RET-1001" />
-                </label>
-                <label className="field-label">
-                  Waktu dinyatakan lost
-                  <CurrentDateTimeInput minimumEventAt={minimumEventAt} />
-                </label>
-                <label className="field-label">
-                  Source line reference
-                  <input name="sourceLineRef" required placeholder="LOST-LINE-1" />
-                </label>
-                <label className="field-label">
-                  Quantity
-                  <input
-                    name="quantity"
-                    type="number"
-                    min="1"
-                    step="1"
-                    required
-                    placeholder="1"
-                  />
-                </label>
-                <label className="field-label sm:col-span-2">
-                  Catatan
-                  <input name="note" placeholder="Opsional" />
-                </label>
-              </div>
-              <button
-                className="primary-button mt-6"
-                type="submit"
-                disabled={!selectedReturn || lostCandidates.length === 0}
-              >
-                Mark as lost
-              </button>
-            </form>
-          </div>
-        </section>
-
-        <ReturnClaimWorkflow
-          returns={returns}
-          items={items}
-          data={claimData}
-          selectedReturn={selectedReturn}
-          lateArrivalSources={lateArrivalSources}
-          claimId={params.claimId}
-          claimStatus={params.claimStatus}
-          claimStage={params.claimStage}
+    <AppShell profile={session.profile}>
+      <div className="mx-auto w-full max-w-[1200px] px-4 py-6 sm:px-6 lg:px-8 lg:py-8">
+        <PageHeader
+          eyebrow="Pesanan"
+          title="Retur & Klaim"
+          description="Pantau proses retur, kondisi barang kembali, dan klaim marketplace dalam satu tempat."
         />
 
-        <section id="returns" className="mt-10 scroll-mt-24">
-          <div className="mb-5 flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
-            <div>
-              <p className="section-kicker">Return registry</p>
-              <h2 className="section-title">Pilih retur untuk diproses.</h2>
-            </div>
-            <div className="flex flex-wrap gap-2 text-xs">
-              <Link
-                href="/returns?status=ALL#returns"
-                className={`rounded-full border px-3 py-1.5 ${
-                  statusFilter === "ALL"
-                    ? "border-emerald-400/30 bg-emerald-400/10 text-emerald-300"
-                    : "border-white/10 text-slate-400"
-                }`}
-              >
-                ALL
-              </Link>
-              {statuses.map((status) => (
-                <Link
-                  key={status}
-                  href={`/returns?status=${encodeURIComponent(status)}#returns`}
-                  className={`rounded-full border px-3 py-1.5 ${
-                    statusFilter === status
-                      ? "border-emerald-400/30 bg-emerald-400/10 text-emerald-300"
-                      : "border-white/10 text-slate-400"
-                  }`}
-                >
-                  {status}
-                </Link>
-              ))}
-            </div>
-          </div>
+        <OrderWorkspaceTabs active="returns" />
 
-          <div className="grid gap-5 xl:grid-cols-[0.9fr_1.6fr]">
-            <div className="panel-card p-0">
-              {filteredReturns.length === 0 ? (
-                <div className="p-7 text-sm text-slate-400">
-                  Belum ada retur untuk filter ini.
-                </div>
-              ) : (
-                <div className="divide-y divide-white/10">
-                  {filteredReturns.map((returnHeader) => (
-                    <Link
-                      key={returnHeader.return_id}
-                      href={`/returns?status=${encodeURIComponent(statusFilter)}&returnId=${returnHeader.return_id}#returns`}
-                      className={`block p-5 transition hover:bg-white/[0.03] ${
-                        selectedReturn?.return_id === returnHeader.return_id
-                          ? "bg-emerald-400/[0.05]"
-                          : ""
-                      }`}
-                    >
-                      <div className="flex items-start justify-between gap-3">
-                        <div>
-                          <p className="font-mono text-sm text-white">
-                            {returnHeader.external_return_ref}
-                          </p>
-                          <p className="mt-1 text-xs text-slate-500">
-                            {returnHeader.channel_code} /{" "}
-                            {returnHeader.marketplace_order_ref}
-                          </p>
-                        </div>
-                        <Pill
-                          label={returnHeader.status_code}
-                          tone={returnTone(
-                            returnHeader.status_code,
-                            returnHeader.outcome_code,
-                          )}
-                        />
-                      </div>
-                      <div className="mt-4 flex gap-4 text-xs text-slate-400">
-                        <span>expected {returnHeader.expected_qty}</span>
-                        <span>arrival {returnHeader.pending_arrival_qty}</span>
-                        <span>inspect {returnHeader.pending_inspection_qty}</span>
-                      </div>
-                    </Link>
-                  ))}
-                </div>
-              )}
-            </div>
+        {legacyClaimNotFound ? (           <Alert             className="mt-6"             title="Klaim tidak ditemukan"             tone="danger"           >             Klaim tidak tersedia untuk organisasi ini atau tautan sudah tidak valid.           </Alert>         ) : null}
 
-            <article className="panel-card">
-              {!selectedReturn ? (
-                <div className="py-10 text-center text-sm text-slate-400">
-                  Buat expected return untuk memulai lifecycle.
-                </div>
+        <nav
+          aria-label="Retur dan klaim"
+          className="mt-4 flex gap-5 border-b border-ui-border"
+        >
+          <Link
+            aria-current={activeSection === "returns" ? "page" : undefined}
+            className={`border-b-2 px-1 py-2.5 text-sm font-semibold ${
+              activeSection === "returns"
+                ? "border-ui-primary text-ui-primary"
+                : "border-transparent text-ui-text-muted hover:text-ui-text"
+            }`}
+            href="/returns"
+          >
+            Retur
+          </Link>
+
+          <Link
+            aria-current={activeSection === "claims" ? "page" : undefined}
+            className={`border-b-2 px-1 py-2.5 text-sm font-semibold ${
+              activeSection === "claims"
+                ? "border-ui-primary text-ui-primary"
+                : "border-transparent text-ui-text-muted hover:text-ui-text"
+            }`}
+            href="/returns?section=claims"
+          >
+            Klaim
+          </Link>
+        </nav>
+
+        {failed ? (
+          <Alert
+            className="mt-6"
+            title="Retur dan klaim belum dapat dimuat"
+            tone="danger"
+          >
+            Coba muat ulang halaman. Tidak ada perubahan stok yang dilakukan.
+          </Alert>
+        ) : (
+          <>
+            <section
+              aria-label={
+                activeSection === "returns"
+                  ? "Ringkasan retur"
+                  : "Ringkasan klaim"
+              }
+              className="mt-4 grid gap-3 sm:grid-cols-3"
+            >
+              {activeSection === "returns" ? (
+                <>
+                  <div className="flex items-center justify-between gap-4 rounded-[var(--ui-radius-lg)] border border-ui-border border-l-2 border-l-ui-warning bg-ui-surface px-4 py-3">
+                    <p className="text-sm font-medium text-ui-text-muted">
+                      Menunggu datang
+                    </p>
+                    <p className="ui-number text-xl font-semibold text-ui-text">
+                      {qty(pendingArrival)}
+                    </p>
+                  </div>
+
+                  <div className="flex items-center justify-between gap-4 rounded-[var(--ui-radius-lg)] border border-ui-border border-l-2 border-l-ui-primary bg-ui-surface px-4 py-3">
+                    <p className="text-sm font-medium text-ui-text-muted">
+                      Menunggu diperiksa
+                    </p>
+                    <p className="ui-number text-xl font-semibold text-ui-text">
+                      {qty(pendingInspection)}
+                    </p>
+                  </div>
+
+                  <div className="flex items-center justify-between gap-4 rounded-[var(--ui-radius-lg)] border border-ui-border bg-ui-surface px-4 py-3">
+                    <p className="text-sm font-medium text-ui-text-muted">
+                      Retur hilang
+                    </p>
+                    <p className="ui-number text-xl font-semibold text-ui-text">
+                      {qty(lostReturns)}
+                    </p>
+                  </div>
+                </>
               ) : (
                 <>
-                  <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
-                    <div>
-                      <p className="section-kicker">Selected return</p>
-                      <h3 className="mt-2 text-2xl font-semibold">
-                        {selectedReturn.external_return_ref}
-                      </h3>
-                      <p className="mt-2 text-sm text-slate-400">
-                        {selectedReturn.channel_code} /{" "}
-                        {selectedReturn.marketplace_order_ref} / expected{" "}
-                        {formatDate(selectedReturn.expected_at, true)} WIB
-                      </p>
-                    </div>
-                    <Pill
-                      label={selectedReturn.status_code}
-                      tone={returnTone(
-                        selectedReturn.status_code,
-                        selectedReturn.outcome_code,
-                      )}
-                    />
+                  <div className="flex items-center justify-between gap-4 rounded-[var(--ui-radius-lg)] border border-ui-border bg-ui-surface px-4 py-3">
+                    <p className="text-sm font-medium text-ui-text-muted">
+                      Belum dikirim
+                    </p>
+                    <p className="ui-number text-xl font-semibold text-ui-text">
+                      {qty(claimsNotStarted)}
+                    </p>
                   </div>
 
-                  <div className="mt-6 grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
-                    {quantityRows(selectedReturn).map(([label, value]) => (
-                      <div
-                        key={label}
-                        className="rounded-2xl border border-white/10 bg-slate-950/50 p-4"
-                      >
-                        <p className="text-xs text-slate-500">{label}</p>
-                        <p className="mt-2 text-2xl font-semibold text-white">
-                          {formatNumber(Number(value))}
-                        </p>
-                      </div>
-                    ))}
+                  <div className="flex items-center justify-between gap-4 rounded-[var(--ui-radius-lg)] border border-ui-border border-l-2 border-l-ui-warning bg-ui-surface px-4 py-3">
+                    <p className="text-sm font-medium text-ui-text-muted">
+                      Segera jatuh tempo
+                    </p>
+                    <p className="ui-number text-xl font-semibold text-ui-text">
+                      {qty(claimsDueSoon)}
+                    </p>
                   </div>
 
-                  <div className="mt-7 overflow-x-auto">
-                    <table className="min-w-full text-left text-sm">
-                      <thead className="text-xs uppercase tracking-wide text-slate-500">
-                        <tr>
-                          <th className="px-3 py-3">SKU</th>
-                          <th className="px-3 py-3">Expected</th>
-                          <th className="px-3 py-3">Arrival</th>
-                          <th className="px-3 py-3">Inspect</th>
-                          <th className="px-3 py-3">Sellable</th>
-                          <th className="px-3 py-3">Damaged</th>
-                          <th className="px-3 py-3">Lost</th>
-                        </tr>
-                      </thead>
-                      <tbody className="divide-y divide-white/10">
-                        {selectedItems.map((item: ReturnItem) => (
-                          <tr key={item.return_item_id}>
-                            <td className="px-3 py-3 font-mono text-white">
-                              {item.product_sku_snapshot}
-                            </td>
-                            <td className="px-3 py-3">{item.expected_qty}</td>
-                            <td className="px-3 py-3">
-                              {item.pending_arrival_qty}
-                            </td>
-                            <td className="px-3 py-3">
-                              {item.pending_inspection_qty}
-                            </td>
-                            <td className="px-3 py-3 text-emerald-300">
-                              {item.sellable_qty}
-                            </td>
-                            <td className="px-3 py-3 text-rose-300">
-                              {item.damaged_qty}
-                            </td>
-                            <td className="px-3 py-3 text-amber-200">
-                              {item.lost_qty}
-                            </td>
-                          </tr>
-                        ))}
-                      </tbody>
-                    </table>
+                  <div className="flex items-center justify-between gap-4 rounded-[var(--ui-radius-lg)] border border-ui-border border-l-2 border-l-ui-danger bg-ui-surface px-4 py-3">
+                    <p className="text-sm font-medium text-ui-text-muted">
+                      Perlu ditangani
+                    </p>
+                    <p className="ui-number text-xl font-semibold text-ui-text">
+                      {qty(claimsNeedAction)}
+                    </p>
                   </div>
                 </>
               )}
-            </article>
-          </div>
-        </section>
+            </section>
 
-        <section id="timeline" className="mt-10 scroll-mt-24">
-          <div className="mb-5">
-            <p className="section-kicker">Audit trail</p>
-            <h2 className="section-title">Event, receipt, dan disposition.</h2>
-          </div>
+            {activeSection === "returns" ? (
+              <section className="mt-6">
+                <div>
+                  <h2 className="text-lg font-semibold text-ui-text">
+                    Retur yang perlu ditangani
+                  </h2>
+                  <p className="mt-1 text-sm text-ui-text-muted">
+                    Pilih retur yang perlu diterima, diperiksa, atau ditindaklanjuti.
+                  </p>
+                </div>
 
-          <div className="grid gap-5 xl:grid-cols-3">
-            <article className="panel-card">
-              <h3 className="text-lg font-semibold">Return events</h3>
-              <div className="mt-5 space-y-4">
-                {selectedEvents.length === 0 ? (
-                  <p className="text-sm text-slate-500">Belum ada event.</p>
+                {returns.length === 0 ? (
+                  <EmptyState
+                    className="mt-5"
+                    title="Tidak ada retur yang perlu ditangani"
+                    description="Retur dari marketplace akan muncul otomatis di sini."
+                  />
                 ) : (
-                  selectedEvents.map((event) => (
-                    <div
-                      key={event.event_id}
-                      className="rounded-2xl border border-white/10 bg-slate-950/50 p-4"
-                    >
-                      <div className="flex items-start justify-between gap-3">
-                        <p className="font-mono text-sm text-white">
-                          {event.event_type_code}
-                        </p>
-                        <span className="text-xs text-slate-500">
-                          {formatDate(event.occurred_at, true)}
-                        </span>
-                      </div>
-                      <p className="mt-2 text-xs text-slate-400">
-                        {event.external_event_ref}
-                      </p>
-                      {event.note ? (
-                        <p className="mt-2 text-xs text-slate-500">{event.note}</p>
-                      ) : null}
-                    </div>
-                  ))
-                )}
-              </div>
-            </article>
+                  <div className="mt-4 divide-y divide-ui-border rounded-[var(--ui-radius-lg)] border border-ui-border bg-ui-surface">
+                    {returns.map((item) => {
+                      const status = statusLabel(item.status_code);
 
-            <article className="panel-card">
-              <h3 className="text-lg font-semibold">Physical receipts</h3>
-              <div className="mt-5 space-y-4">
-                {selectedReceiptLines.length === 0 ? (
-                  <p className="text-sm text-slate-500">Belum ada receipt.</p>
-                ) : (
-                  selectedReceiptLines.map((line) => (
-                    <div
-                      key={line.receipt_line_id}
-                      className="rounded-2xl border border-white/10 bg-slate-950/50 p-4"
-                    >
-                      <div className="flex items-start justify-between gap-3">
-                        <p className="font-mono text-sm text-white">
-                          {line.receipt_ref}
-                        </p>
-                        <Pill
-                          label={
-                            line.batch_identity_verified
-                              ? "VERIFIED"
-                              : "UNIDENTIFIED"
-                          }
-                          tone={
-                            line.batch_identity_verified ? "success" : "danger"
-                          }
-                        />
-                      </div>
-                      <p className="mt-2 text-xs text-slate-400">
-                        {line.product_sku_snapshot} / {line.source_batch_code_snapshot ?? "batch tidak diketahui"}
-                      </p>
-                      <p className="mt-2 text-xs text-slate-500">
-                        diterima {line.quantity_received} / menunggu inspeksi{" "}
-                        {receiptRemaining(line, inspectedByReceiptLine)} / stok{" "}{line.stock_effect_code === "NONE" ? "belum berubah" : "saldo karantina lama"}
-                      </p>
-                    </div>
-                  ))
-                )}
-              </div>
-            </article>
+                      return (
+                        <article
+                          className="grid gap-4 px-4 py-4 lg:grid-cols-[minmax(0,1.15fr)_10rem_minmax(0,1fr)_10rem_5rem] lg:items-center"
+                          key={item.return_id}
+                        >
+                          <div>
+                            <p className="ui-code text-sm font-semibold text-ui-text">
+                              {item.external_return_ref}
+                            </p>
+                            <p className="mt-1 text-xs text-ui-text-muted">
+                              {channelLabel(item.channel_code)} {"\u00B7"} {item.marketplace_order_ref}
+                            </p>
+                          </div>
 
-            <article className="panel-card">
-              <h3 className="text-lg font-semibold">Inspection allocations</h3>
-              <div className="mt-5 space-y-4">
-                {selectedInspectionAllocations.length === 0 ? (
-                  <p className="text-sm text-slate-500">Belum ada disposition.</p>
-                ) : (
-                  selectedInspectionAllocations.map((allocation) => (
-                    <div
-                      key={allocation.inspection_allocation_id}
-                      className="rounded-2xl border border-white/10 bg-slate-950/50 p-4"
-                    >
-                      <div className="flex items-start justify-between gap-3">
-                        <p className="font-mono text-sm text-white">
-                          {allocation.inspection_ref}
-                        </p>
-                        <Pill
-                          label={allocation.condition_code}
-                          tone={
-                            allocation.condition_code === "SELLABLE"
-                              ? "success"
-                              : "danger"
-                          }
-                        />
-                      </div>
-                      <p className="mt-2 text-xs text-slate-400">
-                        jumlah {allocation.quantity_allocated} / dampak stok{" "}
-                        {allocation.stock_effect_code === "SELLABLE_INBOUND" ? "masuk batch retur" : allocation.stock_effect_code === "NONE" ? "tidak ada" : "transfer karantina lama"}
-                      </p>
-                      <p className="mt-2 text-xs text-slate-500">
-                        {formatDate(allocation.occurred_at, true)} WIB
-                      </p>
-                    </div>
-                  ))
+                          <StatusBadge tone={status.tone}>
+                            {status.label}
+                          </StatusBadge>
+
+                          <div className="grid grid-cols-3 gap-3 text-sm">
+                            <div>
+                              <p className="text-xs text-ui-text-muted">
+                                Diharapkan
+                              </p>
+                              <p className="ui-number mt-1 font-semibold text-ui-text">
+                                {qty(item.expected_qty)}
+                              </p>
+                            </div>
+                            <div>
+                              <p className="text-xs text-ui-text-muted">
+                                Diterima
+                              </p>
+                              <p className="ui-number mt-1 font-semibold text-ui-text">
+                                {qty(item.received_qty)}
+                              </p>
+                            </div>
+                            <div>
+                              <p className="text-xs text-ui-text-muted">
+                                Hilang
+                              </p>
+                              <p className="ui-number mt-1 font-semibold text-ui-text">
+                                {qty(item.lost_qty)}
+                              </p>
+                            </div>
+                          </div>
+
+                          <div>
+                            <p className="text-xs text-ui-text-muted">
+                              Berikutnya
+                            </p>
+                            <p className="mt-1 text-sm font-semibold text-ui-text">
+                              {nextReturnAction(item.status_code)}
+                            </p>
+                          </div>
+
+                          <Link
+                            className="text-sm font-semibold text-ui-primary hover:underline"
+                            href={`/returns/${encodeURIComponent(item.return_id)}`}
+                          >
+                            Buka
+                          </Link>
+                        </article>
+                      );
+                    })}
+                  </div>
                 )}
-              </div>
-            </article>
-          </div>
-        </section>
+              </section>
+            ) : (
+              <section className="mt-6">
+                <div>
+                  <h2 className="text-lg font-semibold text-ui-text">
+                    Klaim marketplace
+                  </h2>
+                  <p className="mt-1 text-sm text-ui-text-muted">
+                    Saat ini klaim tersedia untuk TikTok Shop. Pantau yang belum dikirim, mendekati batas waktu, atau perlu ditindaklanjuti. Klaim tidak mengubah stok.
+                  </p>
+                </div>
+
+                {claims.length === 0 ? (
+                  <EmptyState
+                    className="mt-5"
+                    title="Tidak ada klaim yang perlu ditangani"
+                    description="Klaim marketplace akan muncul di sini saat ada kehilangan yang perlu ditindaklanjuti."
+                  />
+                ) : (
+                  <div className="mt-4 divide-y divide-ui-border rounded-[var(--ui-radius-lg)] border border-ui-border bg-ui-surface">
+                    {claims.map((claim) => (
+                      <article
+                        className="grid gap-3 px-4 py-4 md:grid-cols-[minmax(0,1fr)_11rem_11rem_8rem] md:items-center"
+                        key={claim.id}
+                      >
+                        <div>
+                          <p className="ui-code text-sm font-semibold text-ui-text">
+                            {claim.external_claim_ref || "Belum dikirim"}
+                          </p>
+                          <p className="mt-1 text-xs text-ui-text-muted">
+                            {claimTypeLabel(claim.claim_type_code)}
+                          </p>
+                        </div>
+
+                        <StatusBadge tone={claimTone(claim.status_code)}>
+                          {claimStatusLabel(claim.status_code)}
+                        </StatusBadge>
+
+                        <p className="text-sm text-ui-text-muted">
+                          Batas:{" "}
+                          {claim.deadline_at
+                            ? new Intl.DateTimeFormat("id-ID", {
+                                dateStyle: "medium",
+                                timeZone: "Asia/Jakarta",
+                              }).format(new Date(claim.deadline_at))
+                            : "Belum tersedia"}
+                        </p>
+
+                        <Link
+                          className="text-sm font-semibold text-ui-primary hover:underline"
+                          href={`/returns/${encodeURIComponent(claim.return_id)}?claimId=${encodeURIComponent(claim.id)}#claim-detail`}
+                        >
+                          Buka
+                        </Link>
+                      </article>
+                    ))}
+                  </div>
+                )}
+              </section>
+            )}
+          </>
+        )}
       </div>
-    </main>
+    </AppShell>
   );
 }
