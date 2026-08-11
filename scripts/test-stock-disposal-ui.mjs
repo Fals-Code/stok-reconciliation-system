@@ -389,6 +389,59 @@ async function getUnauthenticated(uri) {
   };
 }
 
+async function inspectNoteValidationA11y(baseUrl) {
+  const { chromium } = await import("playwright");
+  const browser = await chromium.launch({ headless: true });
+  const pageErrors = [];
+
+  try {
+    const context = await browser.newContext({
+      viewport: { width: 1440, height: 900 },
+    });
+    const page = await context.newPage();
+    page.on("pageerror", (error) => pageErrors.push(error.message));
+    await context.addCookies([
+      {
+        name: "glowlab_access_token",
+        value: accessToken,
+        url: baseUrl,
+      },
+    ]);
+    await page.goto(`${baseUrl}/stock-disposals`, { waitUntil: "networkidle" });
+    await page.locator("#disposal-reference").fill("A11Y Catatan smoke");
+    await page.locator("#disposal-evidence").fill("BA-A11Y");
+    await page.locator("#disposal-note").evaluate((note) => note.reportValidity());
+    await page.waitForTimeout(50);
+
+    return {
+      pageErrors,
+      ...(await page.locator("#disposal-note").evaluate((note) => {
+        const describedBy = note.getAttribute("aria-describedby");
+        const error = describedBy
+          ? document.getElementById(describedBy)
+          : null;
+        const label = document.querySelector(
+          'label[for="disposal-note"]',
+        );
+
+        return {
+          ariaInvalid: note.getAttribute("aria-invalid"),
+          describedBy,
+          errorId: error?.id ?? null,
+          errorRole: error?.getAttribute("role") ?? null,
+          errorText: error?.textContent?.trim() ?? "",
+          errorCount: document.querySelectorAll(
+            "#disposal-form-error",
+          ).length,
+          labelText: label?.textContent?.trim() ?? "",
+        };
+      })),
+    };
+  } finally {
+    await browser.close();
+  }
+}
+
 function decodeHtml(value) {
   return String(value)
     .replace(/&amp;/gi, "&")
@@ -940,19 +993,89 @@ async function main(args) {
 
   console.log("\n== Provision dan aktivasi Admin smoke ==");
 
-  runCommand(
-    process.platform === "win32" ? "npm.cmd" : "npm",
-    [
-      "run",
-      "demo:admin",
-      "--",
-      "--email",
-      args.email,
-      "--password",
-      args.password,
-      "--name",
-      args.displayName,
-    ],
+  const existingAdmin = runSqlJson(`
+select jsonb_build_object(
+  'found',
+    exists (
+      select 1
+      from app.user_profiles profile
+      where profile.organization_id =
+            '00000000-0000-4000-8000-000000000001'::uuid
+        and profile.employee_code = 'DEMO-ADMIN'
+        and profile.role_code = 'ADMIN'
+    ),
+  'userId',
+    (
+      select profile.user_id::text
+      from app.user_profiles profile
+      where profile.organization_id =
+            '00000000-0000-4000-8000-000000000001'::uuid
+        and profile.employee_code = 'DEMO-ADMIN'
+        and profile.role_code = 'ADMIN'
+      order by profile.is_active desc, profile.created_at asc
+      limit 1
+    ),
+  'email',
+    (
+      select lower(auth_user.email)
+      from app.user_profiles profile
+      join auth.users auth_user
+        on auth_user.id = profile.user_id
+      where profile.organization_id =
+            '00000000-0000-4000-8000-000000000001'::uuid
+        and profile.employee_code = 'DEMO-ADMIN'
+        and profile.role_code = 'ADMIN'
+      order by profile.is_active desc, profile.created_at asc
+      limit 1
+    )
+);
+`);
+
+  assertTest(
+    existingAdmin?.found === true &&
+      UUID_PATTERN.test(existingAdmin?.userId ?? "") &&
+      typeof existingAdmin?.email === "string",
+    "Admin demo existing ditemukan",
+    JSON.stringify(existingAdmin),
+  );
+
+  if (
+    args.email.trim().toLowerCase() !==
+    existingAdmin.email.trim().toLowerCase()
+  ) {
+    throw new Error(
+      "Smoke test lokal harus memakai Admin demo existing: " +
+        `${existingAdmin.email}.`,
+    );
+  }
+
+  const adminHeaders = {
+    apikey: serviceKey,
+    Authorization: `Bearer ${serviceKey}`,
+    "Content-Type": "application/json",
+  };
+  const passwordUpdateResponse = await fetch(
+    `${supabaseUrl}/auth/v1/admin/users/${existingAdmin.userId}`,
+    {
+      method: "PUT",
+      headers: adminHeaders,
+      body: JSON.stringify({
+        password: args.password,
+        email_confirm: true,
+        user_metadata: {
+          display_name: args.displayName,
+        },
+      }),
+    },
+  );
+  const passwordUpdatePayload = await parseResponse(
+    passwordUpdateResponse,
+  );
+
+  assertTest(
+    passwordUpdateResponse.ok,
+    "Password Admin demo disiapkan untuk smoke lokal",
+    JSON.stringify(passwordUpdatePayload),
   );
 
   const tokenResponse = await fetch(
@@ -964,7 +1087,7 @@ async function main(args) {
         "Content-Type": "application/json",
       },
       body: JSON.stringify({
-        email: args.email,
+        email: existingAdmin.email,
         password: args.password,
       }),
     },
@@ -974,7 +1097,7 @@ async function main(args) {
   assertTest(
     tokenResponse.ok && Boolean(tokenPayload?.access_token),
     "Password grant menghasilkan access token",
-    JSON.stringify(tokenPayload),
+    tokenResponse.ok ? "" : JSON.stringify(tokenPayload),
   );
 
   accessToken = tokenPayload.access_token;
@@ -985,22 +1108,38 @@ async function main(args) {
     "Auth user smoke memiliki UUID",
   );
 
-  const profile = runSqlJson(`
-select jsonb_build_object(
-  'organizationId', profile.organization_id,
-  'isActive', profile.is_active,
-  'roleCode', profile.role_code
-)
-from app.user_profiles profile
-where profile.user_id = ${sqlLiteral(smokeUserId)}::uuid;
-`);
-
-  organizationId = profile.organizationId;
+  const organizationOutput = runSql(
+    `
+update app.user_profiles
+set is_active = true
+where user_id = ${sqlLiteral(smokeUserId)}::uuid
+  and organization_id =
+      '00000000-0000-4000-8000-000000000001'::uuid
+  and employee_code = 'DEMO-ADMIN'
+  and role_code = 'ADMIN'
+returning organization_id::text;
+`,
+    { tuplesOnly: true },
+  );
+  organizationId = organizationOutput
+    .split(/\r?\n/)
+    .map((value) => value.trim())
+    .find((value) => UUID_PATTERN.test(value));
 
   assertTest(
-    UUID_PATTERN.test(organizationId ?? "") &&
-      profile.isActive === true &&
-      profile.roleCode === "ADMIN",
+    UUID_PATTERN.test(organizationId ?? ""),
+    "Profil smoke aktif pada satu organisasi",
+    organizationId ?? "",
+  );
+
+  const profileRows = await restRows(
+    "current_admin_profile?select=*",
+  );
+  const profile = profileRows[0];
+
+  assertTest(
+    profile?.role_code === "ADMIN" &&
+      profile?.organization_id === organizationId,
     "Token memiliki profil Admin aktif",
     JSON.stringify(profile),
   );
@@ -1025,6 +1164,23 @@ where profile.user_id = ${sqlLiteral(smokeUserId)}::uuid;
       String(anonymous.location ?? "").includes("/login"),
     "Halaman pemusnahan menolak sesi anonim",
     `Status=${anonymous.statusCode} Location=${anonymous.location}`,
+  );
+
+  console.log("\n== Aksesibilitas Catatan wajib ==");
+
+  const noteA11y = await inspectNoteValidationA11y(args.baseUrl);
+
+  assertTest(
+    noteA11y.ariaInvalid === "true" &&
+      noteA11y.describedBy === "disposal-form-error" &&
+      noteA11y.errorId === "disposal-form-error" &&
+      noteA11y.errorRole === "alert" &&
+      noteA11y.errorText.includes("Catatan wajib diisi") &&
+      noteA11y.errorCount === 1 &&
+      noteA11y.labelText === "Catatan" &&
+      noteA11y.pageErrors.length === 0,
+    "Catatan wajib memiliki label, pesan screen-reader, dan binding a11y yang tepat",
+    JSON.stringify(noteA11y),
   );
 
   console.log("\n== Fixture batch kedaluwarsa ==");
@@ -1125,15 +1281,15 @@ where profile.user_id = ${sqlLiteral(smokeUserId)}::uuid;
   );
 
   assertTest(
-    containsText(previewPage.html, "Dampak stok exact batch dan bucket") &&
+    containsText(previewPage.html, "Dampak stok per batch") &&
       containsText(previewPage.html, fixture.batchCode) &&
-      containsText(previewPage.html, "Posting Pemusnahan Stok"),
+      containsText(previewPage.html, "Catat Pemusnahan"),
     "Queue, drill-down preview, dan commit form dirender",
   );
 
   const commitForm = findForm(
     previewPage.html,
-    "Posting Pemusnahan Stok",
+    "Catat Pemusnahan",
   );
   const uiBasisHash = findInputValue(
     commitForm,
@@ -1156,7 +1312,7 @@ where profile.user_id = ${sqlLiteral(smokeUserId)}::uuid;
   const missingConfirmationPage = await invokeServerActionForm({
     pageUri: previewPage.uri,
     pageHtml: previewPage.html,
-    marker: "Posting Pemusnahan Stok",
+    marker: "Catat Pemusnahan",
     fields: {
       draft: JSON.stringify(draft),
       previewBasisHash: uiBasisHash,
@@ -1184,7 +1340,7 @@ where profile.user_id = ${sqlLiteral(smokeUserId)}::uuid;
   const successPage = await invokeServerActionForm({
     pageUri: previewPage.uri,
     pageHtml: previewPage.html,
-    marker: "Posting Pemusnahan Stok",
+    marker: "Catat Pemusnahan",
     fields: {
       draft: JSON.stringify(draft),
       previewBasisHash: uiBasisHash,
@@ -1293,7 +1449,7 @@ where profile.user_id = ${sqlLiteral(smokeUserId)}::uuid;
   );
 
   assertTest(
-    containsText(correctionPage.html, "Posting Koreksi Entri") &&
+    containsText(correctionPage.html, "Batalkan Transaksi") &&
       containsText(correctionPage.html, disposal.disposal_no) &&
       containsText(correctionPage.html, fixture.batchCode),
     "Koreksi Entri merender disposal dan preview exact batch",
@@ -1301,7 +1457,7 @@ where profile.user_id = ${sqlLiteral(smokeUserId)}::uuid;
 
   const correctionForm = findForm(
     correctionPage.html,
-    "Posting Koreksi Entri",
+    "Batalkan Transaksi",
   );
   const reversalHash = findInputValue(
     correctionForm,
@@ -1316,7 +1472,7 @@ where profile.user_id = ${sqlLiteral(smokeUserId)}::uuid;
   const reversedPage = await invokeServerActionForm({
     pageUri: correctionPage.uri,
     pageHtml: correctionPage.html,
-    marker: "Posting Koreksi Entri",
+    marker: "Batalkan Transaksi",
     fields: {
       originalTransactionId: disposalTransactionId,
       previewBasisHash: reversalHash,
