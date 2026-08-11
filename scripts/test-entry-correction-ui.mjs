@@ -143,6 +143,16 @@ function addResult(name, passed, detail = "") {
   }
 }
 
+function addSkip(name, detail) {
+  results.push({
+    status: "SKIP",
+    test: name,
+    detail,
+  });
+  console.log(`\x1b[33m[SKIP]\x1b[0m ${name}`);
+  console.log(`       ${detail}`);
+}
+
 function assertTest(condition, name, detail = "") {
   addResult(name, Boolean(condition), detail);
 
@@ -481,6 +491,12 @@ function containsText(html, text) {
   return normalizeRenderedText(html).includes(
     normalizeRenderedText(text),
   );
+}
+
+function containsVisibleText(html, text) {
+  return normalizeRenderedText(
+    String(html).replace(/<script\b[^>]*>[\s\S]*?<\/script>/gi, ""),
+  ).includes(normalizeRenderedText(text));
 }
 
 function findForm(html, marker) {
@@ -1253,7 +1269,17 @@ select jsonb_build_object(
       String(unauthenticated.location ?? "").includes("/login"),
     "Halaman Koreksi Entri menolak sesi anonim",
     `Status=${unauthenticated.statusCode} ` +
-      `Location=${unauthenticated.location ?? ""}`,
+    `Location=${unauthenticated.location ?? ""}`,
+  );
+
+  const spoofedFeedback = await getPage(
+    `${entryCorrectionUrl}?success=transaksi-palsu&error=kesalahan-palsu&originalId=not-a-uuid&reversalId=also-not-a-uuid`,
+  );
+  assertTest(
+    !containsVisibleText(spoofedFeedback.html, "Pembatalan transaksi berhasil") &&
+      !containsVisibleText(spoofedFeedback.html, "transaksi-palsu") &&
+      !containsVisibleText(spoofedFeedback.html, "kesalahan-palsu"),
+    "Feedback query tanpa bukti transaksi tidak dipercaya",
   );
 
   const batch = await selectReceiptBatch();
@@ -1350,35 +1376,50 @@ select jsonb_build_object(
       }),
     );
 
-    let page = await getPage(
-      `${entryCorrectionUrl}` +
-        `?q=${encodeURIComponent(sourceRef)}` +
-        "&type=RECEIPT" +
-        `&transactionId=${posted.transactionId}` +
-        "#detail",
+    const ledgerReturnTo =
+      `/ledger?productSku=${encodeURIComponent(batch.sku)}` +
+      "&sourceType=RECEIPT&quantityDirection=IN";
+    const ledgerDetailPage = await getPage(
+      `${args.baseUrl}/ledger/${posted.transactionId}` +
+        `?productSku=${encodeURIComponent(batch.sku)}` +
+        "&sourceType=RECEIPT&quantityDirection=IN",
+    );
+    const correctionHref = decodeHtml(
+      ledgerDetailPage.html.match(/href="([^"]*\/entry-corrections\?[^"]*)"/)?.[1] ?? "",
     );
 
     assertTest(
-      containsText(page.html, "Koreksi Entri") &&
-        containsText(page.html, "Preview dampak authoritative") &&
+      new URL(correctionHref, args.baseUrl).searchParams.get("transactionId") ===
+        posted.transactionId &&
+        new URL(correctionHref, args.baseUrl).searchParams.get("ledgerReturnTo") ===
+          ledgerReturnTo,
+      "Detail ledger meneruskan konteks filter aman ke Koreksi Entri",
+      correctionHref,
+    );
+
+    let page = await getPage(new URL(correctionHref, args.baseUrl).toString());
+
+    assertTest(
+      containsText(page.html, "Batalkan Transaksi") &&
+        containsText(page.html, "Periksa Sebelum Membatalkan") &&
         containsText(page.html, posted.receiptNo) &&
-        containsText(page.html, sourceRef),
-      "Worklist, filter, drill-down, dan preview dirender",
+        containsText(page.html, "Dampak pembatalan"),
+      "Bukti transaksi dan preview pembatalan dirender",
     );
 
     assertTest(
-      containsText(page.html, "Posting Koreksi Entri") &&
-        containsText(page.html, "Alasan koreksi") &&
+      containsText(page.html, "Batalkan Transaksi") &&
+        containsText(page.html, "Catatan pembatalan") &&
         containsText(
           page.html,
           "Saya sudah meninjau dampak",
         ),
-      "Form alasan dan konfirmasi final dirender",
+      "Form catatan dan konfirmasi final dirender",
     );
 
     const successForm = findForm(
       page.html,
-      "Posting Koreksi Entri",
+      "Periksa Sebelum Membatalkan",
     );
     const previewBasisHash = findInputValue(
       successForm,
@@ -1388,6 +1429,7 @@ select jsonb_build_object(
       successForm,
       "idempotencyKey",
     );
+    const renderedReturnTo = findInputValue(successForm, "returnTo");
 
     assertTest(
       previewBasisHash === directPreview.basisHash &&
@@ -1401,6 +1443,14 @@ select jsonb_build_object(
       "UI menghasilkan idempotency key per konfirmasi",
       idempotencyKey,
     );
+    assertTest(
+      new URL(renderedReturnTo, args.baseUrl).pathname === "/entry-corrections" &&
+        new URL(renderedReturnTo, args.baseUrl).searchParams.get(
+          "ledgerReturnTo",
+        ) === ledgerReturnTo,
+      "Hidden returnTo menyimpan konteks ledger yang dinormalisasi",
+      renderedReturnTo,
+    );
 
     const correctionNote =
       `Koreksi receipt smoke ${runId}.`;
@@ -1408,10 +1458,7 @@ select jsonb_build_object(
       originalTransactionId: posted.transactionId,
       previewBasisHash,
       idempotencyKey,
-      returnTo:
-        `/entry-corrections?q=${encodeURIComponent(sourceRef)}` +
-        `&type=RECEIPT&transactionId=${posted.transactionId}` +
-        "#detail",
+      returnTo: renderedReturnTo,
       note: correctionNote,
       confirmation: "on",
     };
@@ -1419,16 +1466,18 @@ select jsonb_build_object(
     page = await invokeServerActionForm({
       pageUri: page.uri,
       pageHtml: page.html,
-      marker: "Posting Koreksi Entri",
+      marker: "Periksa Sebelum Membatalkan",
       fields: formFields,
       baseUrl: args.baseUrl,
     });
 
     assertTest(
-      containsText(page.html, "berhasil membalik") &&
-        containsText(page.html, "Buka transaksi asal") &&
-        containsText(page.html, "Buka transaksi pembalik"),
-      "Server Action memberi feedback sukses dan linkage",
+        containsText(page.html, "Pembatalan transaksi tercatat") &&
+        containsText(page.html, "Lihat transaksi asal") &&
+        containsText(page.html, "Lihat transaksi pembatalan") &&
+        !containsText(page.html, "Pembatalan transaksi berhasil") &&
+        new URL(page.uri).searchParams.get("ledgerReturnTo") === ledgerReturnTo,
+      "Server Action memberi bukti pembatalan netral dan linkage",
     );
 
     const applications = await readApplications(
@@ -1484,9 +1533,44 @@ select jsonb_build_object(
     const persistedPage = await getPage(page.uri);
 
     assertTest(
-      containsText(persistedPage.html, "berhasil membalik") &&
-        containsText(persistedPage.html, application.reversal_transaction_no),
-      "Feedback dan linkage bertahan setelah refresh",
+      containsText(persistedPage.html, "Pembatalan transaksi tercatat") &&
+        containsText(persistedPage.html, application.reversal_transaction_no) &&
+        !containsText(persistedPage.html, "Pembatalan transaksi berhasil") &&
+        new URL(persistedPage.uri).searchParams.get("ledgerReturnTo") ===
+          ledgerReturnTo,
+      "Bukti pembatalan netral dan linkage bertahan setelah refresh",
+    );
+
+    const historicalEvidencePage = await getPage(
+      `${entryCorrectionUrl}?success=permintaan-lama-yang-dirakit-manual` +
+        `&transactionId=${posted.transactionId}` +
+        `&originalId=${posted.transactionId}` +
+        `&reversalId=${application.reversal_transaction_id}` +
+        `&ledgerReturnTo=${encodeURIComponent(ledgerReturnTo)}`,
+    );
+
+    assertTest(
+      containsText(historicalEvidencePage.html, "Pembatalan transaksi tercatat") &&
+        historicalEvidencePage.html.includes(
+          `href="/ledger/${posted.transactionId}?productSku=${encodeURIComponent(batch.sku)}&amp;sourceType=RECEIPT&amp;quantityDirection=IN"`,
+        ) &&
+        historicalEvidencePage.html.includes(
+          `href="/ledger/${application.reversal_transaction_id}?productSku=${encodeURIComponent(batch.sku)}&amp;sourceType=RECEIPT&amp;quantityDirection=IN"`,
+        ) &&
+        !containsText(historicalEvidencePage.html, "Pembatalan transaksi berhasil"),
+      "Relasi historis tervalidasi merender bukti netral tanpa klaim berhasil",
+    );
+
+    const mismatchedEvidencePage = await getPage(
+      `${entryCorrectionUrl}?transactionId=${application.reversal_transaction_id}` +
+        `&originalId=${posted.transactionId}` +
+        `&reversalId=${application.reversal_transaction_id}` +
+        `&ledgerReturnTo=${encodeURIComponent(ledgerReturnTo)}`,
+    );
+
+    assertTest(
+      !containsText(mismatchedEvidencePage.html, "Pembatalan transaksi tercatat"),
+      "Relasi valid tidak menjadi bukti pada konteks transaksi aktif yang berbeda",
     );
 
     const originalDetail = await getPage(
@@ -1500,7 +1584,7 @@ select jsonb_build_object(
     );
 
     assertTest(
-      containsText(originalDetail.html, "Hubungan reversal") &&
+      containsText(originalDetail.html, "Transaksi ini telah dibatalkan.") &&
         containsText(
           originalDetail.html,
           application.reversal_transaction_no,
@@ -1508,7 +1592,7 @@ select jsonb_build_object(
       "Detail transaksi asal menampilkan transaksi pembalik",
     );
     assertTest(
-      containsText(reversalDetail.html, "Transaksi pembalik") &&
+      containsText(reversalDetail.html, "Pembatalan untuk transaksi") &&
         containsText(
           reversalDetail.html,
           application.original_transaction_no,
@@ -1517,12 +1601,8 @@ select jsonb_build_object(
     );
 
     assertTest(
-      containsText(originalDetail.html, "Diblokir") &&
-        containsText(
-          originalDetail.html,
-          "ORIGINAL_TRANSACTION_ALREADY_REVERSED",
-        ) &&
-        !hasForm(originalDetail.html, "Posting Koreksi Entri"),
+      containsText(originalDetail.html, "Tidak dapat dibatalkan") &&
+        !hasForm(originalDetail.html, "Periksa Sebelum Membatalkan"),
       "Transaksi yang sudah dibalik tampil blocked tanpa commit form",
     );
 
@@ -1531,7 +1611,7 @@ select jsonb_build_object(
         `${entryCorrectionUrl}` +
         `?transactionId=${posted.transactionId}#detail`,
       pageHtml: originalDetail.html,
-      marker: "Posting Koreksi Entri",
+      marker: "Periksa Sebelum Membatalkan",
       fields: formFields,
       baseUrl: args.baseUrl,
     }).catch(async () => {
@@ -1542,15 +1622,16 @@ select jsonb_build_object(
           `&type=RECEIPT&transactionId=${posted.transactionId}` +
           "#detail",
         pageHtml: successForm,
-        marker: "Posting Koreksi Entri",
+        marker: "Periksa Sebelum Membatalkan",
         fields: formFields,
         baseUrl: args.baseUrl,
       });
     });
 
     assertTest(
-      containsText(replayPage.html, "berhasil membalik"),
-      "Replay command identik mengembalikan hasil sukses",
+      containsText(replayPage.html, "Pembatalan transaksi tercatat") &&
+        !containsText(replayPage.html, "Pembatalan transaksi berhasil"),
+      "Replay command identik mengembalikan bukti pembatalan netral",
     );
 
     const applicationsAfterReplay =
@@ -1579,7 +1660,26 @@ where transaction.organization_id =
 
     console.log("\n== Manual outbound FEFO dan reversal UI ==");
 
-    const fefoFixture = await selectFefoFixture();
+    let fefoFixture = null;
+
+    try {
+      fefoFixture = await selectFefoFixture();
+    } catch (error) {
+      if (
+        error instanceof Error &&
+        error.message ===
+          "Fixture FEFO membutuhkan satu produk dengan minimal dua batch aktif."
+      ) {
+        addSkip(
+          "Fixture FEFO multi-batch tidak tersedia",
+          error.message,
+        );
+      } else {
+        throw error;
+      }
+    }
+
+    if (fefoFixture) {
     const firstFefoBaseline = await readInventory(
       fefoFixture.first.batch_id,
       fefoFixture.productId,
@@ -1652,18 +1752,17 @@ where transaction.organization_id =
     );
 
     assertTest(
-      containsText(outboundPage.html, "Aktor") &&
-        containsText(outboundPage.html, "Proses") &&
-        containsText(outboundPage.html, "Sudah dibalik") &&
-        containsText(outboundPage.html, "Quarantine") &&
-        containsText(outboundPage.html, "Damaged") &&
-        hasForm(outboundPage.html, "Posting Koreksi Entri"),
-      "Detail manual outbound menampilkan kontrak preview lengkap",
+        containsText(outboundPage.html, outboundIdentity.transactionNo) &&
+        containsText(outboundPage.html, "Periksa Sebelum Membatalkan") &&
+        containsText(outboundPage.html, "Catatan pembatalan") &&
+        containsText(outboundPage.html, "Dampak pembatalan") &&
+        hasForm(outboundPage.html, "Periksa Sebelum Membatalkan"),
+      "Detail manual outbound menampilkan preview pembatalan",
     );
 
     const outboundForm = findForm(
       outboundPage.html,
-      "Posting Koreksi Entri",
+      "Periksa Sebelum Membatalkan",
     );
     const outboundFields = {
       originalTransactionId: outboundIdentity.transactionId,
@@ -1687,14 +1786,15 @@ where transaction.organization_id =
     outboundPage = await invokeServerActionForm({
       pageUri: outboundPage.uri,
       pageHtml: outboundPage.html,
-      marker: "Posting Koreksi Entri",
+      marker: "Periksa Sebelum Membatalkan",
       fields: outboundFields,
       baseUrl: args.baseUrl,
     });
 
     assertTest(
-      containsText(outboundPage.html, "berhasil membalik"),
-      "Manual outbound berhasil dibalik melalui UI",
+      containsText(outboundPage.html, "Pembatalan transaksi tercatat") &&
+        !containsText(outboundPage.html, "Pembatalan transaksi berhasil"),
+      "Manual outbound menampilkan bukti pembatalan netral melalui UI",
     );
 
     const outboundApplications = await readApplications(
@@ -1726,6 +1826,18 @@ where transaction.organization_id =
       }),
     );
 
+    const outboundOriginalDetail = await getPage(
+      `${entryCorrectionUrl}?transactionId=${outboundIdentity.transactionId}#detail`,
+    );
+    const relatedReversalHref = new RegExp(
+      `href="/ledger/${outboundApplication.reversal_transaction_id}"`,
+      "g",
+    );
+    assertTest(
+      (outboundOriginalDetail.html.match(relatedReversalHref) ?? []).length === 1,
+      "Reversal FEFO multi-entry tampil sekali sebagai satu hubungan transaksi",
+    );
+
     const firstFefoAfterReversal = await readInventory(
       fefoFixture.first.batch_id,
       fefoFixture.productId,
@@ -1750,6 +1862,7 @@ where transaction.organization_id =
         secondAfter: secondFefoAfterReversal.snapshot,
       }),
     );
+    }
 
     console.log("\n== Failure path dan stale preview ==");
 
@@ -1780,7 +1893,7 @@ where transaction.organization_id =
     );
     const staleForm = findForm(
       stalePage.html,
-      "Posting Koreksi Entri",
+      "Periksa Sebelum Membatalkan",
     );
     const staleFields = {
       originalTransactionId: staleReceipt.transactionId,
@@ -1802,7 +1915,7 @@ where transaction.organization_id =
     const missingReasonPage = await invokeServerActionForm({
       pageUri: stalePage.uri,
       pageHtml: stalePage.html,
-      marker: "Posting Koreksi Entri",
+      marker: "Periksa Sebelum Membatalkan",
       fields: {
         ...staleFields,
         note: "",
@@ -1814,7 +1927,7 @@ where transaction.organization_id =
     assertTest(
       containsText(
         missingReasonPage.html,
-        "Alasan koreksi wajib diisi",
+        "Catatan pembatalan wajib diisi",
       ),
       "Server Action menolak commit tanpa alasan koreksi",
     );
@@ -1828,7 +1941,7 @@ where transaction.organization_id =
       await invokeServerActionForm({
         pageUri: stalePage.uri,
         pageHtml: stalePage.html,
-        marker: "Posting Koreksi Entri",
+        marker: "Periksa Sebelum Membatalkan",
         fields: staleFields,
         baseUrl: args.baseUrl,
       });
@@ -1836,7 +1949,7 @@ where transaction.organization_id =
     assertTest(
       containsText(
         missingConfirmationPage.html,
-        "Konfirmasi final wajib dicentang",
+        "Konfirmasi pembatalan wajib dicentang",
       ),
       "Server Action menolak commit tanpa konfirmasi final",
     );
@@ -1869,7 +1982,7 @@ where transaction.organization_id =
         `?transactionId=${staleReceipt.transactionId}` +
         "#detail",
       pageHtml: stalePage.html,
-      marker: "Posting Koreksi Entri",
+      marker: "Periksa Sebelum Membatalkan",
       fields: {
         ...staleFields,
         confirmation: "on",
@@ -1880,7 +1993,7 @@ where transaction.organization_id =
     assertTest(
       containsText(
         stalePage.html,
-        "Posisi stok berubah setelah preview dibuat",
+        "Dampak stok sudah berubah",
       ),
       "Stale preview ditolak dengan feedback operasional",
     );
@@ -1968,10 +2081,13 @@ try {
   const failed = results.filter(
     (result) => result.status === "FAIL",
   ).length;
+  const skipped = results.filter(
+    (result) => result.status === "SKIP",
+  ).length;
 
   console.log(
     `Result: ${failed === 0 ? "PASS" : "FAIL"} ` +
-      `(${passed} passed, ${failed} failed)`,
+      `(${passed} passed, ${failed} failed, ${skipped} skipped)`,
   );
 
   process.exitCode = exitCode;
