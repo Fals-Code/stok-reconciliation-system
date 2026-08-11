@@ -334,11 +334,10 @@ export function LiveQueryControls({
     const value = values[field.name] ?? "";
 
     if (field.kind === "select") {
-      return (
+      const select = (
         <Select
           aria-label={field.ariaLabel}
           className={field.className}
-          key={field.name}
           name={field.name}
           onChange={(event) => {
             updateValue(field.name, event.target.value);
@@ -354,6 +353,24 @@ export function LiveQueryControls({
             </option>
           ))}
         </Select>
+      );
+
+      if (!field.label) {
+        return (
+          <div className="min-w-0" key={field.name}>
+            {select}
+          </div>
+        );
+      }
+
+      return (
+        <label
+          className="grid min-w-0 gap-2 text-sm font-semibold text-ui-text"
+          key={field.name}
+        >
+          {field.label}
+          {select}
+        </label>
       );
     }
 

@@ -1,114 +1,205 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
 
+import { AppShell } from "@/app/app-shell/app-shell";
+import { PageHeader } from "@/app/app-shell/page-header";
+import { Alert, StatusBadge } from "@/components/ui";
+import { requireAdminSession } from "@/lib/auth";
 import {
   getLedgerTransactionDetail,
+  previewStockTransactionReversal,
   type LedgerExplorerRow,
   type LedgerReversalLink,
 } from "@/lib/supabase-rest";
 
 export const dynamic = "force-dynamic";
 
-type SearchParamValue = string | string[] | undefined;
+type SearchParams = Record<string, string | string[] | undefined>;
+
+const formatter = new Intl.NumberFormat("id-ID");
+const dateFormatter = new Intl.DateTimeFormat("id-ID", {
+  timeZone: "Asia/Jakarta",
+  dateStyle: "medium",
+  timeStyle: "short",
+});
+
+function first(value: SearchParams[string]) {
+  return Array.isArray(value) ? value[0] : value;
+}
 
 function formatDate(value: string | null) {
-  if (!value) return "-";
-  const date = new Date(value);
-  if (Number.isNaN(date.getTime())) return value;
-  return new Intl.DateTimeFormat("id-ID", {
-    timeZone: "Asia/Jakarta",
-    dateStyle: "medium",
-    timeStyle: "short",
-  }).format(date);
+  const date = value ? new Date(value) : null;
+  return date && !Number.isNaN(date.getTime()) ? dateFormatter.format(date) : "-";
 }
 
-function signedQuantity(value: number) {
-  return `${value > 0 ? "+" : ""}${new Intl.NumberFormat("id-ID").format(value)}`;
+function signed(value: number) {
+  return `${value > 0 ? "+" : ""}${formatter.format(value)} unit`;
 }
 
-function labelFromCode(value: string) {
-  return value.toLowerCase().split("_").map((part) => part.charAt(0).toUpperCase() + part.slice(1)).join(" ");
+function typeLabel(code: string) {
+  if (code === "INITIAL_BALANCE") return "Saldo Awal";
+  if (code === "RECEIPT") return "Barang Masuk";
+  if (["MARKETPLACE_OUTBOUND", "OUTBOUND_MARKETPLACE", "MANUAL_OUTBOUND", "OUTBOUND_MANUAL"].includes(code)) return "Barang Keluar";
+  if (code.startsWith("RETURN")) return "Retur";
+  if (code === "DISPOSAL_DAMAGED") return "Barang Rusak";
+  if (code === "DISPOSAL_EXPIRED") return "Barang Kedaluwarsa";
+  if (code.startsWith("DISPOSAL")) return "Barang Rusak / Kedaluwarsa";
+  if (code === "STOCKTAKE_ADJUSTMENT") return "Penyesuaian Hasil Hitung";
+  if (code === "REVERSAL") return "Pembatalan Transaksi";
+  return "Perubahan Stok";
 }
 
-function sourceHref(row: LedgerExplorerRow) {
-  if (!row.source_id) return null;
-  const id = encodeURIComponent(row.source_id);
-  switch (row.source_type_code) {
-    case "MANUAL_OUTBOUND": return `/manual-outbounds?outboundId=${id}`;
-    case "DISPOSAL": return `/stock-disposals?disposalId=${id}`;
-    case "STOCKTAKE": return `/stocktakes/${id}`;
-    case "OPENING_BALANCE_CUTOVER": return `/opening-balances?cutoverId=${id}`;
-    case "RETURN": return `/returns?returnId=${id}`;
-    case "REVERSAL": return `/entry-corrections?transactionId=${id}`;
-    default: return null;
-  }
+function bucketLabel(code: LedgerExplorerRow["bucket_code"]) {
+  if (code === "SELLABLE") return "Layak Dijual";
+  if (code === "QUARANTINE") return "Ditahan";
+  return "Rusak";
 }
 
-function SourceEvidence({ row }: { row: LedgerExplorerRow }) {
-  const href = sourceHref(row);
-  return (
-    <div className="panel-card mt-6" data-testid="ledger-source-evidence">
-      <p className="section-kicker">Source evidence</p>
-      <h2 className="section-title">Sumber movement</h2>
-      <p className="mt-3 text-sm text-slate-300">{row.source_type_code} · {row.source_ref_snapshot}</p>
-      {href ? <Link className="nav-link mt-4 inline-flex" href={href}>Buka sumber exact</Link> : <p className="mt-4 text-sm text-slate-400">Detail sumber belum tersedia sebagai route exact. Tidak ada link spekulatif.</p>}
-      <p className="mt-3 text-xs text-slate-500">Reconciliation issue tidak disimpulkan dari product/batch atau source reference; link hanya ditampilkan bila evidence exact tersedia.</p>
-    </div>
-  );
+function reversalLabel(state: LedgerExplorerRow["reversal_state"]) {
+  if (state === "REVERSAL") return "Transaksi pembatalan";
+  if (state === "FULLY_REVERSED") return "Sudah dibatalkan";
+  if (state === "PARTIALLY_REVERSED") return "Sebagian dibatalkan";
+  return "Belum dibatalkan";
 }
 
-function backHref(searchParams: Record<string, SearchParamValue>) {
+function codeLabel(value: string) {
+  return value.toLowerCase().split("_").filter(Boolean).map((part) => part.charAt(0).toUpperCase() + part.slice(1)).join(" ");
+}
+
+function blockerMessage(
+  code: string,
+  message: string,
+) {
+  const known: Record<string, string> = {
+    REVERSAL_TRANSACTION_TYPE_NOT_SUPPORTED:
+      "Jenis transaksi ini memiliki alur koreksi tersendiri.",
+    REVERSAL_ORIGINAL_ENTRIES_REQUIRED:
+      "Transaksi ini tidak memiliki perubahan stok yang dapat dibatalkan.",
+    ORIGINAL_TRANSACTION_ALREADY_REVERSED:
+      "Transaksi ini sudah dibatalkan sebelumnya.",
+    REVERSAL_NEGATIVE_BUCKET:
+      "Pembatalan akan membuat jumlah pada batch tidak cukup.",
+    REVERSAL_RESERVED_CONFLICT:
+      "Pembatalan akan membuat barang yang sudah dipesan melebihi jumlah layak dijual.",
+    REVERSAL_PROJECTION_DRIFT:
+      "Data stok perlu diperiksa sebelum transaksi ini dapat dibatalkan.",
+  };
+
+  return known[code] ?? message;
+}
+
+const ledgerSearchParamNames = [
+  "occurredFrom", "occurredTo", "recordedFrom", "recordedTo", "productId",
+  "productSku", "batchId", "batchCode", "transactionType", "reason", "channel",
+  "sourceType", "sourceRef", "actorProcess", "bucket", "quantityDirection",
+  "reversalState",
+] as const;
+
+function isLedgerCursor(value: string) {
+  return /^\d+$/.test(value) && BigInt(value) > BigInt(0);
+}
+
+function ledgerReturnTo(params: SearchParams) {
   const query = new URLSearchParams();
-  for (const [key, value] of Object.entries(searchParams)) {
-    const normalized = Array.isArray(value) ? value[0] : value;
-    if (normalized?.trim()) query.set(key, normalized);
+  const requestedPage = first(params.page)?.trim() ?? "";
+  const parsedPage = /^[1-9]\d*$/.test(requestedPage) ? Number(requestedPage) : 1;
+  const page = Number.isSafeInteger(parsedPage) ? parsedPage : 1;
+  const cursor = first(params.cursor)?.trim() ?? "";
+  const hasKeysetContext = page > 1 && isLedgerCursor(cursor);
+
+  for (const key of ledgerSearchParamNames) {
+    const resolved = first(params[key]);
+    if (resolved?.trim()) query.set(key, resolved);
+  }
+  if (requestedPage) query.set("page", String(hasKeysetContext ? page : 1));
+  if (hasKeysetContext) {
+    query.set("cursor", cursor);
+    query.set("direction", first(params.direction)?.trim() === "previous" ? "previous" : "next");
   }
   const encoded = query.toString();
   return encoded ? `/ledger?${encoded}` : "/ledger";
 }
 
-function RelatedReversal({
-  link,
-  transactionId,
+function ledgerDetailHref(transactionId: string, returnTo: string) {
+  const context = new URL(returnTo, "http://ledger.local");
+  return `/ledger/${transactionId}${context.search}`;
+}
+
+function entryCorrectionHref(transactionId: string, returnTo: string) {
+  const query = new URLSearchParams({
+    transactionId,
+    ledgerReturnTo: returnTo,
+  });
+  return `/entry-corrections?${query.toString()}`;
+}
+
+function uniqueRelationships(
+  links: LedgerReversalLink[],
+  transactionId: string,
+) {
+  const relatedIds = new Set<string>();
+
+  return links.filter((link) => {
+    const relatedId = link.original_transaction_id === transactionId
+      ? link.reversal_transaction_id
+      : link.original_transaction_id;
+
+    if (relatedIds.has(relatedId)) return false;
+    relatedIds.add(relatedId);
+    return true;
+  });
+}
+
+function Linkage({ links, transactionId, ledgerReturnTo }: { links: LedgerReversalLink[]; transactionId: string; ledgerReturnTo: string }) {
+  const relationships = uniqueRelationships(links, transactionId);
+  if (!relationships.length) return <p className="text-sm text-ui-text-muted">Belum ada pembatalan yang tertaut pada transaksi ini.</p>;
+
+  return (
+    <div className="grid gap-3">
+      {relationships.map((link) => {
+        const isOriginal = link.original_transaction_id === transactionId;
+        const relatedId = isOriginal ? link.reversal_transaction_id : link.original_transaction_id;
+        const relatedNo = isOriginal ? link.reversal_transaction_no : link.original_transaction_no;
+
+        return (
+          <div className="rounded-[var(--ui-radius-md)] border border-ui-border p-4" key={link.reversal_application_id}>
+            {isOriginal ? (
+              <>
+                <p className="font-semibold text-ui-text">Transaksi ini telah dibatalkan.</p>
+                <p className="mt-1 text-sm text-ui-text-muted">
+                  Pembatalan: <Link className="font-semibold text-ui-primary hover:underline" href={ledgerDetailHref(relatedId, ledgerReturnTo)}>{relatedNo}</Link>
+                </p>
+              </>
+            ) : (
+              <p className="font-semibold text-ui-text">
+                  Pembatalan untuk transaksi <Link className="text-ui-primary hover:underline" href={ledgerDetailHref(relatedId, ledgerReturnTo)}>{relatedNo}</Link>
+              </p>
+            )}
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
+function DetailReadFailure({
+  profile,
+  backTo,
 }: {
-  link: LedgerReversalLink;
-  transactionId: string;
+  profile: Awaited<ReturnType<typeof requireAdminSession>>["profile"];
+  backTo: string;
 }) {
-  const isOriginal = link.original_transaction_id === transactionId;
-  const relatedId = isOriginal ? link.reversal_transaction_id : link.original_transaction_id;
-  const relatedNo = isOriginal ? link.reversal_transaction_no : link.original_transaction_no;
-
   return (
-    <li className="flex flex-wrap items-center gap-2 text-sm text-slate-300">
-      <span>{isOriginal ? "Reversal" : "Original"} · qty {link.quantity_applied}</span>
-      <Link className="font-mono text-xs text-emerald-300 underline underline-offset-4" href={`/ledger/${relatedId}`}>
-        {relatedNo}
-      </Link>
-    </li>
+    <AppShell profile={profile}>
+      <div className="mx-auto w-full max-w-[840px] px-4 py-6 sm:px-6 lg:px-8 lg:py-8">
+        <PageHeader title="Detail transaksi belum dapat dimuat" />
+        <Alert className="mt-6" title="Detail transaksi belum dapat dimuat" tone="danger">
+          <p>Detail transaksi tidak dapat dimuat. Coba buka riwayat transaksi lagi.</p>
+          <Link className="mt-3 inline-flex min-h-[var(--ui-control-height)] items-center rounded-[var(--ui-radius-md)] border border-ui-danger px-4 font-semibold" href={backTo}>Kembali ke Riwayat Stok</Link>
+        </Alert>
+      </div>
+    </AppShell>
   );
-}
-
-function EntryRow({ row }: { row: LedgerExplorerRow }) {
-  return (
-    <tr className="align-top border-t border-white/5">
-      <td className="px-4 py-4 font-mono text-xs text-slate-500">{row.line_no}</td>
-      <td className="px-4 py-4">
-        <p className="font-mono text-xs text-slate-200">{row.product_sku_snapshot}</p>
-        <p className="mt-1 text-xs text-slate-500">{row.batch_code_snapshot}</p>
-      </td>
-      <td className="px-4 py-4 text-xs text-slate-300">{row.bucket_code}</td>
-      <td className={`px-4 py-4 font-mono font-semibold ${row.quantity_delta >= 0 ? "text-emerald-300" : "text-rose-300"}`}>
-        <span aria-label={row.quantity_delta >= 0 ? "quantity masuk" : "quantity keluar"}>{signedQuantity(row.quantity_delta)}</span>
-        <span className="ml-2 text-[0.65rem] text-slate-500">{row.quantity_direction}</span>
-      </td>
-      <td className="px-4 py-4 text-xs text-slate-400">{row.entry_role_code} · {row.source_line_ref ?? "-"}</td>
-      <td className="px-4 py-4 text-xs text-slate-400">{row.reversal_state}</td>
-    </tr>
-  );
-}
-
-function ReadError({ message }: { message: string }) {
-  return <main className="mx-auto max-w-4xl px-5 py-10 text-slate-100"><section className="rounded-2xl border border-rose-400/20 bg-rose-400/[0.06] p-6 text-sm text-rose-100" data-testid="ledger-detail-error"><strong>Detail transaction tidak dapat dibaca.</strong><p className="mt-2 text-rose-200/80">{message}</p><Link className="nav-link mt-5 inline-flex" href="/ledger">Kembali ke Ledger Explorer</Link></section></main>;
 }
 
 export default async function LedgerTransactionPage({
@@ -116,64 +207,118 @@ export default async function LedgerTransactionPage({
   searchParams,
 }: {
   params: Promise<{ transactionId: string }>;
-  searchParams: Promise<Record<string, SearchParamValue>>;
+  searchParams: Promise<SearchParams>;
 }) {
-  const [{ transactionId }, query] = await Promise.all([params, searchParams]);
+  const [session, resolvedParams, query] = await Promise.all([
+    requireAdminSession(),
+    params,
+    searchParams,
+  ]);
   let detail;
 
   try {
-    detail = await getLedgerTransactionDetail(transactionId);
-  } catch (error) {
-    return <ReadError message={error instanceof Error ? error.message : "Kesalahan database tidak diketahui."} />;
+    detail = await getLedgerTransactionDetail(resolvedParams.transactionId);
+  } catch {
+    return <DetailReadFailure backTo={ledgerReturnTo(query)} profile={session.profile} />;
   }
 
   if (!detail) notFound();
 
   const firstRow = detail.rows[0];
-  const relatedLinks = detail.reversalLinks;
+  const preview = await previewStockTransactionReversal(detail.transactionId).catch(() => null);
+  const returnTo = ledgerReturnTo(query);
 
   return (
-    <main className="min-h-screen bg-slate-950 text-slate-100">
-      <div className="mx-auto w-full max-w-[1200px] px-5 py-8 lg:px-8">
-        <Link className="nav-link inline-flex" href={backHref(query)}>← Kembali ke Ledger Explorer</Link>
-        <header className="mt-6 flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
-          <div>
-            <p className="section-kicker">Exact transaction detail</p>
-            <h1 className="mt-3 font-mono text-2xl font-semibold sm:text-3xl" data-testid="ledger-detail-title">{firstRow.transaction_no}</h1>
-            <p className="mt-2 text-sm text-slate-400">{labelFromCode(firstRow.transaction_type_code)} · {firstRow.source_type_code} · read-only</p>
+    <AppShell profile={session.profile}>
+      <div className="mx-auto w-full max-w-[1120px] px-4 py-6 sm:px-6 lg:px-8 lg:py-8">
+        <Link className="inline-flex min-h-[var(--ui-control-height)] items-center text-sm font-semibold text-ui-primary hover:underline" href={returnTo}>
+          Kembali ke Riwayat Stok
+        </Link>
+        <div className="mt-4">
+          <PageHeader
+            action={preview?.eligible ? <Link className="inline-flex min-h-[var(--ui-control-height)] items-center rounded-[var(--ui-radius-md)] border border-ui-danger bg-ui-danger px-4 text-sm font-semibold text-ui-text-on-primary hover:opacity-90" href={entryCorrectionHref(detail.transactionId, returnTo)}>Batalkan Transaksi</Link> : undefined}
+            description={typeLabel(firstRow.transaction_type_code)}
+            title="Detail Transaksi"
+          />
+        </div>
+
+        <section className="mt-6 rounded-[var(--ui-radius-lg)] border border-ui-border bg-ui-surface p-5 shadow-[var(--ui-shadow-sm)]">
+          <div className="flex flex-wrap items-start justify-between gap-3">
+            <div>
+              <p className="text-lg font-semibold text-ui-text">{firstRow.transaction_no}</p>
+              <p className="mt-1 text-sm text-ui-text-muted">{firstRow.note || "Tidak ada catatan tambahan pada transaksi ini."}</p>
+            </div>
+            <StatusBadge tone={firstRow.reversal_state === "NOT_REVERSED" ? "neutral" : "warning"}>{reversalLabel(firstRow.reversal_state)}</StatusBadge>
           </div>
-          <span className="rounded-full border border-emerald-400/20 bg-emerald-400/10 px-3 py-2 text-xs text-emerald-200">Tidak ada mutation action</span>
-        </header>
-
-        <section className="mt-6 grid gap-4 sm:grid-cols-2 lg:grid-cols-4" data-testid="ledger-detail-metadata">
-          {[
-            ["Reason", firstRow.reason_code_snapshot],
-            ["Channel", firstRow.channel_code_snapshot],
-            ["Source", `${firstRow.source_type_code} · ${firstRow.source_ref_snapshot}`],
-            ["Actor / process", firstRow.process_name ?? firstRow.actor_user_id ?? "-"],
-            ["Occurred at", formatDate(firstRow.occurred_at)],
-            ["Recorded at", formatDate(firstRow.recorded_at)],
-            ["Correlation", firstRow.correlation_id],
-            ["Idempotency", firstRow.idempotency_command_id],
-          ].map(([label, value]) => <div key={label} className="panel-card"><p className="text-xs uppercase tracking-wide text-slate-500">{label}</p><p className="mt-2 break-words text-sm text-slate-200">{value}</p></div>)}
+          <dl className="mt-5 grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+            <div><dt className="text-xs font-semibold text-ui-text-muted">Waktu kejadian</dt><dd className="mt-1 text-sm text-ui-text">{formatDate(firstRow.occurred_at)}</dd></div>
+            <div><dt className="text-xs font-semibold text-ui-text-muted">Waktu dicatat</dt><dd className="mt-1 text-sm text-ui-text">{formatDate(firstRow.recorded_at)}</dd></div>
+            <div><dt className="text-xs font-semibold text-ui-text-muted">Alasan</dt><dd className="mt-1 text-sm text-ui-text">{codeLabel(firstRow.reason_code_snapshot)}</dd></div>
+            <div><dt className="text-xs font-semibold text-ui-text-muted">Kanal / Sumber</dt><dd className="mt-1 text-sm text-ui-text">{codeLabel(firstRow.channel_code_snapshot)}</dd></div>
+            <div><dt className="text-xs font-semibold text-ui-text-muted">Referensi sumber</dt><dd className="mt-1 text-sm text-ui-text">{firstRow.source_ref_snapshot}</dd></div>
+            <div><dt className="text-xs font-semibold text-ui-text-muted">Dilakukan oleh</dt><dd className="mt-1 text-sm text-ui-text">{firstRow.process_name ? "Proses otomatis" : "Akun Admin"}</dd></div>
+          </dl>
         </section>
 
-        <section className="panel-card mt-6" aria-labelledby="ledger-entry-title">
-          <div className="flex flex-wrap items-end justify-between gap-3"><div><p className="section-kicker">Ledger entries</p><h2 id="ledger-entry-title" className="section-title">{detail.rows.length} baris dalam transaction ini</h2></div><p className="text-xs text-slate-500">Urutan line_no lalu ledger_seq.</p></div>
-          <div className="mt-5 overflow-x-auto rounded-2xl border border-white/10" data-testid="ledger-detail-entries">
-            <table className="min-w-[760px] w-full text-left text-sm"><thead className="bg-white/[0.04] text-xs uppercase tracking-wide text-slate-500"><tr><th className="px-4 py-3">Line</th><th className="px-4 py-3">Produk / batch</th><th className="px-4 py-3">Bucket</th><th className="px-4 py-3">Delta</th><th className="px-4 py-3">Role / source line</th><th className="px-4 py-3">Reversal</th></tr></thead><tbody>{detail.rows.map((row) => <EntryRow key={row.ledger_entry_id} row={row} />)}</tbody></table>
+        <section className="mt-6 rounded-[var(--ui-radius-lg)] border border-ui-border bg-ui-surface shadow-[var(--ui-shadow-sm)]">
+          <div className="border-b border-ui-border px-5 py-4"><h2 className="font-semibold text-ui-text">Dampak stok</h2><p className="mt-1 text-sm text-ui-text-muted">Jumlah per produk, batch, dan kondisi stok pada transaksi ini.</p></div>
+          <div className="divide-y divide-ui-border" data-testid="ledger-detail-entries">
+            {detail.rows.map((row) => (
+              <div className="grid gap-3 px-5 py-4 sm:grid-cols-[minmax(0,1fr)_auto_auto]" key={row.ledger_entry_id}>
+                <div><p className="font-semibold text-ui-text">{row.product_sku_snapshot}</p><p className="mt-1 text-sm text-ui-text-muted">Kode Batch {row.batch_code_snapshot} · {bucketLabel(row.bucket_code)}</p></div>
+                <p className={row.quantity_delta >= 0 ? "ui-number font-semibold text-ui-primary" : "ui-number font-semibold text-ui-danger"}>{signed(row.quantity_delta)}</p>
+                <StatusBadge tone={row.reversal_state === "NOT_REVERSED" ? "neutral" : "warning"}>{reversalLabel(row.reversal_state)}</StatusBadge>
+              </div>
+            ))}
           </div>
         </section>
 
-        <section className="panel-card mt-6" aria-labelledby="reversal-title">
-          <p className="section-kicker">Original ↔ reversal</p>
-          <h2 id="reversal-title" className="section-title">Linkage audit</h2>
-          {relatedLinks.length ? <ul className="mt-4 space-y-3">{relatedLinks.map((link) => <RelatedReversal key={link.reversal_application_id} link={link} transactionId={detail.transactionId} />)}</ul> : <p className="mt-4 text-sm text-slate-400" data-testid="ledger-no-reversal">Tidak ada reversal yang tertaut pada transaction ini.</p>}
-          <p className="mt-5 text-xs leading-5 text-slate-500">Source reference ditampilkan apa adanya dari ledger. Link entity yang belum tersedia tidak dibuat secara spekulatif.</p>
+        <section className="mt-6 rounded-[var(--ui-radius-lg)] border border-ui-border bg-ui-surface p-5 shadow-[var(--ui-shadow-sm)]">
+          <h2 className="font-semibold text-ui-text">Status pembatalan</h2>
+          <div className="mt-4"><Linkage ledgerReturnTo={returnTo} links={detail.reversalLinks} transactionId={detail.transactionId} /></div>
+          {!preview ? (
+            <Alert
+              className="mt-4"
+              title="Status pembatalan belum dapat diperiksa"
+              tone="warning"
+            >
+              <p>
+                Data untuk memeriksa pembatalan belum dapat dimuat.
+                Tidak ada perubahan stok yang dilakukan.
+              </p>
+            </Alert>
+          ) : !preview.eligible ? (
+            <Alert
+              className="mt-4"
+              title="Tidak dapat dibatalkan"
+              tone="warning"
+            >
+              <p>
+                {preview.blockers
+                  .map((blocker) =>
+                    blockerMessage(
+                      blocker.code,
+                      blocker.message,
+                    ),
+                  )
+                  .filter(Boolean)
+                  .join(" ") ||
+                  "Transaksi ini belum memenuhi syarat untuk dibatalkan."}
+              </p>
+            </Alert>
+          ) : null}
         </section>
 
-        <SourceEvidence row={firstRow} />
+        <details className="mt-6 rounded-[var(--ui-radius-lg)] border border-ui-border bg-ui-surface p-5">
+          <summary className="cursor-pointer font-semibold text-ui-text">Detail Teknis</summary>
+          <dl className="mt-4 grid gap-3 text-sm sm:grid-cols-2">
+            <div><dt className="text-ui-text-muted">ID transaksi</dt><dd className="ui-code mt-1 break-all text-ui-text">{detail.transactionId}</dd></div>
+            <div><dt className="text-ui-text-muted">ID korelasi</dt><dd className="ui-code mt-1 break-all text-ui-text">{firstRow.correlation_id}</dd></div>
+            <div><dt className="text-ui-text-muted">Kode jenis</dt><dd className="ui-code mt-1 text-ui-text">{firstRow.transaction_type_code}</dd></div>
+            <div><dt className="text-ui-text-muted">ID pelaku / proses</dt><dd className="ui-code mt-1 break-all text-ui-text">{firstRow.actor_user_id ?? firstRow.process_name ?? "-"}</dd></div>
+          </dl>
+        </details>
       </div>
-    </main>
+    </AppShell>
   );
 }

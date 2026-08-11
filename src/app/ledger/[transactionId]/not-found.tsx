@@ -1,14 +1,10 @@
 import Link from "next/link";
 
-export default function LedgerTransactionNotFound() {
-  return (
-    <main className="mx-auto max-w-3xl px-5 py-16 text-slate-100">
-      <section className="rounded-3xl border border-amber-400/20 bg-amber-400/[0.06] p-8">
-        <p className="section-kicker">Ledger / Not found</p>
-        <h1 className="mt-3 text-3xl font-semibold">Transaction tidak ditemukan.</h1>
-        <p className="mt-4 text-sm leading-6 text-slate-300">ID tidak valid atau transaction berada di organisasi lain. Tidak ada fallback ke transaction lain.</p>
-        <Link className="nav-link mt-6 inline-flex" href="/ledger">Kembali ke Ledger Explorer</Link>
-      </section>
-    </main>
-  );
+import { AppShell } from "@/app/app-shell/app-shell";
+import { PageHeader } from "@/app/app-shell/page-header";
+import { requireAdminSession } from "@/lib/auth";
+
+export default async function LedgerTransactionNotFound() {
+  const session = await requireAdminSession();
+  return <AppShell profile={session.profile}><div className="mx-auto w-full max-w-[840px] px-4 py-6 sm:px-6 lg:px-8 lg:py-8"><PageHeader title="Transaksi Tidak Ditemukan" /><section className="mt-6 rounded-[var(--ui-radius-lg)] border border-ui-border bg-ui-surface p-6 shadow-[var(--ui-shadow-sm)]"><p className="text-sm leading-6 text-ui-text-muted">Transaksi tidak ditemukan atau tidak dapat diakses.</p><Link className="mt-5 inline-flex min-h-[var(--ui-control-height)] items-center rounded-[var(--ui-radius-md)] border border-ui-primary bg-ui-primary px-4 text-sm font-semibold text-ui-text-on-primary hover:bg-ui-primary-hover" href="/ledger">Kembali ke Riwayat Stok</Link></section></div></AppShell>;
 }
