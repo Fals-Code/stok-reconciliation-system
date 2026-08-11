@@ -178,10 +178,7 @@ insert into guardrail_results
 select
   'PRODUCT_MAIN',
   api.create_product(
-    '00000000-0000-4000-8000-000000000054',
-    '054-PRODUCT-MAIN',
-    'GUARD MAIN 054',
-    'Guardrail Main Product',
+    '00000000-0000-4000-8000-000000000054','054-PRODUCT-MAIN','Guardrail Main Product',1000,
     'UNIT',
     null,
     'Cross-domain fixture'
@@ -191,10 +188,7 @@ insert into guardrail_results
 select
   'PRODUCT_OTHER',
   api.create_product(
-    '00000000-0000-4000-8000-000000000054',
-    '054-PRODUCT-OTHER',
-    'GUARD OTHER 054',
-    'Guardrail Other Product',
+    '00000000-0000-4000-8000-000000000054','054-PRODUCT-OTHER','Guardrail Other Product',1000,
     'UNIT',
     null,
     'Cross-domain fixture'

@@ -711,10 +711,12 @@ async function main() {
   cleanupState.runId = runId;
   const sourceRef = `OB-SMOKE-${runId.slice(0, 8)}`;
   const fixtureSuffix = runId.slice(0, 8).toUpperCase();
+  const selectorProductSizeMl = 1000 + (parseInt(runId.slice(0, 8), 16) % 900000000);
+  const inactiveProductSizeMl = selectorProductSizeMl + 1;
   const selectorProduct = await rpc("create_product", {
     p_organization_id: organizationId,
     p_idempotency_key: `opening-balance-smoke:${runId}:selector-product`,
-    p_sku: `OB SELECTOR ${fixtureSuffix}`,
+    p_size_ml: selectorProductSizeMl,
     p_name: `Opening Balance Selector ${fixtureSuffix}`,
     p_unit_code: "UNIT",
     p_description: "Fixture selector smoke tanpa efek stok.",
@@ -764,7 +766,7 @@ async function main() {
   const inactiveProduct = await rpc("create_product", {
     p_organization_id: organizationId,
     p_idempotency_key: `opening-balance-smoke:${runId}:inactive-product`,
-    p_sku: `OB INACTIVE ${fixtureSuffix}`,
+    p_size_ml: inactiveProductSizeMl,
     p_name: `Opening Balance Inactive ${fixtureSuffix}`,
     p_unit_code: "UNIT",
     p_description: "Fixture Product inactive selector.",

@@ -14,7 +14,7 @@ let failure;
 
 function pass(name, ok, detail = "", scope = "Product") {
   results.push({ name, ok, detail, scope });
-  console.log(`${ok ? "[PASS]" : "[FAIL]"} ${name}${detail ? ` — ${detail}` : ""}`);
+  console.log(`${ok ? "[PASS]" : "[FAIL]"} ${name}${detail ? ` â€” ${detail}` : ""}`);
   if (!ok) throw new Error(name);
 }
 
@@ -115,28 +115,24 @@ async function main() {
   const initial = await page("/products");
   pass("Admin dapat membuka /products", initial.response.ok && initial.html.includes("Kelola Produk tanpa mengubah stok"));
   const suffix = Date.now().toString(36).toUpperCase();
-  const sku = `SMOKE PRODUCT ${suffix}`;
   const idempotency = randomUUID();
+  const productSizeMl = 1000 + (parseInt(idempotency.slice(0, 8), 16) % 900000000);
   const org = (await view("current_admin_profile?select=organization_id"))[0].organization_id;
   await restoreSmokeExpiryFixtures(org);
-  const created = await rpc("create_product", { p_organization_id: org, p_idempotency_key: `product-admin-smoke:create:${idempotency}`, p_sku: `  ${sku}  `, p_name: "Produk Smoke", p_unit_code: "UNIT", p_description: "Deskripsi awal", p_note: "Focused smoke." });
+  const created = await rpc("create_product", { p_organization_id: org, p_idempotency_key: `product-admin-smoke:create:${idempotency}`, p_name: "Produk Smoke", p_size_ml: productSizeMl, p_unit_code: "UNIT", p_description: "Deskripsi awal", p_note: "Focused smoke." });
   const product = created.json;
   pass("Create Produk stock-neutral", product.status === "CREATED" && product.stockEffect === "NONE");
+  pass("SKU otomatis mengikuti nama dan ukuran", product.sku === `PRO-SMO-${productSizeMl}` && Number(product.sizeMl) === productSizeMl);
   const refreshed = await page("/products");
-  pass("Produk bertahan setelah refresh", refreshed.html.includes(sku));
-  const duplicate = await rpc("create_product", { p_organization_id: org, p_idempotency_key: `product-admin-smoke:duplicate:${randomUUID()}`, p_sku: sku.toLowerCase(), p_name: "Duplikat", p_unit_code: "UNIT" }, false);
-  pass("SKU normalisasi duplikat ditolak", !duplicate.response.ok && duplicate.raw.includes("DUPLICATE_SKU"));
-  const missing = await rpc("create_product", { p_organization_id: org, p_idempotency_key: `product-admin-smoke:missing:${randomUUID()}`, p_sku: "", p_name: "", p_unit_code: "UNIT" }, false);
+  pass("Produk bertahan setelah refresh", refreshed.html.includes(product.sku));
+  const duplicate = await rpc("create_product", { p_organization_id: org, p_idempotency_key: `product-admin-smoke:duplicate:${randomUUID()}`, p_name: "Produk Smoke", p_size_ml: productSizeMl, p_unit_code: "UNIT" }, false);
+  pass("Collision SKU otomatis ditolak", !duplicate.response.ok && duplicate.raw.includes("DUPLICATE_SKU"));
+  const missing = await rpc("create_product", { p_organization_id: org, p_idempotency_key: `product-admin-smoke:missing:${randomUUID()}`, p_name: "", p_size_ml: productSizeMl, p_unit_code: "UNIT" }, false);
   pass("Field wajib ditolak", !missing.response.ok && missing.raw.includes("PRODUCT_REQUIRED_FIELDS_MISSING"));
-  const updated = await rpc("update_product", { p_organization_id: org, p_idempotency_key: `product-admin-smoke:update:${randomUUID()}`, p_product_id: product.productId, p_expected_row_version: product.rowVersion, p_sku: sku, p_name: "Produk Smoke Revisi", p_unit_code: "UNIT", p_description: "Deskripsi revisi" });
+  const updated = await rpc("update_product", { p_organization_id: org, p_idempotency_key: `product-admin-smoke:update:${randomUUID()}`, p_product_id: product.productId, p_expected_row_version: product.rowVersion, p_name: "Produk Smoke Revisi", p_size_ml: productSizeMl, p_unit_code: "UNIT", p_description: "Deskripsi revisi" });
   pass("Edit nama dan deskripsi sukses", updated.json.status === "UPDATED");
-  const stale = await rpc("update_product", { p_organization_id: org, p_idempotency_key: `product-admin-smoke:stale:${randomUUID()}`, p_product_id: product.productId, p_expected_row_version: product.rowVersion, p_sku: sku, p_name: "Stale", p_unit_code: "UNIT" }, false);
+  const stale = await rpc("update_product", { p_organization_id: org, p_idempotency_key: `product-admin-smoke:stale:${randomUUID()}`, p_product_id: product.productId, p_expected_row_version: product.rowVersion, p_name: "Stale", p_size_ml: productSizeMl, p_unit_code: "UNIT" }, false);
   pass("Stale row version ditolak", !stale.response.ok && stale.raw.includes("PRODUCT_STALE_VERSION"));
-  const historyRows = await view(`product_master?organization_id=eq.${encodeURIComponent(org)}&has_authoritative_history=eq.true&is_active=eq.true&select=product_id,sku,name,row_version&limit=1`);
-  pass("Fixture Produk berhistori tersedia tanpa membuat ledger baru", historyRows.length > 0);
-  const history = historyRows[0];
-  const skuAfterHistory = await rpc("update_product", { p_organization_id: org, p_idempotency_key: `product-admin-smoke:sku-history:${randomUUID()}`, p_product_id: history.product_id, p_expected_row_version: history.row_version, p_sku: `${history.sku} SMOKE`, p_name: history.name, p_unit_code: "UNIT" }, false);
-  pass("SKU dengan history ditolak", !skuAfterHistory.response.ok && skuAfterHistory.raw.includes("TRANSACTED_SKU_CHANGE_FORBIDDEN"));
 
   const batchCode = `SMOKE BATCH ${suffix}`;
   const batchExpiry = "2099-12-31";
@@ -165,21 +161,32 @@ async function main() {
   const archivedProductBatch = await rpc("create_product_batch", { p_organization_id: org, p_idempotency_key: `product-batch-admin-smoke:archived-product:${randomUUID()}`, p_product_id: product.productId, p_batch_code: `ARCHIVED PRODUCT ${suffix}`, p_expiry_date: batchExpiry, p_batch_kind_code: "STANDARD" }, false);
   pass("Produk archived tidak dapat menerima Batch baru", !archivedProductBatch.response.ok && archivedProductBatch.raw.includes("INACTIVE_PRODUCT_FOR_TRANSACTION") && detail.html.includes("Produk archived tidak dapat menerima Batch baru."), "", "Batch");
   const manual = await page("/manual-outbounds");
-  pass("Produk archived tidak ada di selector transaksi baru", !manual.html.includes(sku));
+  pass("Produk archived tidak ada di selector transaksi baru", !manual.html.includes(product.sku));
   const reactivated = await rpc("reactivate_product", { p_organization_id: org, p_idempotency_key: `product-admin-smoke:reactivate:${randomUUID()}`, p_product_id: product.productId, p_expected_row_version: archived.json.rowVersion, p_reason: "Smoke reactivate" });
   pass("Reactivate Produk sukses", reactivated.json.status === "REACTIVATED");
 
   const batchUpdated = await rpc("update_product_batch", { p_organization_id: org, p_idempotency_key: `product-batch-admin-smoke:update:${randomUUID()}`, p_batch_id: batch.batchId, p_expected_row_version: batch.rowVersion, p_product_id: product.productId, p_batch_kind_code: "STANDARD", p_batch_code: batchCode, p_manufactured_date: "2099-01-01", p_expiry_date: batchExpiry, p_received_first_at: "2099-01-03T00:00:00+07:00", p_reason: null, p_note: "Update allowed attribute." }, false);
   pass("Update atribut Batch yang diizinkan berhasil", batchUpdated.response.ok && batchUpdated.json.status === "UPDATED" && batchUpdated.json.receivedFirstAt?.startsWith("2099-01-02T17:00:00"), batchUpdated.raw, "Batch");
-  const immutableProduct = await rpc("update_product_batch", { p_organization_id: org, p_idempotency_key: `product-batch-admin-smoke:immutable-product:${randomUUID()}`, p_batch_id: batch.batchId, p_expected_row_version: batchUpdated.json.rowVersion, p_product_id: history.product_id, p_batch_kind_code: "STANDARD", p_batch_code: batchCode, p_manufactured_date: "2099-01-01", p_expiry_date: batchExpiry, p_received_first_at: "2099-01-03T00:00:00+07:00" }, false);
+  const linkageProduct = await rpc("create_product", { p_organization_id: org, p_idempotency_key: `product-batch-admin-smoke:linkage-product:${randomUUID()}`, p_name: "Produk Linkage Smoke", p_size_ml: productSizeMl + 1, p_unit_code: "UNIT", p_description: "Fixture Product berbeda untuk guardrail Batch linkage." }, false);
+  pass("Fixture Product alternatif untuk linkage dibuat stock-neutral", linkageProduct.response.ok && linkageProduct.json?.stockEffect === "NONE" && Boolean(linkageProduct.json?.productId), linkageProduct.raw, "Batch");
+  const immutableProduct = await rpc("update_product_batch", { p_organization_id: org, p_idempotency_key: `product-batch-admin-smoke:immutable-product:${randomUUID()}`, p_batch_id: batch.batchId, p_expected_row_version: batchUpdated.json.rowVersion, p_product_id: linkageProduct.json.productId, p_batch_kind_code: "STANDARD", p_batch_code: batchCode, p_manufactured_date: "2099-01-01", p_expiry_date: batchExpiry, p_received_first_at: "2099-01-03T00:00:00+07:00" }, false);
   pass("Product linkage immutable", !immutableProduct.response.ok && immutableProduct.raw.includes("BATCH_PRODUCT_CHANGE_FORBIDDEN"), "", "Batch");
   const immutableKind = await rpc("update_product_batch", { p_organization_id: org, p_idempotency_key: `product-batch-admin-smoke:immutable-kind:${randomUUID()}`, p_batch_id: batch.batchId, p_expected_row_version: batchUpdated.json.rowVersion, p_product_id: product.productId, p_batch_kind_code: "RETURN", p_batch_code: batchCode, p_manufactured_date: "2099-01-01", p_expiry_date: batchExpiry, p_received_first_at: "2099-01-03T00:00:00+07:00" }, false);
   pass("Batch kind immutable", !immutableKind.response.ok && immutableKind.raw.includes("BATCH_KIND_CHANGE_FORBIDDEN"), "", "Batch");
   const staleBatch = await rpc("update_product_batch", { p_organization_id: org, p_idempotency_key: `product-batch-admin-smoke:stale:${randomUUID()}`, p_batch_id: batch.batchId, p_expected_row_version: batch.rowVersion, p_product_id: product.productId, p_batch_kind_code: "STANDARD", p_batch_code: batchCode, p_manufactured_date: "2099-01-01", p_expiry_date: batchExpiry, p_received_first_at: "2099-01-03T00:00:00+07:00" }, false);
   pass("Stale row_version Batch ditolak", !staleBatch.response.ok && staleBatch.raw.includes("BATCH_STALE_VERSION"), "", "Batch");
 
-  const historyBatches = await view(`product_batch_master?organization_id=eq.${encodeURIComponent(org)}&has_authoritative_history=eq.true&batch_kind_code=eq.STANDARD&select=batch_id,product_id,batch_code,batch_kind_code,manufactured_date,expiry_date,received_first_at,row_version&limit=1`);
-  pass("Fixture Batch berhistori tersedia tanpa membuat ledger baru", historyBatches.length > 0, "", "Batch");
+  const historyReceipt = await rpc("post_receipt", { p_organization_id: org, p_idempotency_key: `product-batch-admin-smoke:history-receipt:${randomUUID()}`, p_source_ref: `PRODUCT-BATCH-HISTORY-${suffix}-${randomUUID()}`, p_occurred_at: new Date().toISOString(), p_lines: [{ productId: product.productId, batchId: batch.batchId, quantity: 1, sourceLineRef: "HISTORY-1" }], p_note: "Deterministic authoritative-history fixture.", p_metadata: { source: "product-batch-admin-smoke", version: 1, fixture: "authoritative-history" } }, false);
+  pass("Receipt fixture authoritative history berhasil", historyReceipt.response.ok && Boolean(historyReceipt.json?.transactionId), historyReceipt.raw, "Batch");
+  const historyProducts = await view(`product_master?product_id=eq.${encodeURIComponent(product.productId)}&select=product_id,sku,name,size_ml,row_version,has_authoritative_history&limit=1`);
+  const historyProduct = historyProducts[0];
+  pass("Produk smoke memiliki authoritative history", historyProduct?.has_authoritative_history === true && Number(historyProduct?.size_ml) === productSizeMl);
+  const sizeAfterHistory = await rpc("update_product", { p_organization_id: org, p_idempotency_key: `product-admin-smoke:size-history:${randomUUID()}`, p_product_id: historyProduct.product_id, p_expected_row_version: historyProduct.row_version, p_name: historyProduct.name, p_size_ml: Number(historyProduct.size_ml) + 1, p_unit_code: "UNIT" }, false);
+  pass("Ukuran dengan history ditolak", !sizeAfterHistory.response.ok && sizeAfterHistory.raw.includes("TRANSACTED_SKU_CHANGE_FORBIDDEN"));
+
+
+  const historyBatches = await view(`product_batch_master?batch_id=eq.${encodeURIComponent(batch.batchId)}&select=batch_id,product_id,batch_code,batch_kind_code,manufactured_date,expiry_date,received_first_at,row_version,has_authoritative_history&limit=1`);
+  pass("Fixture Batch smoke memiliki authoritative history", historyBatches.length === 1 && historyBatches[0].has_authoritative_history === true, "", "Batch");
   const historyBatch = historyBatches[0];
   const correctedExpiry = addDays(historyBatch.expiry_date, 1);
   const historyWithoutReason = await rpc("update_product_batch", { p_organization_id: org, p_idempotency_key: `product-batch-admin-smoke:history-no-reason:${randomUUID()}`, p_batch_id: historyBatch.batch_id, p_expected_row_version: historyBatch.row_version, p_product_id: historyBatch.product_id, p_batch_kind_code: historyBatch.batch_kind_code, p_batch_code: historyBatch.batch_code, p_manufactured_date: historyBatch.manufactured_date, p_expiry_date: correctedExpiry, p_received_first_at: historyBatch.received_first_at, p_reason: null }, false);
@@ -192,9 +199,18 @@ async function main() {
   const historyRestored = await rpc("update_product_batch", { p_organization_id: org, p_idempotency_key: `product-batch-admin-smoke:history-restore:${randomUUID()}`, p_batch_id: historyBatch.batch_id, p_expected_row_version: historyCorrected.json.rowVersion, p_product_id: historyBatch.product_id, p_batch_kind_code: historyBatch.batch_kind_code, p_batch_code: historyBatch.batch_code, p_manufactured_date: historyBatch.manufactured_date, p_expiry_date: historyBatch.expiry_date, p_received_first_at: historyBatch.received_first_at, p_reason: "Smoke fixture cleanup" }, false);
   if (!historyRestored.response.ok) throw new Error(`Fixture Batch cleanup gagal: ${historyRestored.raw}`);
 
-  const blockWithoutReason = await rpc("block_product_batch", { p_organization_id: org, p_idempotency_key: `product-batch-admin-smoke:block-no-reason:${randomUUID()}`, p_batch_id: batch.batchId, p_expected_row_version: batchUpdated.json.rowVersion, p_reason: "" }, false);
+  const historyPreview = await rpc("preview_stock_transaction_reversal", { p_organization_id: org, p_original_transaction_id: historyReceipt.json.transactionId }, false);
+  pass("Preview exact reversal fixture history eligible", historyPreview.response.ok && historyPreview.json?.eligible === true && Boolean(historyPreview.json?.basisHash), historyPreview.raw, "Batch");
+  const historyReversal = await rpc("reverse_stock_transaction", { p_organization_id: org, p_idempotency_key: `product-batch-admin-smoke:history-reversal:${randomUUID()}`, p_original_transaction_id: historyReceipt.json.transactionId, p_preview_basis_hash: historyPreview.json.basisHash, p_confirmation: true, p_note: "Restore authoritative-history fixture quantity to zero.", p_metadata: { source: "product-batch-admin-smoke", version: 1, fixture: "authoritative-history-cleanup" } }, false);
+  pass("Exact reversal fixture history berhasil", historyReversal.response.ok && historyReversal.json?.status === "REVERSED", historyReversal.raw, "Batch");
+  const historyCleanRows = await view(`product_batch_master?batch_id=eq.${encodeURIComponent(batch.batchId)}&select=sellable_qty,available_qty,has_authoritative_history&limit=1`);
+  const historyClean = historyCleanRows[0];
+  pass("Fixture history kembali zero balance dan history tetap ada", Number(historyClean?.sellable_qty) === 0 && Number(historyClean?.available_qty) === 0 && historyClean?.has_authoritative_history === true, JSON.stringify(historyClean), "Batch");
+
+
+  const blockWithoutReason = await rpc("block_product_batch", { p_organization_id: org, p_idempotency_key: `product-batch-admin-smoke:block-no-reason:${randomUUID()}`, p_batch_id: batch.batchId, p_expected_row_version: historyRestored.json.rowVersion, p_reason: "" }, false);
   pass("Block tanpa alasan ditolak", !blockWithoutReason.response.ok && blockWithoutReason.raw.includes("BATCH_STATUS_REASON_REQUIRED"), "", "Batch");
-  const blocked = await rpc("block_product_batch", { p_organization_id: org, p_idempotency_key: `product-batch-admin-smoke:block:${randomUUID()}`, p_batch_id: batch.batchId, p_expected_row_version: batchUpdated.json.rowVersion, p_reason: "Smoke block" }, false);
+  const blocked = await rpc("block_product_batch", { p_organization_id: org, p_idempotency_key: `product-batch-admin-smoke:block:${randomUUID()}`, p_batch_id: batch.batchId, p_expected_row_version: historyRestored.json.rowVersion, p_reason: "Smoke block" }, false);
   pass("Block sukses", blocked.response.ok && blocked.json.status === "BLOCK" && blocked.json.lifecycleStatusCode === "BLOCKED", blocked.raw, "Batch");
   const blockedMaster = (await view(`product_batch_master?batch_id=eq.${encodeURIComponent(batch.batchId)}&select=*&limit=1`))[0];
   pass("BLOCKED Batch tidak FEFO eligible", blockedMaster.lifecycle_status_code === "BLOCKED" && blockedMaster.is_fefo_eligible === false, JSON.stringify(blockedMaster), "Batch");
@@ -221,10 +237,10 @@ async function main() {
   const expiredReactivate = await rpc("reactivate_product_batch", { p_organization_id: org, p_idempotency_key: `product-batch-admin-smoke:expired-reactivate:${randomUUID()}`, p_batch_id: expiredCreated.json.batchId, p_expected_row_version: expiredArchived.json.rowVersion, p_reason: "Attempt expired reactivate" }, false);
   pass("Effectively expired Batch tidak dapat di-unblock atau direactivate", !expiredUnblock.response.ok && expiredUnblock.raw.includes("BATCH_EFFECTIVELY_EXPIRED") && !expiredReactivate.response.ok && expiredReactivate.raw.includes("BATCH_EFFECTIVELY_EXPIRED"), "", "Batch");
 
-  const bySku = await page(`/products?q=${encodeURIComponent(sku)}`);
+  const bySku = await page(`/products?q=${encodeURIComponent(product.sku)}`);
   const byName = await page("/products?q=Revisi");
   const filtered = await page("/products?status=ACTIVE");
-  pass("Search SKU, nama, dan filter status bekerja", bySku.html.includes(sku) && byName.html.includes("Produk Smoke Revisi") && filtered.html.includes(sku));
+  pass("Search SKU, nama, dan filter status bekerja", bySku.html.includes(product.sku) && byName.html.includes("Produk Smoke Revisi") && filtered.html.includes(product.sku));
   const batchSearch = await page(`/products/${product.productId}?batchQ=${encodeURIComponent(batchCode)}&batchStatus=ACTIVE`);
   pass("Search/filter Batch bekerja", batchSearch.html.includes(batchCode) && batchSearch.html.includes("ACTIVE"), "", "Batch");
   const masterBatch = (await view(`product_batch_master?batch_id=eq.${encodeURIComponent(batch.batchId)}&select=*&limit=1`))[0];

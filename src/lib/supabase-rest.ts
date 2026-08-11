@@ -3867,6 +3867,7 @@ export type ProductMasterRow = {
   organization_id: string;
   sku: string;
   name: string;
+  size_ml: number | null;
   unit_code: "UNIT";
   description: string | null;
   is_active: boolean;
@@ -3911,6 +3912,7 @@ export type ProductCommandResponse = {
   productId: string;
   sku: string;
   name?: string;
+  sizeMl?: number | null;
   unitCode?: "UNIT";
   description?: string | null;
   isActive: boolean;
@@ -3929,7 +3931,7 @@ export type ProductMasterData = {
 export async function createProduct(input: {
   organizationId?: string;
   idempotencyKey: string;
-  sku: string;
+  sizeMl: number;
   name: string;
   unitCode?: "UNIT";
   description?: string | null;
@@ -3939,7 +3941,7 @@ export async function createProduct(input: {
   return callRpc<ProductCommandResponse>("create_product", {
     p_organization_id: organizationId,
     p_idempotency_key: input.idempotencyKey,
-    p_sku: input.sku,
+    p_size_ml: input.sizeMl,
     p_name: input.name,
     p_unit_code: input.unitCode ?? "UNIT",
     p_description: input.description ?? null,
@@ -3952,7 +3954,7 @@ export async function updateProduct(input: {
   idempotencyKey: string;
   productId: string;
   expectedRowVersion: number;
-  sku: string;
+  sizeMl: number;
   name: string;
   unitCode?: "UNIT";
   description?: string | null;
@@ -3964,7 +3966,7 @@ export async function updateProduct(input: {
     p_idempotency_key: input.idempotencyKey,
     p_product_id: input.productId,
     p_expected_row_version: input.expectedRowVersion,
-    p_sku: input.sku,
+    p_size_ml: input.sizeMl,
     p_name: input.name,
     p_unit_code: input.unitCode ?? "UNIT",
     p_description: input.description ?? null,

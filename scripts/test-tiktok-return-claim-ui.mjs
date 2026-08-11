@@ -229,7 +229,7 @@ select set_config('request.jwt.claim.role','authenticated',true);
 select set_config('request.jwt.claims',jsonb_build_object('sub',${sqlLiteral(smokeUserId)},'role','authenticated')::text,true);
 set local role authenticated;
 with product as (
-  select api.create_product(${sqlLiteral(organizationId)}::uuid,${sqlLiteral(`${prefix}:${suffix}:product`)},${sqlLiteral(code)},${sqlLiteral(`${suffix} split-batch product`)},'UNIT',null,'UI smoke split-batch fixture') result
+  select api.create_product(${sqlLiteral(organizationId)}::uuid,${sqlLiteral(`${prefix}:${suffix}:product`)},${sqlLiteral(`${suffix} split-batch product`)},${productFixtureSizeMl(`${prefix}:${suffix}:product`)},'UNIT',null,'UI smoke split-batch fixture') result
 ), batch_one as (
   select api.create_product_batch(${sqlLiteral(organizationId)}::uuid,${sqlLiteral(`${prefix}:${suffix}:batch-one`)},(select (result->>'productId')::uuid from product),${sqlLiteral(`${code}-BATCH-A`)},'2027-01-01',current_date,null,'STANDARD','split-batch fixture') result
 ), batch_two as (
@@ -239,7 +239,7 @@ with product as (
 ), receipt_two as (
   select api.post_receipt(${sqlLiteral(organizationId)}::uuid,${sqlLiteral(`${prefix}:${suffix}:receipt-two`)},${sqlLiteral(`${prefix}:${suffix}:receipt-two-ref`)},clock_timestamp(),jsonb_build_array(jsonb_build_object('productId',(select result->>'productId' from product),'batchId',(select result->>'batchId' from batch_two),'quantity',2,'sourceLineRef',${sqlLiteral(`${prefix}:${suffix}:inbound-b`)})),'split-batch fixture','{}') result
 )
-select json_build_object('productId',(select result->>'productId' from product),'productSku',${sqlLiteral(code)},'receipts',(select json_agg(result) from (select result from receipt_one union all select result from receipt_two) persisted_receipts));
+select json_build_object('productId',(select result->>'productId' from product),'productSku',(select result->>'sku' from product),'receipts',(select json_agg(result) from (select result from receipt_one union all select result from receipt_two) persisted_receipts));
 reset role;
 commit;`);
   const reserve = `${prefix}:${suffix}:reserve`;
@@ -256,6 +256,8 @@ commit;`);
   return fixture;
 }
 
+function productFixtureSizeMl(value) { let hash = 2166136261; for (const char of String(value)) { hash ^= char.charCodeAt(0); hash = Math.imul(hash, 16777619); } return 1000 + ((hash >>> 0) % 1000000000); }
+
 function createRunScopedInventoryFixture(requiredShipmentQuantity) {
   const fixtureCode = `SMK-${randomUUID()}`;
   const result = runSqlJson(`
@@ -265,13 +267,13 @@ select set_config('request.jwt.claim.role','authenticated',true);
 select set_config('request.jwt.claims',jsonb_build_object('sub',${sqlLiteral(smokeUserId)},'role','authenticated')::text,true);
 set local role authenticated;
 with product as (
-  select api.create_product(${sqlLiteral(organizationId)}::uuid,${sqlLiteral(`${prefix}:catalog-product`)},${sqlLiteral(fixtureCode)},'TikTok claim UI smoke product','UNIT',null,'Run-scoped smoke catalog fixture') result
+  select api.create_product(${sqlLiteral(organizationId)}::uuid,${sqlLiteral(`${prefix}:catalog-product`)},'TikTok claim UI smoke product',${productFixtureSizeMl(`${prefix}:catalog-product`)},'UNIT',null,'Run-scoped smoke catalog fixture') result
 ), batch as (
   select api.create_product_batch(${sqlLiteral(organizationId)}::uuid,${sqlLiteral(`${prefix}:catalog-batch`)},(select (result->>'productId')::uuid from product),${sqlLiteral(`${fixtureCode}-BATCH`)},'2027-12-31',current_date,null,'STANDARD','Run-scoped smoke source batch') result
 ), receipt as (
   select api.post_receipt(${sqlLiteral(organizationId)}::uuid,${sqlLiteral(`${prefix}:catalog-receipt`)},${sqlLiteral(`${prefix}:catalog-receipt-ref`)},clock_timestamp(),jsonb_build_array(jsonb_build_object('productId',(select result->>'productId' from product),'batchId',(select result->>'batchId' from batch),'quantity',${requiredShipmentQuantity},'sourceLineRef',${sqlLiteral(`${prefix}:catalog-receipt-line`)})),'Run-scoped smoke inbound receipt.',jsonb_build_object('smokePrefix',${sqlLiteral(prefix)})) result
 )
-select json_build_object('productId',(select result->>'productId' from product),'productSku',${sqlLiteral(fixtureCode)},'sourceBatchId',(select result->>'batchId' from batch),'sourceBatchCode',${sqlLiteral(`${fixtureCode}-BATCH`)},'receipt',(select result from receipt),'initialQuantity',${requiredShipmentQuantity});
+select json_build_object('productId',(select result->>'productId' from product),'productSku',(select result->>'sku' from product),'sourceBatchId',(select result->>'batchId' from batch),'sourceBatchCode',${sqlLiteral(`${fixtureCode}-BATCH`)},'receipt',(select result from receipt),'initialQuantity',${requiredShipmentQuantity});
 reset role;
 commit;`);
   const position = runSqlJson(`select json_build_object('product', (select row_to_json(p) from inventory.stock_product_positions p where p.organization_id=${sqlLiteral(organizationId)}::uuid and p.product_id=${sqlLiteral(result.productId)}::uuid), 'batch', (select row_to_json(b) from inventory.stock_batch_balances b where b.organization_id=${sqlLiteral(organizationId)}::uuid and b.batch_id=${sqlLiteral(result.sourceBatchId)}::uuid));`);
@@ -439,7 +441,9 @@ async function main() {
   current = await page(`/returns?returnId=${scenarioB.returnId}#claims`);
   await submitForm({ uri: current.uri, html: current.html, marker: "Buat klaim TikTok", fields: { returnId: scenarioB.returnId, claimTypeCode: "LOST_RETURN", idempotencyKey: `${prefix}:claim-b`, claimItemId: scenarioB.itemId, [`quantity_${scenarioB.itemId}`]: "1", occurredAt: localDateTime(), confirmation: "on" } });
   const claimB = await claimFor(scenarioB.returnId);
+  check("Claim B berada pada status yang dapat dibatalkan", ["NOT_STARTED", "DUE_SOON", "EXCEPTION"].includes(claimB.status_code), `claimId=${claimB.id} status=${claimB.status_code}`);
   const cancelDetailPage = await page(`/returns?returnId=${scenarioB.returnId}&claimId=${claimB.id}#claim-detail`);
+  check("Cancel detail memilih claim dan return B exact", cancelDetailPage.html.includes(claimB.id) && cancelDetailPage.html.includes(scenarioB.returnRef) && htmlContains(cancelDetailPage.html, "Detail klaim"), `claimId=${claimB.id} returnRef=${scenarioB.returnRef}`);
   const cancelForm = formFor(cancelDetailPage.html, "Alasan pembatalan");
   const cancelActionId = actionName(cancelForm);
   check("Cancel form tepat untuk claim B", cancelForm.includes(`value=\"${claimB.id}\"`) && cancelForm.includes('name="reason"'), `claimId=${claimB.id}`);
