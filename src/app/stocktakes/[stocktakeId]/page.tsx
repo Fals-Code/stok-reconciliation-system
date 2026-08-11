@@ -1,22 +1,19 @@
-import PageContextBar from "@/app/app-shell/page-context-bar";
-import { notFound } from "next/navigation";
+import Link from "next/link";
+import { notFound, redirect } from "next/navigation";
 
-import ApprovalPanel from "@/app/stocktakes/components/approval-panel";
-import CountingPanel from "@/app/stocktakes/components/counting-panel";
-import PostingPanel from "@/app/stocktakes/components/posting-panel";
-import ReviewPanel from "@/app/stocktakes/components/review-panel";
+import { AppShell } from "@/app/app-shell/app-shell";
+import { PageHeader } from "@/app/app-shell/page-header";
+import { ApprovalPanel } from "@/app/stocktakes/components/approval-panel";
+import { CountingPanel } from "@/app/stocktakes/components/counting-panel";
+import { PostingPanel } from "@/app/stocktakes/components/posting-panel";
+import { ReviewPanel } from "@/app/stocktakes/components/review-panel";
+import { StocktakePresentationFeedback } from "@/app/stocktakes/presentation-feedback";
 import {
   prepareStocktakeAction,
   startStocktakeAction,
 } from "@/app/stocktakes/actions";
-import {
-  STOCKTAKE_BUCKET_LABELS,
-  STOCKTAKE_SCOPE_LABELS,
-  STOCKTAKE_STATUS_META,
-  STOCKTAKE_TYPE_LABELS,
-  STOCKTAKE_VISIBILITY_LABELS,
-  type StocktakePillTone,
-} from "@/lib/stocktakes/constants";
+import { Alert, StatusBadge } from "@/components/ui";
+import { requireAdminSession } from "@/lib/auth";
 import {
   getLatestStocktakeApproval,
   getLatestStocktakePosting,
@@ -28,139 +25,65 @@ import {
   getStocktakeReviewLines,
 } from "@/lib/stocktakes/queries";
 import type {
-  StocktakeDetails,
-  StocktakeScopeDefinition,
+  StocktakeApproval,
+  StocktakeApprovalLine,
+  StocktakeCountAttempt,
+  StocktakeCountingLine,
+  StocktakePosting,
+  StocktakePostingLine,
+  StocktakeReviewLine,
+  StocktakeStatus,
 } from "@/lib/stocktakes/types";
 
 export const dynamic = "force-dynamic";
 
-const numberFormatter = new Intl.NumberFormat("id-ID");
+const statusLabels: Record<StocktakeStatus, string> = {
+  DRAFT: "Belum Dimulai",
+  READY: "Siap Dihitung",
+  COUNTING: "Sedang Dihitung",
+  REVIEW: "Perlu Diperiksa",
+  APPROVED: "Siap Disimpan",
+  POSTING: "Menyimpan Perubahan",
+  POSTED: "Selesai",
+  CANCELLED: "Dibatalkan",
+  EXCEPTION: "Bermasalah",
+};
 
-function formatNumber(value: number) {
-  return numberFormatter.format(Number(value));
+function statusTone(status: StocktakeStatus) {
+  return status === "POSTED"
+    ? ("selected" as const)
+    : status === "EXCEPTION" || status === "CANCELLED"
+      ? ("danger" as const)
+      : status === "COUNTING" ||
+          status === "REVIEW" ||
+          status === "APPROVED" ||
+          status === "POSTING"
+        ? ("warning" as const)
+        : ("neutral" as const);
 }
 
-function formatDate(value: string | null, includeTime = true) {
-  if (!value) return "Belum ada";
-
-  const date = new Date(value);
-  if (Number.isNaN(date.getTime())) return value;
-
-  return new Intl.DateTimeFormat("id-ID", {
-    timeZone: "Asia/Jakarta",
-    day: "2-digit",
-    month: "short",
-    year: "numeric",
-    ...(includeTime
-      ? { hour: "2-digit", minute: "2-digit", hour12: false }
-      : {}),
-  }).format(date);
+function scopeLabel(mode: string) {
+  return mode === "ALL_ACTIVE_INVENTORY"
+    ? "Semua produk aktif"
+    : mode === "PRODUCTS"
+      ? "Produk tertentu"
+      : "Kode Batch tertentu";
 }
 
-function Pill({
-  label,
-  tone,
-}: {
-  label: string;
-  tone: StocktakePillTone;
-}) {
-  const tones: Record<StocktakePillTone, string> = {
-    success: "border-emerald-400/25 bg-emerald-400/10 text-emerald-200",
-    warning: "border-amber-400/25 bg-amber-400/10 text-amber-100",
-    danger: "border-rose-400/25 bg-rose-400/10 text-rose-100",
-    neutral: "border-white/10 bg-white/[0.04] text-slate-300",
-  };
-
-  return (
-    <span
-      className={`inline-flex items-center rounded-full border px-2.5 py-1 text-xs font-medium ${tones[tone]}`}
-    >
-      {label}
-    </span>
-  );
+function bucketLabel(bucket: string) {
+  return bucket === "SELLABLE"
+    ? "Layak Dijual"
+    : bucket === "QUARANTINE"
+      ? "Ditahan"
+      : "Rusak";
 }
 
-function scopeEntitySummary(scope: StocktakeScopeDefinition) {
-  if (scope.mode === "PRODUCTS") {
-    return `${scope.productIds?.length ?? 0} produk dipilih`;
-  }
-
-  if (scope.mode === "BATCHES") {
-    return `${scope.batchIds?.length ?? 0} batch dipilih`;
-  }
-
-  return "Seluruh inventory aktif";
-}
-
-function DraftAction({ details }: { details: StocktakeDetails }) {
-  return (
-    <section className="mt-6 rounded-2xl border border-amber-400/20 bg-amber-400/[0.055] p-5">
-      <div className="flex flex-col gap-5 lg:flex-row lg:items-end lg:justify-between">
-        <div>
-          <p className="font-semibold text-amber-100">
-            Validasi konfigurasi sebelum penghitungan.
-          </p>
-          <p className="mt-2 max-w-3xl text-sm leading-6 text-slate-400">
-            Prepare memastikan produk atau batch masih berada dalam organisasi,
-            scope menghasilkan line, dan mode tetap CONTINUOUS. Tahap ini tidak
-            membuat snapshot, count line, ledger entry, atau perubahan saldo.
-          </p>
-          <p className="mt-3 text-xs text-slate-500">
-            Tolerance tetap {formatNumber(details.tolerance_policy_snapshot.units)}
-            {" unit / "}
-            {formatNumber(details.tolerance_policy_snapshot.percent)}%.
-          </p>
-        </div>
-
-        <form action={prepareStocktakeAction}>
-          <input type="hidden" name="stocktakeId" value={details.stocktake_id} />
-          <button className="primary-button" type="submit">
-            Validasi dan siapkan sesi
-          </button>
-        </form>
-      </div>
-    </section>
-  );
-}
-
-function ReadyAction({ details }: { details: StocktakeDetails }) {
-  return (
-    <section className="mt-6 rounded-2xl border border-emerald-400/20 bg-emerald-400/[0.055] p-5">
-      <p className="font-semibold text-emerald-100">
-        Scope valid dan sesi siap dimulai.
-      </p>
-      <p className="mt-2 max-w-3xl text-sm leading-6 text-slate-400">
-        Start mengambil batas ledger terbaru secara atomik, membuat line
-        penghitungan dan snapshot immutable, lalu memindahkan sesi ke COUNTING.
-        Tidak ada quantity yang dikoreksi pada tahap ini.
-      </p>
-
-      <form action={startStocktakeAction} className="mt-5">
-        <input type="hidden" name="stocktakeId" value={details.stocktake_id} />
-
-        <label className="flex max-w-3xl items-start gap-3 rounded-xl border border-white/10 bg-slate-950/40 p-4">
-          <input
-            className="mt-1"
-            type="checkbox"
-            name="confirmStart"
-            required
-          />
-          <span>
-            <span className="text-sm font-semibold text-white">
-              Saya memahami bahwa snapshot dan count line akan dibuat.
-            </span>
-            <span className="mt-1 block text-xs leading-5 text-slate-500">
-              Snapshot bersumber dari ledger dan tidak diedit dari browser.
-            </span>
-          </span>
-        </label>
-
-        <button className="primary-button mt-4" type="submit">
-          Mulai penghitungan
-        </button>
-      </form>
-    </section>
-  );
+function first(
+  params: Record<string, string | string[] | undefined>,
+  key: string,
+) {
+  const value = params[key];
+  return (Array.isArray(value) ? value[0] : value)?.trim() ?? "";
 }
 
 export default async function StocktakeDetailPage({
@@ -168,294 +91,356 @@ export default async function StocktakeDetailPage({
   searchParams,
 }: {
   params: Promise<{ stocktakeId: string }>;
-  searchParams: Promise<{
-    success?: string;
-    error?: string;
-    q?: string;
-    bucket?: string;
-    variance?: string;
-    review?: string;
-    reason?: string;
-  }>;
+  searchParams: Promise<Record<string, string | string[] | undefined>>;
 }) {
-  const { stocktakeId } = await params;
-  const search = await searchParams;
-  const feedback = search;
-  const data = await getStocktakeDetails(stocktakeId);
+  const [{ stocktakeId }, session, query] = await Promise.all([
+    params,
+    requireAdminSession(),
+    searchParams,
+  ]);
 
-  if (!data) {
-    notFound();
+  const rawSuccess = Boolean(first(query, "success"));
+  const rawError = Boolean(first(query, "error"));
+  const rawIdempotencyKey = Boolean(first(query, "idempotencyKey"));
+
+  if (rawSuccess || rawError || rawIdempotencyKey) {
+    const notice =
+      rawSuccess && !rawError && !rawIdempotencyKey ? "updated" : "retry";
+    redirect(
+      `/stocktakes/${encodeURIComponent(stocktakeId)}?notice=${notice}`,
+    );
   }
 
+  let data;
+
+  try {
+    data = await getStocktakeDetails(stocktakeId);
+  } catch {
+    return (
+      <AppShell profile={session.profile}>
+        <div className="mx-auto w-full max-w-[1120px] px-4 py-6 sm:px-6 lg:px-8 lg:py-8">
+          <PageHeader
+            description="Data Hitung Stok belum dapat dimuat. Kondisi gagal tidak mengubah stok."
+            title="Hitung Stok"
+          />
+          <Alert
+            className="mt-6"
+            title="Data belum dapat dimuat"
+            tone="warning"
+          >
+            Muat ulang halaman sebelum melakukan perubahan.
+          </Alert>
+        </div>
+      </AppShell>
+    );
+  }
+
+  if (!data) notFound();
+
   const { details, summary } = data;
-  const countingLines =
-    details.status_code === "COUNTING"
-      ? await getStocktakeCountingLines(
-          stocktakeId,
-          details.visibility_code,
-        )
-      : [];
-  const approvalVisible = ["APPROVED", "POSTING", "POSTED"].includes(
-    details.status_code,
-  );
-  const reviewLinesVisible =
-    details.status_code === "REVIEW" || approvalVisible;
-  const reviewLines = reviewLinesVisible
-    ? await getStocktakeReviewLines(stocktakeId)
-    : [];
-  const countAttempts =
-    details.status_code === "REVIEW" ||
-    details.status_code === "POSTED"
-      ? await getStocktakeCountAttempts(stocktakeId)
-      : [];
-  const approval = approvalVisible
-    ? await getLatestStocktakeApproval(stocktakeId)
-    : null;
-  const approvalLines = approval
-    ? await getStocktakeApprovalLines(
+  let countingLines: StocktakeCountingLine[] | null = null;
+  let reviewLines: StocktakeReviewLine[] = [];
+  let countAttempts: StocktakeCountAttempt[] = [];
+  let approval: StocktakeApproval | null = null;
+  let approvalLines: StocktakeApprovalLine[] = [];
+  let posting: StocktakePosting | null = null;
+  let postingLines: StocktakePostingLine[] = [];
+  let downstreamError = false;
+
+  try {
+    if (details.status_code === "COUNTING") {
+      countingLines = await getStocktakeCountingLines(
         stocktakeId,
-        approval.approval_id,
-      )
-    : [];
-  const postingVisible = ["POSTING", "POSTED"].includes(
-    details.status_code,
-  );
-  const posting = postingVisible
-    ? await getLatestStocktakePosting(stocktakeId)
-    : null;
-  const postingLines = posting
-    ? await getStocktakePostingLines(
-        stocktakeId,
-        posting.posting_id,
-      )
-    : [];
-  const status = STOCKTAKE_STATUS_META[details.status_code];
-  const scope = details.scope_definition;
+        details.visibility_code,
+      );
+    } else if (details.status_code === "REVIEW") {
+      [reviewLines, countAttempts] = await Promise.all([
+        getStocktakeReviewLines(stocktakeId),
+        getStocktakeCountAttempts(stocktakeId),
+      ]);
+    } else if (
+      details.status_code === "APPROVED" ||
+      details.status_code === "POSTING" ||
+      details.status_code === "POSTED"
+    ) {
+      const [loadedApproval, loadedReview, loadedPosting] = await Promise.all([
+        getLatestStocktakeApproval(stocktakeId),
+        getStocktakeReviewLines(stocktakeId),
+        details.status_code === "POSTING" || details.status_code === "POSTED"
+          ? getLatestStocktakePosting(stocktakeId)
+          : Promise.resolve(null),
+      ]);
+
+      approval = loadedApproval;
+      reviewLines = loadedReview;
+      posting = loadedPosting;
+
+      const reads: Promise<void>[] = [];
+
+      if (approval) {
+        reads.push(
+          getStocktakeApprovalLines(stocktakeId, approval.approval_id).then(
+            (rows) => {
+              approvalLines = rows;
+            },
+          ),
+        );
+      }
+
+      if (posting) {
+        reads.push(
+          getStocktakePostingLines(stocktakeId, posting.posting_id).then(
+            (rows) => {
+              postingLines = rows;
+            },
+          ),
+        );
+      }
+
+      await Promise.all(reads);
+    }
+  } catch {
+    downstreamError = true;
+  }
+
+  const notice = first(query, "notice");
+  const hasError = notice === "retry";
+  const success = notice === "updated";
+  const progress =
+    summary && summary.line_count > 0
+      ? Math.round((summary.counted_line_count / summary.line_count) * 100)
+      : 0;
+  const remaining =
+    summary && summary.line_count > 0
+      ? Math.max(summary.line_count - summary.counted_line_count, 0)
+      : 0;
 
   return (
-    <main className="min-h-screen bg-slate-950 text-slate-100">
-      <PageContextBar
-        backHref="/stocktakes"
-        backLabel="Kembali ke daftar"
-        eyebrow={details.stocktake_no}
-        title="Stocktake session"
+    <AppShell profile={session.profile}>
+      <StocktakePresentationFeedback
+        shouldSanitize={notice === "updated" || notice === "retry"}
       />
 
-      <div className="mx-auto max-w-6xl px-5 py-8 lg:px-8">
-        <section>
-          <div className="flex flex-col gap-5 lg:flex-row lg:items-end lg:justify-between">
-            <div>
-              <p className="section-kicker">Detail sesi</p>
-              <h1 className="mt-3 text-3xl font-semibold tracking-tight sm:text-4xl">
-                {details.title}
-              </h1>
-              <p className="mt-3 max-w-3xl text-sm leading-6 text-slate-400">
-                Browser hanya menjalankan command yang valid untuk status saat
-                ini. Status akhir, snapshot, dan line tetap ditentukan server.
+      <div className="mx-auto w-full max-w-[1120px] px-4 py-6 sm:px-6 lg:px-8 lg:py-8">
+        <Link
+          className="mb-4 inline-flex min-h-[var(--ui-control-height)] items-center text-sm font-semibold text-ui-primary hover:underline"
+          href="/stocktakes"
+        >
+          &larr; Kembali ke Hitung Stok
+        </Link>
+
+        <PageHeader
+          description="Hitung stok fisik per produk, Kode Batch, dan kondisi. Stok baru berubah setelah hasil diperiksa, disetujui, dan disimpan."
+          eyebrow="Hitung Stok"
+          title={details.title}
+        />
+
+        {success ? (
+          <Alert
+            className="mt-6"
+            title="Hitung Stok diperbarui"
+            tone="success"
+          >
+            Status sekarang {statusLabels[details.status_code].toLowerCase()}.
+          </Alert>
+        ) : null}
+
+        {hasError ? (
+          <Alert
+            className="mt-6"
+            title="Perubahan belum disimpan"
+            tone="warning"
+          >
+            Perubahan belum dapat disimpan. Muat ulang halaman lalu coba lagi.
+          </Alert>
+        ) : null}
+
+        <section className="mt-6 border-y border-ui-border py-4">
+          <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+            <div className="min-w-0">
+              <p className="text-sm font-medium text-ui-text">
+                {scopeLabel(details.scope_definition.mode)}
+                {" · "}
+                {details.visibility_code === "BLIND"
+                  ? "Tanpa melihat catatan"
+                  : "Dengan melihat catatan"}
+              </p>
+              <p className="mt-1 text-sm text-ui-text-muted">
+                {details.scope_definition.bucketCodes
+                  .map(bucketLabel)
+                  .join(" · ")}
               </p>
             </div>
 
-            <Pill label={status.label} tone={status.tone} />
+            <StatusBadge tone={statusTone(details.status_code)}>
+              {statusLabels[details.status_code]}
+            </StatusBadge>
           </div>
 
-          {feedback.success ? (
-            <div className="mt-6 rounded-2xl border border-emerald-400/20 bg-emerald-400/10 px-5 py-4 text-sm text-emerald-100">
-              {feedback.success}
-            </div>
-          ) : null}
-
-          {feedback.error ? (
-            <div className="mt-6 rounded-2xl border border-rose-400/20 bg-rose-400/10 px-5 py-4 text-sm text-rose-100">
-              {feedback.error}
-            </div>
-          ) : null}
-
-          <div className="mt-7 grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
-            {[
-              [
-                "Status",
-                status.label,
-                `Version ${formatNumber(details.version_no)}`,
-              ],
-              [
-                "Progress",
-                `${formatNumber(summary?.counted_line_count ?? 0)} / ${formatNumber(
-                  summary?.line_count ?? 0,
-                )}`,
-                details.visibility_code === "BLIND" &&
-                details.status_code === "COUNTING"
-                  ? "Variance tersembunyi saat blind count"
-                  : `${formatNumber(summary?.variance_line_count ?? 0)} variance line`,
-              ],
-              [
-                "Rencana",
-                formatDate(details.planned_at),
-                details.timezone_snapshot,
-              ],
-              [
-                "Snapshot ledger",
-                details.snapshot_ledger_seq === null
-                  ? "Belum dibuat"
-                  : formatNumber(details.snapshot_ledger_seq),
-                "Source of truth: ledger",
-              ],
-            ].map(([label, value, description]) => (
-              <article key={label} className="metric-card">
-                <p className="text-sm text-slate-400">{label}</p>
-                <p className="mt-3 text-xl font-semibold text-white">{value}</p>
-                <p className="mt-2 text-xs text-slate-500">{description}</p>
-              </article>
-            ))}
-          </div>
-        </section>
-
-        <section className="mt-8 grid gap-6 lg:grid-cols-2">
-          <article className="panel-card">
-            <p className="section-kicker">Configuration</p>
-            <h2 className="section-title">Aturan sesi.</h2>
-
-            <dl className="mt-6 space-y-4 text-sm">
-              {[
-                [
-                  "Tipe",
-                  STOCKTAKE_TYPE_LABELS[details.stocktake_type_code],
-                ],
-                ["Mode", details.mode_code],
-                [
-                  "Visibility",
-                  STOCKTAKE_VISIBILITY_LABELS[details.visibility_code],
-                ],
-                ["Rule version", details.rule_version],
-                [
-                  "Tolerance",
-                  `${formatNumber(details.tolerance_policy_snapshot.units)} unit / ${formatNumber(
-                    details.tolerance_policy_snapshot.percent,
-                  )}%`,
-                ],
-                ["Mulai", formatDate(details.started_at)],
-                ["Dibuat", formatDate(details.created_at)],
-                ["Diperbarui", formatDate(details.updated_at)],
-              ].map(([label, value]) => (
-                <div
-                  key={label}
-                  className="flex items-start justify-between gap-6 border-b border-white/10 pb-4"
-                >
-                  <dt className="text-slate-500">{label}</dt>
-                  <dd className="text-right font-medium text-slate-200">
-                    {value}
-                  </dd>
-                </div>
-              ))}
-            </dl>
-          </article>
-
-          <article className="panel-card">
-            <p className="section-kicker">Scope</p>
-            <h2 className="section-title">Entity yang direncanakan.</h2>
-
-            <div className="mt-6 rounded-xl border border-white/10 bg-slate-950/45 p-4">
-              <p className="text-sm font-semibold text-white">
-                {STOCKTAKE_SCOPE_LABELS[scope.mode]}
-              </p>
-              <p className="mt-2 text-xs text-slate-500">
-                {scopeEntitySummary(scope)}
-              </p>
-            </div>
-
-            <div className="mt-4 flex flex-wrap gap-2">
-              {scope.bucketCodes.map((bucket) => (
-                <Pill
-                  key={bucket}
-                  label={STOCKTAKE_BUCKET_LABELS[bucket]}
-                  tone="neutral"
-                />
-              ))}
-            </div>
-
-            <dl className="mt-6 space-y-3 text-sm">
-              {[
-                ["Saldo sistem nol", scope.includeZeroSystemBalance],
-                ["Produk tidak aktif bersaldo", scope.includeInactiveWithBalance],
-                ["Batch blocked", scope.includeBlockedBatches],
-                ["Batch expired", scope.includeExpiredBatches],
-              ].map(([label, enabled]) => (
-                <div
-                  key={String(label)}
-                  className="flex items-center justify-between gap-4"
-                >
-                  <dt className="text-slate-500">{label}</dt>
-                  <dd className="font-medium text-slate-200">
-                    {enabled ? "Disertakan" : "Tidak disertakan"}
-                  </dd>
-                </div>
-              ))}
-            </dl>
-
-            {details.note ? (
-              <div className="mt-6 rounded-xl border border-white/10 p-4">
-                <p className="text-xs uppercase tracking-[0.12em] text-slate-500">
-                  Catatan
+          {summary && summary.line_count > 0 ? (
+            <div className="mt-4">
+              <div className="flex flex-wrap items-baseline justify-between gap-2">
+                <p className="text-sm font-semibold text-ui-text">
+                  {summary.counted_line_count} dari {summary.line_count} lokasi
+                  selesai
                 </p>
-                <p className="mt-2 text-sm leading-6 text-slate-300">
-                  {details.note}
+                <p className="ui-number text-sm text-ui-text-muted">
+                  {progress}%
                 </p>
               </div>
-            ) : null}
-          </article>
+
+              <div
+                aria-label={`${progress}% penghitungan selesai`}
+                aria-valuemax={100}
+                aria-valuemin={0}
+                aria-valuenow={progress}
+                className="mt-2 h-2 overflow-hidden rounded-full bg-ui-surface-subtle"
+                role="progressbar"
+              >
+                <div
+                  className="h-full rounded-full bg-ui-primary"
+                  style={{ width: `${progress}%` }}
+                />
+              </div>
+
+              <p className="mt-2 text-xs text-ui-text-muted">
+                {remaining === 0
+                  ? "Semua lokasi sudah dihitung."
+                  : `${remaining} lokasi masih perlu dihitung.`}
+              </p>
+            </div>
+          ) : null}
+
+          {details.note ? (
+            <p className="mt-4 text-sm text-ui-text-muted">
+              Catatan: {details.note}
+            </p>
+          ) : null}
         </section>
 
-        {details.status_code === "DRAFT" ? (
-          <DraftAction details={details} />
-        ) : null}
+        {downstreamError ? (
+          <Alert
+            className="mt-6"
+            title="Rincian belum dapat dimuat"
+            tone="warning"
+          >
+            Muat ulang halaman. Tidak ada perubahan stok yang dilakukan.
+          </Alert>
+        ) : (
+          <>
+            {details.status_code === "DRAFT" ? (
+              <section className="mt-6 rounded-[var(--ui-radius-md)] border border-ui-border bg-ui-surface p-4">
+                <h2 className="text-lg font-semibold text-ui-text">
+                  Siapkan Hitung Stok
+                </h2>
+                <p className="mt-1 text-sm leading-6 text-ui-text-muted">
+                  Periksa cakupan yang dipilih sebelum daftar hitung dibuat.
+                  Tahap ini belum mengubah stok.
+                </p>
+                <form action={prepareStocktakeAction} className="mt-4">
+                  <input
+                    name="stocktakeId"
+                    type="hidden"
+                    value={stocktakeId}
+                  />
+                  <button
+                    className="min-h-[var(--ui-control-height)] rounded-[var(--ui-radius-md)] border border-ui-primary bg-ui-primary px-4 text-sm font-semibold text-ui-text-on-primary"
+                    type="submit"
+                  >
+                    Siapkan Hitung Stok
+                  </button>
+                </form>
+              </section>
+            ) : null}
 
-        {details.status_code === "READY" ? (
-          <ReadyAction details={details} />
-        ) : null}
+            {details.status_code === "READY" ? (
+              <section className="mt-6 rounded-[var(--ui-radius-md)] border border-ui-border bg-ui-surface p-4">
+                <h2 className="text-lg font-semibold text-ui-text">
+                  Mulai Menghitung
+                </h2>
+                <p className="mt-1 text-sm leading-6 text-ui-text-muted">
+                  Mulai saat barang siap diperiksa secara fisik. Daftar lokasi
+                  akan dibuat dari cakupan sesi ini.
+                </p>
+                <form action={startStocktakeAction} className="mt-4">
+                  <input
+                    name="stocktakeId"
+                    type="hidden"
+                    value={stocktakeId}
+                  />
+                  <input name="confirmStart" type="hidden" value="on" />
+                  <button
+                    className="min-h-[var(--ui-control-height)] rounded-[var(--ui-radius-md)] border border-ui-primary bg-ui-primary px-4 text-sm font-semibold text-ui-text-on-primary"
+                    type="submit"
+                  >
+                    Mulai Menghitung
+                  </button>
+                </form>
+              </section>
+            ) : null}
 
-        {details.status_code === "COUNTING" ? (
-          <CountingPanel
-            details={details}
-            summary={summary}
-            lines={countingLines}
-          />
-        ) : null}
+            {details.status_code === "COUNTING" && countingLines ? (
+              <CountingPanel
+                lines={countingLines}
+                stocktakeId={stocktakeId}
+                stocktakeVersion={details.version_no}
+                visibility={details.visibility_code}
+              />
+            ) : null}
 
-        {details.status_code === "REVIEW" ? (
-          <ReviewPanel
-            details={details}
-            lines={reviewLines}
-            attempts={countAttempts}
-            filters={{
-              query: search.q ?? "",
-              bucket: search.bucket ?? "",
-              variance: search.variance ?? "",
-              review: search.review ?? "",
-              reason: search.reason ?? "",
-            }}
-          />
-        ) : null}
+            {details.status_code === "REVIEW" ? (
+              <>
+                <ReviewPanel
+                  attempts={countAttempts}
+                  lines={reviewLines}
+                  stocktakeId={stocktakeId}
+                />
+                <ApprovalPanel
+                  lines={reviewLines}
+                  stocktakeId={stocktakeId}
+                  stocktakeVersion={details.version_no}
+                />
+              </>
+            ) : null}
 
-        {approvalVisible ? (
-          <ApprovalPanel
-            details={details}
-            reviewLines={reviewLines}
-            approval={approval}
-            approvalLines={approvalLines}
-          />
-        ) : null}
+            {details.status_code === "APPROVED" ||
+            details.status_code === "POSTING" ||
+            details.status_code === "POSTED" ? (
+              <PostingPanel
+                approval={approval}
+                approvalLines={approvalLines}
+                posting={posting}
+                postingLines={postingLines}
+                reviewLines={reviewLines}
+                status={details.status_code}
+                stocktakeId={stocktakeId}
+              />
+            ) : null}
 
-        {approvalVisible ? (
-          <PostingPanel
-            details={details}
-            reviewLines={reviewLines}
-            approval={approval}
-            approvalLines={approvalLines}
-            posting={posting}
-            postingLines={postingLines}
-            attempts={countAttempts}
-          />
-        ) : null}
+            {details.status_code === "EXCEPTION" ? (
+              <Alert
+                className="mt-6"
+                title="Hitung Stok perlu diperiksa"
+                tone="danger"
+              >
+                Ada hasil yang ditandai bermasalah. Periksa bukti dan tindak
+                lanjuti sesuai prosedur gudang.
+              </Alert>
+            ) : null}
+
+            {details.status_code === "CANCELLED" ? (
+              <Alert
+                className="mt-6"
+                title="Hitung Stok dibatalkan"
+                tone="warning"
+              >
+                Sesi ini hanya dapat dibaca dan tidak memiliki tindakan
+                lanjutan.
+              </Alert>
+            ) : null}
+          </>
+        )}
       </div>
-    </main>
+    </AppShell>
   );
 }
