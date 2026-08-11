@@ -14,7 +14,7 @@ let failure;
 
 function pass(name, ok, detail = "", scope = "Product") {
   results.push({ name, ok, detail, scope });
-  console.log(`${ok ? "[PASS]" : "[FAIL]"} ${name}${detail ? ` â€” ${detail}` : ""}`);
+  console.log(`${ok ? "[PASS]" : "[FAIL]"} ${name}${detail ? ` - ${detail}` : ""}`);
   if (!ok) throw new Error(name);
 }
 
@@ -113,7 +113,7 @@ async function main() {
   }
 
   const initial = await page("/products");
-  pass("Admin dapat membuka /products", initial.response.ok && initial.html.includes("Kelola Produk tanpa mengubah stok"));
+  pass("Admin dapat membuka /products", initial.response.ok && initial.html.includes("Pantau posisi stok dan catat perubahan bila diperlukan.") && initial.html.includes("Tambah Produk"));
   const suffix = Date.now().toString(36).toUpperCase();
   const idempotency = randomUUID();
   const productSizeMl = 1000 + (parseInt(idempotency.slice(0, 8), 16) % 900000000);
@@ -133,15 +133,20 @@ async function main() {
   pass("Edit nama dan deskripsi sukses", updated.json.status === "UPDATED");
   const stale = await rpc("update_product", { p_organization_id: org, p_idempotency_key: `product-admin-smoke:stale:${randomUUID()}`, p_product_id: product.productId, p_expected_row_version: product.rowVersion, p_name: "Stale", p_size_ml: productSizeMl, p_unit_code: "UNIT" }, false);
   pass("Stale row version ditolak", !stale.response.ok && stale.raw.includes("PRODUCT_STALE_VERSION"));
+  const historyRows = await view(`product_master?organization_id=eq.${encodeURIComponent(org)}&has_authoritative_history=eq.true&is_active=eq.true&size_ml=not.is.null&select=product_id,sku,name,size_ml,row_version&limit=1`);
+  pass("Fixture Produk berhistori tersedia tanpa membuat ledger baru", historyRows.length > 0);
+  const history = historyRows[0];
+  const sizeAfterHistory = await rpc("update_product", { p_organization_id: org, p_idempotency_key: `product-admin-smoke:sku-history:${randomUUID()}`, p_product_id: history.product_id, p_expected_row_version: history.row_version, p_name: history.name, p_size_ml: Number(history.size_ml) + 1, p_unit_code: "UNIT" }, false);
+  pass("Ukuran dengan history ditolak", !sizeAfterHistory.response.ok && sizeAfterHistory.raw.includes("TRANSACTED_SKU_CHANGE_FORBIDDEN"));
 
   const batchCode = `SMOKE BATCH ${suffix}`;
   const batchExpiry = "2099-12-31";
-  const activeDetail = await page(`/products/${product.productId}`);
+  const activeDetail = await page(`/products/${product.productId}?tab=batches`);
   pass("Admin membuka detail Produk dan melihat form Tambah Batch", activeDetail.response.ok && activeDetail.html.includes("Tambah Batch STANDARD") && activeDetail.html.includes("Kode Batch"), "", "Batch");
   const batchCreated = await rpc("create_product_batch", { p_organization_id: org, p_idempotency_key: `product-batch-admin-smoke:create:${randomUUID()}`, p_product_id: product.productId, p_batch_code: `  ${batchCode}  `, p_expiry_date: batchExpiry, p_manufactured_date: "2099-01-01", p_received_first_at: "2099-01-02T00:00:00+07:00", p_batch_kind_code: "STANDARD", p_note: "Focused batch smoke." }, false);
   const batch = batchCreated.json;
   pass("Create Batch STANDARD sukses dan stock-neutral", batchCreated.response.ok && batch.status === "CREATED" && batch.batchKindCode === "STANDARD" && batch.stockEffect === "NONE", batchCreated.raw, "Batch");
-  const batchRefreshed = await page(`/products/${product.productId}`);
+  const batchRefreshed = await page(`/products/${product.productId}?tab=batches`);
   pass("Batch bertahan setelah refresh/read ulang", batchRefreshed.html.includes(batchCode), "", "Batch");
   const duplicateBatch = await rpc("create_product_batch", { p_organization_id: org, p_idempotency_key: `product-batch-admin-smoke:duplicate:${randomUUID()}`, p_product_id: product.productId, p_batch_code: batchCode.toLowerCase(), p_expiry_date: batchExpiry, p_batch_kind_code: "STANDARD" }, false);
   pass("Normalized duplicate batch code ditolak", !duplicateBatch.response.ok && duplicateBatch.raw.includes("DUPLICATE_PRODUCT_BATCH"), "", "Batch");
@@ -157,9 +162,10 @@ async function main() {
   const archived = await rpc("archive_product", { p_organization_id: org, p_idempotency_key: `product-admin-smoke:archive:${randomUUID()}`, p_product_id: product.productId, p_expected_row_version: updated.json.rowVersion, p_reason: "Smoke archive" });
   pass("Archive Produk sukses", archived.json.status === "ARCHIVED");
   const detail = await page(`/products/${product.productId}`);
-  pass("Produk archived tetap membuka audit", detail.html.includes("DIARSIPKAN") && detail.html.includes("Jejak perubahan"));
+  pass("Produk archived tetap membuka audit", detail.html.includes("Tidak Aktif") && detail.html.includes("Jejak Perubahan Master"));
   const archivedProductBatch = await rpc("create_product_batch", { p_organization_id: org, p_idempotency_key: `product-batch-admin-smoke:archived-product:${randomUUID()}`, p_product_id: product.productId, p_batch_code: `ARCHIVED PRODUCT ${suffix}`, p_expiry_date: batchExpiry, p_batch_kind_code: "STANDARD" }, false);
-  pass("Produk archived tidak dapat menerima Batch baru", !archivedProductBatch.response.ok && archivedProductBatch.raw.includes("INACTIVE_PRODUCT_FOR_TRANSACTION") && detail.html.includes("Produk archived tidak dapat menerima Batch baru."), "", "Batch");
+  const archivedBatchWorkspace = await page(`/products/${product.productId}?tab=batches`);
+  pass("Produk archived tidak dapat menerima Batch baru", !archivedProductBatch.response.ok && archivedProductBatch.raw.includes("INACTIVE_PRODUCT_FOR_TRANSACTION") && archivedBatchWorkspace.response.ok && archivedBatchWorkspace.html.includes("Produk tidak aktif tidak dapat menerima Batch baru."), "", "Batch");
   const manual = await page("/manual-outbounds");
   pass("Produk archived tidak ada di selector transaksi baru", !manual.html.includes(product.sku));
   const reactivated = await rpc("reactivate_product", { p_organization_id: org, p_idempotency_key: `product-admin-smoke:reactivate:${randomUUID()}`, p_product_id: product.productId, p_expected_row_version: archived.json.rowVersion, p_reason: "Smoke reactivate" });
@@ -181,8 +187,8 @@ async function main() {
   const historyProducts = await view(`product_master?product_id=eq.${encodeURIComponent(product.productId)}&select=product_id,sku,name,size_ml,row_version,has_authoritative_history&limit=1`);
   const historyProduct = historyProducts[0];
   pass("Produk smoke memiliki authoritative history", historyProduct?.has_authoritative_history === true && Number(historyProduct?.size_ml) === productSizeMl);
-  const sizeAfterHistory = await rpc("update_product", { p_organization_id: org, p_idempotency_key: `product-admin-smoke:size-history:${randomUUID()}`, p_product_id: historyProduct.product_id, p_expected_row_version: historyProduct.row_version, p_name: historyProduct.name, p_size_ml: Number(historyProduct.size_ml) + 1, p_unit_code: "UNIT" }, false);
-  pass("Ukuran dengan history ditolak", !sizeAfterHistory.response.ok && sizeAfterHistory.raw.includes("TRANSACTED_SKU_CHANGE_FORBIDDEN"));
+  const sizeAfterHistoryFixture = await rpc("update_product", { p_organization_id: org, p_idempotency_key: `product-admin-smoke:size-history:${randomUUID()}`, p_product_id: historyProduct.product_id, p_expected_row_version: historyProduct.row_version, p_name: historyProduct.name, p_size_ml: Number(historyProduct.size_ml) + 1, p_unit_code: "UNIT" }, false);
+  pass("Ukuran dengan history ditolak", !sizeAfterHistoryFixture.response.ok && sizeAfterHistoryFixture.raw.includes("TRANSACTED_SKU_CHANGE_FORBIDDEN"));
 
 
   const historyBatches = await view(`product_batch_master?batch_id=eq.${encodeURIComponent(batch.batchId)}&select=batch_id,product_id,batch_code,batch_kind_code,manufactured_date,expiry_date,received_first_at,row_version,has_authoritative_history&limit=1`);
@@ -220,7 +226,7 @@ async function main() {
   pass("Archive Batch berhasil", batchArchived.response.ok && batchArchived.json.status === "ARCHIVE" && batchArchived.json.lifecycleStatusCode === "ARCHIVED", batchArchived.raw, "Batch");
   const archivedBatchDetail = await page(`/products/${product.productId}/batches/${batch.batchId}`);
   const archivedBatchAudits = await view(`product_batch_master_audit?batch_id=eq.${encodeURIComponent(batch.batchId)}&select=action_code,before_snapshot,after_snapshot&order=occurred_at.desc&limit=20`);
-  pass("Archived Batch tetap terbaca beserta audit", archivedBatchDetail.response.ok && archivedBatchDetail.html.includes("ARCHIVED") && archivedBatchDetail.html.includes("Audit Batch") && archivedBatchAudits.some((audit) => audit.action_code === "BATCH_ARCHIVE"), "", "Batch");
+  pass("Archived Batch tetap terbaca beserta audit", archivedBatchDetail.response.ok && archivedBatchDetail.html.includes("Tidak Aktif") && archivedBatchDetail.html.includes("Audit Batch") && archivedBatchAudits.some((audit) => audit.action_code === "BATCH_ARCHIVE"), "", "Batch");
   const disposal = await page("/stock-disposals");
   pass("Archived Batch tidak muncul pada selector transaksi baru yang relevan", !disposal.html.includes(batchCode), "", "Batch");
   const batchReactivated = await rpc("reactivate_product_batch", { p_organization_id: org, p_idempotency_key: `product-batch-admin-smoke:reactivate:${randomUUID()}`, p_batch_id: batch.batchId, p_expected_row_version: batchArchived.json.rowVersion, p_reason: "Smoke reactivate batch" }, false);
@@ -241,12 +247,14 @@ async function main() {
   const byName = await page("/products?q=Revisi");
   const filtered = await page("/products?status=ACTIVE");
   pass("Search SKU, nama, dan filter status bekerja", bySku.html.includes(product.sku) && byName.html.includes("Produk Smoke Revisi") && filtered.html.includes(product.sku));
-  const batchSearch = await page(`/products/${product.productId}?batchQ=${encodeURIComponent(batchCode)}&batchStatus=ACTIVE`);
+  const batchSearch = await page(`/products/${product.productId}?tab=batches&batchQ=${encodeURIComponent(batchCode)}&batchStatus=ACTIVE`);
   pass("Search/filter Batch bekerja", batchSearch.html.includes(batchCode) && batchSearch.html.includes("ACTIVE"), "", "Batch");
   const masterBatch = (await view(`product_batch_master?batch_id=eq.${encodeURIComponent(batch.batchId)}&select=*&limit=1`))[0];
   const currentBatchDetail = await page(`/products/${product.productId}/batches/${batch.batchId}`);
   const currentBatchText = pageText(currentBatchDetail.html);
-  pass("Nilai bucket, reserved, available, status, dan FEFO sama dengan api.product_batch_master", currentBatchText.includes(`Status: ${masterBatch.lifecycle_status_code}`) && currentBatchText.includes(`SELLABLE: ${masterBatch.sellable_qty}`) && currentBatchText.includes(`QUARANTINE: ${masterBatch.quarantine_qty}`) && currentBatchText.includes(`DAMAGED: ${masterBatch.damaged_qty}`) && currentBatchText.includes(`Reserved: ${masterBatch.reserved_qty} (product-scoped)`) && currentBatchText.includes(`Available: ${masterBatch.available_qty}`) && currentBatchText.includes(`FEFO: ${masterBatch.is_fefo_eligible ? "Eligible" : "Tidak eligible"}`), JSON.stringify({ lifecycleStatusCode: masterBatch.lifecycle_status_code, sellableQty: masterBatch.sellable_qty, quarantineQty: masterBatch.quarantine_qty, damagedQty: masterBatch.damaged_qty, reservedQty: masterBatch.reserved_qty, availableQty: masterBatch.available_qty, isFefoEligible: masterBatch.is_fefo_eligible }), "Batch");
+  const expectedBatchStatus = ({ ACTIVE: "Aktif", BLOCKED: "Ditahan", EXPIRED: "Kedaluwarsa", ARCHIVED: "Tidak Aktif" })[masterBatch.lifecycle_status_code] ?? "Tidak Aktif";
+  const expectedBatchFefo = masterBatch.is_fefo_eligible ? "Dapat digunakan otomatis" : "Tidak digunakan";
+  pass("Nilai bucket, reservasi product-scoped, status, dan FEFO sesuai api.product_batch_master", currentBatchDetail.response.ok && masterBatch.reservation_scope_code === "PRODUCT" && Number(masterBatch.available_qty) === Number(masterBatch.sellable_qty) - Number(masterBatch.reserved_qty) && currentBatchText.includes(expectedBatchStatus) && currentBatchText.includes(`Layak Dijual ${masterBatch.sellable_qty}`) && currentBatchText.includes(`Ditahan ${masterBatch.quarantine_qty}`) && currentBatchText.includes(`Rusak ${masterBatch.damaged_qty}`) && currentBatchText.includes(`Sudah Dipesan ${masterBatch.reserved_qty}`) && currentBatchText.includes("Reservasi berlaku pada tingkat Produk.") && currentBatchText.includes(`Pemakaian FEFO ${expectedBatchFefo}`), JSON.stringify({ lifecycleStatusCode: masterBatch.lifecycle_status_code, sellableQty: masterBatch.sellable_qty, quarantineQty: masterBatch.quarantine_qty, damagedQty: masterBatch.damaged_qty, reservedQty: masterBatch.reserved_qty, availableQty: masterBatch.available_qty, reservationScopeCode: masterBatch.reservation_scope_code, isFefoEligible: masterBatch.is_fefo_eligible }), "Batch");
   const feedback = await page("/products?success=Produk+tersimpan");
   pass("Feedback success persisten", feedback.html.includes("Produk tersimpan"));
   const batchSuccessFeedback = await page(`/products/${product.productId}/batches/${batch.batchId}?success=Batch+tersimpan`);

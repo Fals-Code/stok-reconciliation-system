@@ -1,304 +1,840 @@
 import { randomUUID } from "node:crypto";
 import Link from "next/link";
 import {
+  notFound,
+} from "next/navigation";
+
+import {
+  AppShell,
+} from "@/app/app-shell/app-shell";
+import {
+  PageHeader,
+} from "@/app/app-shell/page-header";
+import {
   archiveProductBatchAction,
   blockProductBatchAction,
   reactivateProductBatchAction,
   unblockProductBatchAction,
   updateProductBatchAction,
 } from "@/app/products/actions";
-import { getProductBatchMasterData } from "@/lib/supabase-rest";
-import { LedgerStockStory } from "@/app/ledger/stock-story";
-export const dynamic = "force-dynamic";
-type Q = { success?: string; error?: string };
-function Feedback({ q }: { q: Q }) {
-  const m = q.success ?? q.error;
-  return m ? (
-    <p
-      role="status"
-      className={`mt-4 rounded-xl border p-3 ${q.error ? "border-rose-400/30 text-rose-100" : "border-emerald-400/30 text-emerald-100"}`}
-    >
-      {m}
-    </p>
-  ) : null;
+import {
+  Alert,
+  Input,
+  StatusBadge,
+  Textarea,
+} from "@/components/ui";
+import {
+  requireAdminSession,
+} from "@/lib/auth";
+import {
+  getProductBatchMasterData,
+  type ProductBatchMasterRow,
+} from "@/lib/supabase-rest";
+
+export const dynamic =
+  "force-dynamic";
+
+type SearchParams =
+  Record<
+    string,
+    string | string[] | undefined
+  >;
+
+function first(
+  value: SearchParams[string],
+) {
+  return Array.isArray(value)
+    ? value[0]
+    : value;
 }
-function Id({
+
+function quantity(value: number) {
+  return new Intl.NumberFormat(
+    "id-ID",
+  ).format(Number(value));
+}
+
+function safeReturnTo(
+  value: string | undefined,
+  productId: string,
+) {
+  const candidate =
+    value?.trim() ?? "";
+
+  const expectedPrefix =
+    `/products/${productId}`;
+
+  if (
+    candidate.startsWith(
+      expectedPrefix,
+    ) &&
+    !candidate.startsWith("//") &&
+    !candidate.includes("\n") &&
+    !candidate.includes("\r")
+  ) {
+    return candidate;
+  }
+
+  return `${expectedPrefix}?tab=batches`;
+}
+
+function statusLabel(
+  status: ProductBatchMasterRow[
+    "lifecycle_status_code"
+  ],
+) {
+  if (status === "ACTIVE") {
+    return "Aktif";
+  }
+
+  if (status === "BLOCKED") {
+    return "Ditahan";
+  }
+
+  if (status === "EXPIRED") {
+    return "Kedaluwarsa";
+  }
+
+  return "Tidak Aktif";
+}
+
+function kindLabel(
+  kind: ProductBatchMasterRow[
+    "batch_kind_code"
+  ],
+) {
+  if (kind === "RETURN") {
+    return "Batch Retur";
+  }
+
+  if (
+    kind === "UNIDENTIFIED_RETURN"
+  ) {
+    return "Retur Belum Teridentifikasi";
+  }
+
+  return "Batch Standar";
+}
+
+function batchSignal(
+  batch: ProductBatchMasterRow,
+) {
+  if (
+    batch.lifecycle_status_code ===
+    "BLOCKED"
+  ) {
+    return batch.block_reason
+      ? `Batch ditahan: ${batch.block_reason}`
+      : "Batch sedang ditahan.";
+  }
+
+  if (batch.is_effectively_expired) {
+    return "Batch sudah kedaluwarsa.";
+  }
+
+  if (
+    batch.effective_expiry_state ===
+    "EXPIRES_TODAY"
+  ) {
+    return "Batch kedaluwarsa hari ini.";
+  }
+
+  return null;
+}
+
+function HiddenIdentity({
   batch,
   productId,
 }: {
-  batch: { batch_id: string; row_version: number };
+  batch: ProductBatchMasterRow;
   productId: string;
 }) {
   return (
     <>
-      <input type="hidden" name="intentId" value={randomUUID()} />
-      <input type="hidden" name="productId" value={productId} />
-      <input type="hidden" name="batchId" value={batch.batch_id} />
-      <input type="hidden" name="rowVersion" value={batch.row_version} />
+      <input
+        name="intentId"
+        type="hidden"
+        value={randomUUID()}
+      />
+      <input
+        name="productId"
+        type="hidden"
+        value={productId}
+      />
+      <input
+        name="batchId"
+        type="hidden"
+        value={batch.batch_id}
+      />
+      <input
+        name="rowVersion"
+        type="hidden"
+        value={batch.row_version}
+      />
     </>
   );
 }
-export default async function BatchPage({
+
+export default async function BatchDetailPage({
   params,
   searchParams,
 }: {
-  params: Promise<{ productId: string; batchId: string }>;
-  searchParams: Promise<Q>;
+  params: Promise<{
+    productId: string;
+    batchId: string;
+  }>;
+  searchParams:
+    Promise<SearchParams>;
 }) {
-  const [{ productId, batchId }, q] = await Promise.all([params, searchParams]);
-  const data = await getProductBatchMasterData();
-  const batch = data.batches.find(
-    (r) => r.batch_id === batchId && r.product_id === productId,
-  );
-  if (!batch)
-    return <main className="p-8 text-slate-100">Batch tidak ditemukan.</main>;
-  const audits = data.audits.filter((a) => a.batch_id === batchId);
-  const standard = batch.batch_kind_code === "STANDARD";
-  const expired = batch.is_effectively_expired;
-  const editable = standard && batch.lifecycle_status_code !== "ARCHIVED";
-  const fefoReason = batch.is_fefo_eligible
-    ? "ACTIVE, belum expired, saldo sellable dan available tersedia."
-    : batch.lifecycle_status_code !== "ACTIVE"
-      ? `Lifecycle ${batch.lifecycle_status_code}.`
-      : expired
-        ? "Efektif kedaluwarsa."
-        : !batch.product_is_active
-          ? "Produk diarsipkan."
-          : batch.available_qty <= 0
-            ? "Available produk tidak tersedia."
-            : "Safety buffer atau saldo sellable belum memenuhi.";
-  return (
-    <main className="mx-auto max-w-5xl px-5 py-8 text-slate-100">
-      <Link href={`/products/${productId}`} className="nav-link">
-        Kembali ke Produk
-      </Link>
-      <section className="panel-card mt-5">
-        <p className="section-kicker">Batch {batch.batch_kind_code}</p>
-        <h1 className="section-title">{batch.batch_code}</h1>
-        <p>
-          {batch.product_sku} — {batch.product_name}
-        </p>
-        <Feedback q={q} />
-        <div className="mt-5 grid gap-3 sm:grid-cols-3">
-          <p>
-            Status: <strong>{batch.lifecycle_status_code}</strong>
-          </p>
-          <p>
-            Effective expiry: <strong>{batch.effective_expiry_state}</strong>
-          </p>
-          <p>
-            FEFO:{" "}
-            <strong>
-              {batch.is_fefo_eligible ? "Eligible" : "Tidak eligible"}
-            </strong>
-          </p>
-          <p>Manufactured: {batch.manufactured_date ?? "-"}</p>
-          <p>Expiry: {batch.expiry_date}</p>
-          <p>First received: {batch.received_first_at ?? "-"}</p>
-          <p>SELLABLE: {batch.sellable_qty}</p>
-          <p>QUARANTINE: {batch.quarantine_qty}</p>
-          <p>DAMAGED: {batch.damaged_qty}</p>
-          <p>Reserved: {batch.reserved_qty} (product-scoped)</p>
-          <p>Available: {batch.available_qty}</p>
-          <p>History: {batch.has_authoritative_history ? "Ada" : "Belum"}</p>
+  const [
+    {
+      productId,
+      batchId,
+    },
+    query,
+    session,
+  ] = await Promise.all([
+    params,
+    searchParams,
+    requireAdminSession(),
+  ]);
+
+  let data;
+
+  try {
+    data =
+      await getProductBatchMasterData(
+        session.profile
+          .organization_id,
+      );
+  } catch {
+    return (
+      <AppShell
+        profile={
+          session.profile
+        }
+      >
+        <div className="mx-auto w-full max-w-[960px] px-4 py-6 sm:px-6 lg:px-8 lg:py-8">
+          <PageHeader
+            description="Data Batch belum dapat dimuat. Kondisi gagal tidak mengubah stok."
+            title="Detail Batch"
+          />
+
+          <Alert
+            className="mt-6"
+            title="Batch belum dapat dimuat"
+            tone="warning"
+          >
+            Muat ulang sebelum melakukan
+            perubahan pada master Batch.
+          </Alert>
         </div>
-        <p className="mt-4 text-sm text-slate-400">
-          Alasan FEFO: {fefoReason} QUARANTINE adalah bucket stok, bukan status
-          Batch. Master mutation tidak mengubah stok atau snapshot ledger lama.
-        </p>
-        <Link className="primary-button mt-5 inline-flex" href={`/ledger?productId=${encodeURIComponent(batch.product_id)}&batchId=${encodeURIComponent(batch.batch_id)}&batchCode=${encodeURIComponent(batch.batch_code)}`}>
-          Lihat Jejak Batch
-        </Link>
-      </section>
-      <LedgerStockStory
-        productId={batch.product_id}
-        batchId={batch.batch_id}
-        productLabel={`${batch.product_name} · ${batch.product_sku}`}
-        batchLabel={batch.batch_code}
-      />
-      {!standard ? (
-        <section className="panel-card mt-5 text-amber-100">
-          Batch {batch.batch_kind_code} dibuat domain retur dan hanya dapat
-          dibaca pada workflow Admin STANDARD.
-        </section>
-      ) : (
-        <>
-          <section className="panel-card mt-5">
-            <p className="section-kicker">Edit Batch</p>
-            {!editable ? (
-              <p className="mt-3 text-amber-100">
-                Batch ARCHIVED tidak dapat diedit. Gunakan reaktivasi bila
-                invariant tetap valid.
+      </AppShell>
+    );
+  }
+
+  const batch =
+    data.batches.find(
+      (row) =>
+        row.product_id ===
+          productId &&
+        row.batch_id ===
+          batchId,
+    );
+
+  if (!batch) {
+    notFound();
+  }
+
+  const returnTo =
+    safeReturnTo(
+      first(query.returnTo),
+      productId,
+    );
+
+  const audits =
+    data.audits.filter(
+      (audit) =>
+        audit.batch_id ===
+        batch.batch_id,
+    );
+
+  const standard =
+    batch.batch_kind_code ===
+    "STANDARD";
+
+  const archived =
+    batch.lifecycle_status_code ===
+    "ARCHIVED";
+
+  const expired =
+    batch.is_effectively_expired;
+
+  const signal =
+    batchSignal(batch);
+
+  const success =
+    first(query.success);
+
+  const error =
+    first(query.error);
+
+  return (
+    <AppShell
+      profile={session.profile}
+    >
+      <div className="mx-auto w-full max-w-[960px] px-4 py-6 sm:px-6 lg:px-8 lg:py-8">
+        <PageHeader
+          action={
+            <Link
+              className="inline-flex min-h-[var(--ui-control-height)] items-center text-sm font-semibold text-ui-primary hover:underline"
+              href={returnTo}
+            >
+              Kembali ke Produk
+            </Link>
+          }
+          description={`${batch.product_sku} · ${batch.product_name}`}
+          eyebrow="Detail Batch"
+          title={batch.batch_code}
+        />
+
+        {success ? (
+          <Alert
+            className="mt-6"
+            title="Perubahan Batch tersimpan"
+            tone="success"
+          >
+            {success}
+          </Alert>
+        ) : null}
+
+        {error ? (
+          <Alert
+            className="mt-6"
+            title="Perubahan Batch belum tersimpan"
+            tone="warning"
+          >
+            {error}
+          </Alert>
+        ) : null}
+
+        <section className="mt-6 rounded-[var(--ui-radius-lg)] border border-ui-border bg-ui-surface p-4 sm:p-5">
+          <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+            <div>
+              <p className="text-sm font-semibold text-ui-text">
+                {kindLabel(
+                  batch.batch_kind_code,
+                )}
               </p>
-            ) : (
+
+              <p className="mt-1 text-sm text-ui-text-muted">
+                Kedaluwarsa{" "}
+                {batch.expiry_date}
+              </p>
+            </div>
+
+            <StatusBadge
+              tone={
+                batch.lifecycle_status_code ===
+                  "BLOCKED" ||
+                batch.lifecycle_status_code ===
+                  "EXPIRED"
+                  ? "warning"
+                  : "neutral"
+              }
+            >
+              {statusLabel(
+                batch.lifecycle_status_code,
+              )}
+            </StatusBadge>
+          </div>
+
+          {signal ? (
+            <p className="mt-4 rounded-[var(--ui-radius-md)] bg-ui-warning-subtle px-3 py-2 text-sm text-ui-warning">
+              {signal}
+            </p>
+          ) : null}
+
+          <dl className="mt-5 grid grid-cols-2 gap-4 text-sm sm:grid-cols-3">
+            <div>
+              <dt className="text-ui-text-muted">
+                Layak Dijual
+              </dt>
+              <dd className="ui-number mt-1 text-xl font-semibold text-ui-text">
+                {quantity(
+                  batch.sellable_qty,
+                )}
+              </dd>
+            </div>
+
+            <div>
+              <dt className="text-ui-text-muted">
+                Ditahan
+              </dt>
+              <dd className="ui-number mt-1 text-xl font-semibold text-ui-text">
+                {quantity(
+                  batch.quarantine_qty,
+                )}
+              </dd>
+            </div>
+
+            <div>
+              <dt className="text-ui-text-muted">
+                Rusak
+              </dt>
+              <dd className="ui-number mt-1 text-xl font-semibold text-ui-text">
+                {quantity(
+                  batch.damaged_qty,
+                )}
+              </dd>
+            </div>
+
+            <div>
+              <dt className="text-ui-text-muted">
+                Sudah Dipesan
+              </dt>
+              <dd className="ui-number mt-1 font-semibold text-ui-text">
+                {quantity(
+                  batch.reserved_qty,
+                )}
+              </dd>
+              <p className="mt-1 text-xs text-ui-text-muted">
+                Reservasi berlaku pada
+                tingkat Produk.
+              </p>
+            </div>
+
+            <div>
+              <dt className="text-ui-text-muted">
+                Pemakaian FEFO
+              </dt>
+              <dd className="mt-1 font-semibold text-ui-text">
+                {batch.is_fefo_eligible
+                  ? "Dapat digunakan otomatis"
+                  : "Tidak digunakan"}
+              </dd>
+            </div>
+
+            <div>
+              <dt className="text-ui-text-muted">
+                Histori stok
+              </dt>
+              <dd className="mt-1 font-semibold text-ui-text">
+                {batch.has_authoritative_history
+                  ? "Sudah ada"
+                  : "Belum ada"}
+              </dd>
+            </div>
+          </dl>
+
+          <p className="mt-5 text-sm leading-6 text-ui-text-muted">
+            Operator tidak memilih Batch
+            untuk Barang Keluar. Sistem
+            tetap menentukan FEFO secara
+            otomatis saat transaksi
+            outbound diperiksa dan
+            disimpan.
+          </p>
+
+          <Link
+            className="mt-4 inline-flex min-h-[var(--ui-control-height)] items-center font-semibold text-ui-primary hover:underline"
+            href={`/ledger?productId=${encodeURIComponent(
+              batch.product_id,
+            )}&batchId=${encodeURIComponent(
+              batch.batch_id,
+            )}&batchCode=${encodeURIComponent(
+              batch.batch_code,
+            )}`}
+          >
+            Lihat Riwayat Batch
+          </Link>
+        </section>
+
+        {!standard ? (
+          <Alert
+            className="mt-6"
+            title="Batch dikelola oleh alur retur"
+            tone="warning"
+          >
+            Jenis{" "}
+            {batch.batch_kind_code} dibuat
+            oleh domain retur dan tidak
+            diedit melalui pengaturan Batch
+            STANDARD.
+          </Alert>
+        ) : (
+          <details className="mt-6 rounded-[var(--ui-radius-lg)] border border-ui-border bg-ui-surface p-4 sm:p-5">
+            <summary className="cursor-pointer text-sm font-semibold text-ui-text">
+              Pengaturan Batch
+            </summary>
+
+            {!archived ? (
               <form
-                action={updateProductBatchAction}
-                className="form-grid mt-4"
+                action={
+                  updateProductBatchAction
+                }
+                className="mt-4 grid gap-4 sm:grid-cols-2"
               >
-                <Id batch={batch} productId={productId} />
-                <label className="field-label">
+                <HiddenIdentity
+                  batch={batch}
+                  productId={
+                    productId
+                  }
+                />
+
+                <label className="grid gap-2 text-sm font-semibold text-ui-text">
                   Kode Batch
-                  <input
-                    required
+                  <Input
+                    defaultValue={
+                      batch.batch_code
+                    }
                     name="batchCode"
-                    defaultValue={batch.batch_code}
+                    required
                   />
                 </label>
-                <label className="field-label">
-                  Kind
-                  <input value="STANDARD" readOnly />
+
+                <label className="grid gap-2 text-sm font-semibold text-ui-text">
+                  Kedaluwarsa
+                  <Input
+                    defaultValue={
+                      batch.expiry_date
+                    }
+                    name="expiryDate"
+                    required
+                    type="date"
+                  />
                 </label>
-                <label className="field-label">
-                  Manufactured
-                  <input
+
+                <label className="grid gap-2 text-sm font-semibold text-ui-text">
+                  Tanggal Produksi
+                  <Input
+                    defaultValue={
+                      batch.manufactured_date ??
+                      ""
+                    }
                     name="manufacturedDate"
                     type="date"
-                    defaultValue={batch.manufactured_date ?? ""}
                   />
                 </label>
-                <label className="field-label">
-                  Expiry
-                  <input
-                    required
-                    name="expiryDate"
-                    type="date"
-                    defaultValue={batch.expiry_date}
-                  />
-                </label>
-                <label className="field-label">
-                  First received
-                  <input
+
+                <label className="grid gap-2 text-sm font-semibold text-ui-text">
+                  Pertama Diterima
+                  <Input
+                    defaultValue={
+                      batch.received_first_at?.slice(
+                        0,
+                        16,
+                      ) ?? ""
+                    }
                     name="receivedFirstAt"
                     type="datetime-local"
-                    defaultValue={batch.received_first_at?.slice(0, 16) ?? ""}
                   />
                 </label>
-                {batch.has_authoritative_history && (
-                  <label className="field-label">
-                    Alasan koreksi expiry
-                    <textarea
+
+                {batch.has_authoritative_history ? (
+                  <label className="grid gap-2 text-sm font-semibold text-ui-text sm:col-span-2">
+                    Alasan koreksi
+                    <Textarea
                       name="reason"
-                      required
-                      placeholder="Wajib bila expiry diubah setelah ada histori"
+                      placeholder="Wajib jika tanggal kedaluwarsa dikoreksi setelah Batch memiliki histori."
                     />
                   </label>
-                )}
-                <label className="field-label">
+                ) : null}
+
+                <label className="grid gap-2 text-sm font-semibold text-ui-text sm:col-span-2">
                   Catatan
-                  <textarea name="note" />
+                  <Textarea name="note" />
                 </label>
-                <div>
-                  <button className="primary-button">Simpan Batch</button>
+
+                <div className="sm:col-span-2">
+                  <button
+                    className="min-h-[var(--ui-control-height)] rounded-[var(--ui-radius-md)] border border-ui-primary bg-ui-primary px-4 text-sm font-semibold text-ui-text-on-primary"
+                    type="submit"
+                  >
+                    Simpan Batch
+                  </button>
                 </div>
               </form>
+            ) : (
+              <p className="mt-4 text-sm text-ui-text-muted">
+                Batch tidak aktif tidak
+                dapat diedit sebelum
+                diaktifkan kembali.
+              </p>
             )}
-          </section>
-          <section className="panel-card mt-5">
-            <p className="section-kicker">Lifecycle</p>
-            {batch.lifecycle_status_code === "ACTIVE" && (
-              <div className="grid gap-4 sm:grid-cols-2">
-                <form action={blockProductBatchAction}>
-                  <Id batch={batch} productId={productId} />
-                  <label className="field-label">
-                    Alasan block
-                    <textarea required name="reason" />
-                  </label>
-                  <button className="primary-button mt-3">Block Batch</button>
-                </form>
-                <form action={archiveProductBatchAction}>
-                  <Id batch={batch} productId={productId} />
-                  <label className="field-label">
-                    Alasan archive
-                    <textarea required name="reason" />
-                  </label>
-                  <label>
-                    <input type="checkbox" name="confirmation" /> Konfirmasi
-                    archive
-                  </label>
-                  <button className="primary-button mt-3">Archive Batch</button>
-                </form>
-              </div>
-            )}
-            {batch.lifecycle_status_code === "BLOCKED" && (
-              <div className="grid gap-4 sm:grid-cols-2">
-                {expired ? (
-                  <p className="text-amber-100">
-                    Batch efektif expired tidak dapat di-unblock menjadi ACTIVE.
-                  </p>
-                ) : (
-                  <form action={unblockProductBatchAction}>
-                    <Id batch={batch} productId={productId} />
-                    <label className="field-label">
-                      Alasan unblock
-                      <textarea required name="reason" />
+
+            <div className="mt-6 border-t border-ui-border pt-5">
+              {batch.lifecycle_status_code ===
+              "ACTIVE" ? (
+                <div className="grid gap-5 sm:grid-cols-2">
+                  <form
+                    action={
+                      blockProductBatchAction
+                    }
+                    className="grid gap-3"
+                  >
+                    <HiddenIdentity
+                      batch={batch}
+                      productId={
+                        productId
+                      }
+                    />
+
+                    <label className="grid gap-2 text-sm font-semibold text-ui-text">
+                      Alasan menahan Batch
+                      <Textarea
+                        name="reason"
+                        required
+                      />
                     </label>
-                    <button className="primary-button mt-3">
-                      Unblock Batch
+
+                    <button
+                      className="min-h-[var(--ui-control-height)] justify-self-start rounded-[var(--ui-radius-md)] border border-ui-border px-4 text-sm font-semibold text-ui-text"
+                      type="submit"
+                    >
+                      Tahan Batch
                     </button>
                   </form>
-                )}
-                <form action={archiveProductBatchAction}>
-                  <Id batch={batch} productId={productId} />
-                  <label className="field-label">
-                    Alasan archive
-                    <textarea required name="reason" />
-                  </label>
-                  <label>
-                    <input type="checkbox" name="confirmation" /> Konfirmasi
-                    archive
-                  </label>
-                  <button className="primary-button mt-3">Archive Batch</button>
-                </form>
-              </div>
-            )}
-            {batch.lifecycle_status_code === "ARCHIVED" &&
-              (expired ? (
-                <p className="text-amber-100">
-                  Batch efektif expired tidak dapat direactivate.
-                </p>
-              ) : (
-                <form action={reactivateProductBatchAction}>
-                  <Id batch={batch} productId={productId} />
-                  <label className="field-label">
-                    Alasan reaktivasi
-                    <textarea required name="reason" />
-                  </label>
-                  <label>
-                    <input type="checkbox" name="confirmation" /> Konfirmasi
-                    reaktivasi
-                  </label>
-                  <button className="primary-button mt-3">
-                    Reactivate Batch
-                  </button>
-                </form>
-              ))}
-          </section>
-        </>
-      )}
-      <section className="panel-card mt-5">
-        <h2 className="section-title">Audit Batch</h2>
-        {audits.length ? (
-          audits.map((a) => (
-            <article
-              key={a.audit_id}
-              className="mt-3 border-t border-white/10 pt-3 text-sm"
-            >
-              <strong>{a.action_code}</strong> — {a.reason ?? a.note ?? "-"}
-              <p className="text-slate-400">
-                {a.actor_display_name ?? a.process_name ?? "Proses tepercaya"} ·{" "}
-                {a.occurred_at}
-              </p>
-              {a.before_snapshot && a.after_snapshot && (
-                <p className="text-slate-400">
-                  Before/after snapshot tersimpan untuk audit.
-                </p>
-              )}
-            </article>
-          ))
-        ) : (
-          <p className="mt-3">Belum ada audit.</p>
+
+                  <form
+                    action={
+                      archiveProductBatchAction
+                    }
+                    className="grid gap-3"
+                  >
+                    <HiddenIdentity
+                      batch={batch}
+                      productId={
+                        productId
+                      }
+                    />
+
+                    <label className="grid gap-2 text-sm font-semibold text-ui-text">
+                      Alasan menonaktifkan
+                      <Textarea
+                        name="reason"
+                        required
+                      />
+                    </label>
+
+                    <label className="flex items-start gap-2 text-sm text-ui-text">
+                      <input
+                        className="mt-1"
+                        name="confirmation"
+                        required
+                        type="checkbox"
+                      />
+                      Saya memahami Batch
+                      tidak akan digunakan
+                      pada transaksi baru.
+                    </label>
+
+                    <button
+                      className="min-h-[var(--ui-control-height)] justify-self-start rounded-[var(--ui-radius-md)] border border-ui-border px-4 text-sm font-semibold text-ui-text"
+                      type="submit"
+                    >
+                      Nonaktifkan Batch
+                    </button>
+                  </form>
+                </div>
+              ) : null}
+
+              {batch.lifecycle_status_code ===
+              "BLOCKED" ? (
+                <div className="grid gap-5 sm:grid-cols-2">
+                  {expired ? (
+                    <p className="text-sm text-ui-warning">
+                      Batch yang sudah
+                      kedaluwarsa tidak dapat
+                      diaktifkan kembali.
+                    </p>
+                  ) : (
+                    <form
+                      action={
+                        unblockProductBatchAction
+                      }
+                      className="grid gap-3"
+                    >
+                      <HiddenIdentity
+                        batch={batch}
+                        productId={
+                          productId
+                        }
+                      />
+
+                      <label className="grid gap-2 text-sm font-semibold text-ui-text">
+                        Alasan melepas
+                        tahanan
+                        <Textarea
+                          name="reason"
+                          required
+                        />
+                      </label>
+
+                      <button
+                        className="min-h-[var(--ui-control-height)] justify-self-start rounded-[var(--ui-radius-md)] border border-ui-border px-4 text-sm font-semibold text-ui-text"
+                        type="submit"
+                      >
+                        Aktifkan Batch
+                      </button>
+                    </form>
+                  )}
+
+                  <form
+                    action={
+                      archiveProductBatchAction
+                    }
+                    className="grid gap-3"
+                  >
+                    <HiddenIdentity
+                      batch={batch}
+                      productId={
+                        productId
+                      }
+                    />
+
+                    <label className="grid gap-2 text-sm font-semibold text-ui-text">
+                      Alasan menonaktifkan
+                      <Textarea
+                        name="reason"
+                        required
+                      />
+                    </label>
+
+                    <label className="flex items-start gap-2 text-sm text-ui-text">
+                      <input
+                        className="mt-1"
+                        name="confirmation"
+                        required
+                        type="checkbox"
+                      />
+                      Saya memahami Batch
+                      akan menjadi tidak
+                      aktif.
+                    </label>
+
+                    <button
+                      className="min-h-[var(--ui-control-height)] justify-self-start rounded-[var(--ui-radius-md)] border border-ui-border px-4 text-sm font-semibold text-ui-text"
+                      type="submit"
+                    >
+                      Nonaktifkan Batch
+                    </button>
+                  </form>
+                </div>
+              ) : null}
+
+              {batch.lifecycle_status_code ===
+              "ARCHIVED" ? (
+                expired ? (
+                  <p className="text-sm text-ui-warning">
+                    Batch yang sudah
+                    kedaluwarsa tidak dapat
+                    diaktifkan kembali.
+                  </p>
+                ) : (
+                  <form
+                    action={
+                      reactivateProductBatchAction
+                    }
+                    className="grid gap-3"
+                  >
+                    <HiddenIdentity
+                      batch={batch}
+                      productId={
+                        productId
+                      }
+                    />
+
+                    <label className="grid gap-2 text-sm font-semibold text-ui-text">
+                      Alasan mengaktifkan
+                      kembali
+                      <Textarea
+                        name="reason"
+                        required
+                      />
+                    </label>
+
+                    <label className="flex items-start gap-2 text-sm text-ui-text">
+                      <input
+                        className="mt-1"
+                        name="confirmation"
+                        required
+                        type="checkbox"
+                      />
+                      Saya sudah memeriksa
+                      identitas dan tanggal
+                      Batch.
+                    </label>
+
+                    <button
+                      className="min-h-[var(--ui-control-height)] justify-self-start rounded-[var(--ui-radius-md)] border border-ui-primary bg-ui-primary px-4 text-sm font-semibold text-ui-text-on-primary"
+                      type="submit"
+                    >
+                      Aktifkan Kembali Batch
+                    </button>
+                  </form>
+                )
+              ) : null}
+            </div>
+          </details>
         )}
-      </section>
-    </main>
+
+        <details className="mt-6 rounded-[var(--ui-radius-lg)] border border-ui-border bg-ui-surface p-4 sm:p-5">
+          <summary className="cursor-pointer text-sm font-semibold text-ui-text">
+            Audit Batch
+          </summary>
+
+          {audits.length ? (
+            <div className="mt-4 grid gap-3">
+              {audits.map(
+                (audit) => (
+                  <article
+                    className="rounded-[var(--ui-radius-md)] bg-ui-surface-subtle p-3 text-sm"
+                    key={
+                      audit.audit_id
+                    }
+                  >
+                    <p className="font-semibold text-ui-text">
+                      {
+                        audit.action_code
+                      }
+                    </p>
+
+                    <p className="mt-1 text-ui-text-muted">
+                      {audit.reason ??
+                        audit.note ??
+                        "Tanpa catatan"}
+                    </p>
+
+                    <p className="mt-1 text-xs text-ui-text-muted">
+                      {audit.actor_display_name ??
+                        audit.process_name ??
+                        "Proses tepercaya"}
+                      {" · "}
+                      {
+                        audit.occurred_at
+                      }
+                    </p>
+
+                    {audit.before_snapshot &&
+                    audit.after_snapshot ? (
+                      <p className="mt-1 text-xs text-ui-text-muted">
+                        Snapshot sebelum dan
+                        sesudah tersimpan
+                        untuk audit.
+                      </p>
+                    ) : null}
+                  </article>
+                ),
+              )}
+            </div>
+          ) : (
+            <p className="mt-3 text-sm text-ui-text-muted">
+              Belum ada audit Batch.
+            </p>
+          )}
+        </details>
+      </div>
+    </AppShell>
   );
 }
