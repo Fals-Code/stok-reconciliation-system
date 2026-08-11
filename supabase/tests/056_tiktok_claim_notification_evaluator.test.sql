@@ -62,7 +62,7 @@ select set_config('request.jwt.claim.sub',(select admin_user_id::text from evalu
 select set_config('request.jwt.claim.role','authenticated',true);
 select set_config('request.jwt.claims',jsonb_build_object('sub',(select admin_user_id::text from evaluator_fixture),'role','authenticated')::text,true);
 set local role authenticated;
-insert into claim_notification_results select 'FIXTURE_PRODUCT',api.create_product((select organization_id from evaluator_fixture),'056-EVALUATOR-PRODUCT','EVALUATOR 056','Evaluator fixture product','UNIT',null,'Evaluator fixture');
+insert into claim_notification_results select 'FIXTURE_PRODUCT',api.create_product((select organization_id from evaluator_fixture),'056-EVALUATOR-PRODUCT','Evaluator fixture product',1000,'UNIT',null,'Evaluator fixture');
 update evaluator_fixture set product_id=(select (result->>'productId')::uuid from claim_notification_results where kind='FIXTURE_PRODUCT');
 insert into claim_notification_results select 'FIXTURE_BATCH',api.create_product_batch((select organization_id from evaluator_fixture),'056-EVALUATOR-BATCH',(select product_id from evaluator_fixture),'EVALUATOR LOT 056','2027-12-31','2026-06-01',null,'STANDARD','Evaluator fixture');
 update evaluator_fixture set batch_id=(select (result->>'batchId')::uuid from claim_notification_results where kind='FIXTURE_BATCH');
@@ -282,7 +282,7 @@ create temp table lifecycle_fixture_results (kind text primary key,result jsonb 
 grant select, insert, update on lifecycle_fixture_results to authenticated;
 grant select, insert, update on lifecycle_fixture_results to service_role;
 set local role authenticated;
-insert into lifecycle_fixture_results select 'PRODUCT',api.create_product('00000000-0000-4000-8000-000000000056','056-LIFECYCLE-PRODUCT','LIFECYCLE 056','Lifecycle Bootstrap Product','UNIT',null,'Lifecycle bootstrap fixture');
+insert into lifecycle_fixture_results select 'PRODUCT',api.create_product('00000000-0000-4000-8000-000000000056','056-LIFECYCLE-PRODUCT','Lifecycle Bootstrap Product',1000,'UNIT',null,'Lifecycle bootstrap fixture');
 insert into lifecycle_fixture_results select 'BATCH',api.create_product_batch('00000000-0000-4000-8000-000000000056','056-LIFECYCLE-BATCH',(select (result->>'productId')::uuid from lifecycle_fixture_results where kind='PRODUCT'),'LIFECYCLE LOT 056','2027-12-31','2026-07-23',null,'STANDARD','Lifecycle bootstrap fixture');
 insert into lifecycle_fixture_results select 'RECEIPT',api.post_receipt('00000000-0000-4000-8000-000000000056','056-LIFECYCLE-RECEIPT','RCV-LIFECYCLE-056','2026-07-23 09:00:00+07',jsonb_build_array(jsonb_build_object('productId',(select result->>'productId' from lifecycle_fixture_results where kind='PRODUCT'),'batchId',(select result->>'batchId' from lifecycle_fixture_results where kind='BATCH'),'quantity',10,'sourceLineRef','LIFECYCLE-LINE-1')),'Lifecycle bootstrap receipt.','{"fixture":"lifecycle-056"}'::jsonb);
 select is(app.current_organization_id(),'00000000-0000-4000-8000-000000000056'::uuid,'lifecycle bootstrap JWT resolves the fixture organization');

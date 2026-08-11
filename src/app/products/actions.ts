@@ -27,6 +27,23 @@ function optional(formData: FormData, key: string) {
   return typeof value === "string" && value.trim() ? value.trim() : null;
 }
 
+function parseSizeMl(input: string): number {
+  const match = input.trim().toLowerCase().match(/^([0-9]+(?:[.,][0-9]+)?)\s*(ml|l)?$/);
+  if (!match) {
+    throw new Error("INVALID_PRODUCT_SIZE");
+  }
+
+  const numericValue = Number(match[1].replace(",", "."));
+  const multiplier = match[2] === "l" ? 1000 : 1;
+  const sizeMl = numericValue * multiplier;
+
+  if (!Number.isFinite(sizeMl) || !Number.isSafeInteger(sizeMl) || sizeMl <= 0) {
+    throw new Error("INVALID_PRODUCT_SIZE");
+  }
+
+  return sizeMl;
+}
+
 function productId(formData: FormData) {
   const value = required(formData, "productId");
   if (!UUID_PATTERN.test(value)) throw new Error("PRODUCT_NOT_FOUND");
@@ -56,12 +73,13 @@ function requiresConfirmation(formData: FormData) {
 function productErrorMessage(error: unknown) {
   const raw = error instanceof Error ? error.message : "";
   const messages: Record<string, string> = {
-    PRODUCT_REQUIRED_FIELDS_MISSING: "SKU dan nama produk wajib diisi.",
-    DUPLICATE_SKU: "SKU tersebut sudah dipakai pada organisasi ini.",
+    PRODUCT_REQUIRED_FIELDS_MISSING: "Nama produk dan ukuran wajib diisi.",
+    DUPLICATE_SKU: "Produk dengan singkatan dan ukuran yang sama sudah ada.",
+    INVALID_PRODUCT_SIZE: "Ukuran harus berupa nilai positif dalam ml atau L dan menghasilkan jumlah ml bulat.",
     UNSUPPORTED_UNIT: "Satuan produk harus UNIT.",
     PRODUCT_NOT_FOUND: "Produk tidak ditemukan atau tidak dapat diakses.",
     PRODUCT_STALE_VERSION: "Produk berubah sejak halaman dibuka. Muat ulang lalu periksa kembali.",
-    TRANSACTED_SKU_CHANGE_FORBIDDEN: "SKU sudah dipakai transaksi sehingga tidak dapat diubah.",
+    TRANSACTED_SKU_CHANGE_FORBIDDEN: "Ukuran produk tidak dapat diubah karena produk sudah memiliki riwayat transaksi.",
     PRODUCT_ALREADY_ARCHIVED: "Produk sudah diarsipkan.",
     PRODUCT_NOT_ARCHIVED: "Hanya produk yang diarsipkan yang dapat diaktifkan kembali.",
     PRODUCT_REACTIVATION_CONFLICT: "Produk tidak dapat diaktifkan karena SKU aktif yang sama sudah ada.",
@@ -97,7 +115,7 @@ export async function createProductAction(formData: FormData) {
     const result = await createProduct({
       organizationId: session.profile.organization_id,
       idempotencyKey: `product-admin:create:${intentId(formData)}`,
-      sku: required(formData, "sku"),
+      sizeMl: parseSizeMl(required(formData, "size")),
       name: required(formData, "name"),
       unitCode: "UNIT",
       description: optional(formData, "description"),
@@ -124,7 +142,7 @@ export async function updateProductAction(formData: FormData) {
       idempotencyKey: `product-admin:update:${intentId(formData)}`,
       productId: productId(formData),
       expectedRowVersion: rowVersion(formData),
-      sku: required(formData, "sku"),
+      sizeMl: parseSizeMl(required(formData, "size")),
       name: required(formData, "name"),
       unitCode: "UNIT",
       description: optional(formData, "description"),

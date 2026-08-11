@@ -106,6 +106,8 @@ async function profile(config, token) {
   return rows[0];
 }
 
+function fixtureSizeMl(value) { let hash = 2166136261; for (const char of String(value)) { hash ^= char.charCodeAt(0); hash = Math.imul(hash, 16777619); } return 1000 + ((hash >>> 0) % 1000000000); }
+
 function names(kind) {
   const stem = `${PREFIX}-${kind}`;
   return {
@@ -123,8 +125,8 @@ function names(kind) {
 
 async function ensureProduct(config, token, organizationId, item) {
   const product = await rpc(config, token, "create_product", {
-    p_organization_id: organizationId, p_idempotency_key: item.productKey, p_sku: item.sku,
-    p_name: `Fixture version concurrency ${item.sku}`, p_unit_code: "UNIT", p_description: "Fixture durable Issue #56.", p_note: "Marketplace version fixture.",
+    p_organization_id: organizationId, p_idempotency_key: item.productKey,
+    p_name: `Fixture version concurrency ${item.sku}`, p_size_ml: fixtureSizeMl(item.productKey), p_unit_code: "UNIT", p_description: "Fixture durable Issue #56.", p_note: "Marketplace version fixture.",
   });
   if (!product.ok || !product.payload?.productId) fail(`Create product ${item.sku} gagal: ${errorCode(product)}`);
   const batch = await rpc(config, token, "create_product_batch", {
@@ -162,7 +164,7 @@ select coalesce((
     'v2Id', (select version.id from catalog.marketplace_single_listing_versions version where version.organization_id=listing.organization_id and version.listing_id=listing.id and version.version=2),
     'bundleV1Id', (select recipe.id from catalog.bundle_recipes recipe where recipe.organization_id=listing.organization_id and recipe.channel_id=listing.channel_id and recipe.external_listing_sku=listing.external_listing_code and recipe.version=1),
     'bundleV2Id', (select recipe.id from catalog.bundle_recipes recipe where recipe.organization_id=listing.organization_id and recipe.channel_id=listing.channel_id and recipe.external_listing_sku=listing.external_listing_code and recipe.version=2),
-    'products', (select jsonb_agg(product.id order by product.sku) from catalog.products product where product.organization_id=${literal(organizationId)}::uuid and product.sku like ${literal(`${PREFIX}-${item.kind}-PRODUCT-%`)})
+    'products', (select jsonb_agg(product.id order by product.name, product.id) from catalog.products product where product.organization_id=${literal(organizationId)}::uuid and product.name like ${literal(`Fixture version concurrency ${PREFIX}-${item.kind}-PRODUCT-%`)})
   )
   from catalog.marketplace_listings listing
   join catalog.channels channel on channel.id=listing.channel_id

@@ -113,10 +113,12 @@ function errorCode(result) {
   return value(result?.payload?.message ?? result?.payload?.code);
 }
 
+function fixtureSizeMl(value) { let hash = 2166136261; for (const char of String(value)) { hash ^= char.charCodeAt(0); hash = Math.imul(hash, 16777619); } return 1000 + ((hash >>> 0) % 1000000000); }
+
 function scenarioNames(scenario) {
   const stem = `${PREFIX}-${scenario.name}`;
   return {
-    sku: `${stem}-PRODUCT`,
+    productName: `Fixture FEFO concurrency ${scenario.name}`,
     batchCode: `${stem}-BATCH`,
     receiptSource: `${stem}-RECEIPT`,
     receiptKey: `${stem}-RECEIPT-KEY`,
@@ -139,7 +141,7 @@ select coalesce((
   join catalog.product_batches batch on batch.organization_id = product.organization_id and batch.product_id = product.id
   join operations.receipts receipt on receipt.organization_id = product.organization_id and receipt.source_ref = ${sqlLiteral(names.receiptSource)}
   where product.organization_id = ${sqlLiteral(organizationId)}::uuid
-    and product.sku = ${sqlLiteral(names.sku)}
+    and product.name = ${sqlLiteral(names.productName)}
     and batch.batch_code = ${sqlLiteral(names.batchCode)}
   limit 1
 ), 'null'::jsonb);
@@ -152,7 +154,7 @@ async function ensureFixture(config, token, container, organizationId, scenario)
   const names = scenarioNames(scenario);
   const product = await rpc(config, token, "create_product", {
     p_organization_id: organizationId, p_idempotency_key: names.productKey,
-    p_sku: names.sku, p_name: `Fixture FEFO concurrency ${scenario.name}`, p_unit_code: "UNIT",
+    p_name: names.productName, p_size_ml: fixtureSizeMl(names.productKey), p_unit_code: "UNIT",
     p_description: "Fixture durable untuk harness concurrency manual outbound.", p_note: "Issue #56 harness fixture.",
   });
   if (!product.ok || !product.payload?.productId) fail(`Create product ${scenario.name} gagal: ${errorCode(product)}`);

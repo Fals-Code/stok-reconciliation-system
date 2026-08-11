@@ -85,7 +85,9 @@ async function rpc(config, token, name, body) {
 }
 
 function errorCode(result) { return text(result?.payload?.message ?? result?.payload?.code); }
-function names(name) { const stem = `${PREFIX}-${name}`; return { sku: `${stem}-PRODUCT`, batch: `${stem}-BATCH`, receiptRef: `${stem}-RECEIPT`, productKey: `${stem}-PRODUCT-KEY`, batchKey: `${stem}-BATCH-KEY`, receiptKey: `${stem}-RECEIPT-KEY` }; }
+function fixtureSizeMl(value) { let hash = 2166136261; for (const char of String(value)) { hash ^= char.charCodeAt(0); hash = Math.imul(hash, 16777619); } return 1000 + ((hash >>> 0) % 1000000000); }
+
+function names(name) { const stem = `${PREFIX}-${name}`; return { productName: `Fixture concurrency ${name}`, batch: `${stem}-BATCH`, receiptRef: `${stem}-RECEIPT`, productKey: `${stem}-PRODUCT-KEY`, batchKey: `${stem}-BATCH-KEY`, receiptKey: `${stem}-RECEIPT-KEY` }; }
 
 function fixture(container, organizationId, name) {
   const item = names(name);
@@ -93,7 +95,7 @@ function fixture(container, organizationId, name) {
 select coalesce((select jsonb_build_object('productId', p.id, 'batchId', b.id, 'transactionId', r.transaction_id)
 from catalog.products p join catalog.product_batches b on b.organization_id=p.organization_id and b.product_id=p.id
 join operations.receipts r on r.organization_id=p.organization_id and r.source_ref=${sqlLiteral(item.receiptRef)}
-where p.organization_id=${sqlLiteral(organizationId)}::uuid and p.sku=${sqlLiteral(item.sku)} and b.batch_code=${sqlLiteral(item.batch)} limit 1), 'null'::jsonb);`);
+where p.organization_id=${sqlLiteral(organizationId)}::uuid and p.name=${sqlLiteral(item.productName)} and b.batch_code=${sqlLiteral(item.batch)} limit 1), 'null'::jsonb);`);
 }
 
 function entityFixture(container, organizationId, name) {
@@ -101,14 +103,14 @@ function entityFixture(container, organizationId, name) {
   return sqlJson(container, `
 select coalesce((select jsonb_build_object('productId', p.id, 'batchId', b.id, 'transactionId', null)
 from catalog.products p join catalog.product_batches b on b.organization_id=p.organization_id and b.product_id=p.id
-where p.organization_id=${sqlLiteral(organizationId)}::uuid and p.sku=${sqlLiteral(item.sku)} and b.batch_code=${sqlLiteral(item.batch)} limit 1), 'null'::jsonb);`);
+where p.organization_id=${sqlLiteral(organizationId)}::uuid and p.name=${sqlLiteral(item.productName)} and b.batch_code=${sqlLiteral(item.batch)} limit 1), 'null'::jsonb);`);
 }
 
 async function ensureFixture(config, token, container, organizationId, name, quantity, { expired = false, seedReceipt = true } = {}) {
   let current = seedReceipt ? fixture(container, organizationId, name) : entityFixture(container, organizationId, name);
   if (current) return current;
   const item = names(name);
-  const product = await rpc(config, token, "create_product", { p_organization_id: organizationId, p_idempotency_key: item.productKey, p_sku: item.sku, p_name: `Fixture concurrency ${name}`, p_unit_code: "UNIT", p_description: "Fixture durable Issue #56.", p_note: "Issue #56 inventory parallel harness." });
+  const product = await rpc(config, token, "create_product", { p_organization_id: organizationId, p_idempotency_key: item.productKey, p_name: item.productName, p_size_ml: fixtureSizeMl(item.productKey), p_unit_code: "UNIT", p_description: "Fixture durable Issue #56.", p_note: "Issue #56 inventory parallel harness." });
   if (!product.ok || !product.payload?.productId) fail(`Create product ${name} gagal: ${errorCode(product)}`);
   const batch = await rpc(config, token, "create_product_batch", { p_organization_id: organizationId, p_idempotency_key: item.batchKey, p_product_id: product.payload.productId, p_batch_code: item.batch, p_expiry_date: expired ? "2026-07-01" : "2028-01-01", p_manufactured_date: "2026-06-01", p_received_first_at: RECEIPT_AT, p_batch_kind_code: "STANDARD", p_note: "Fixture durable Issue #56." });
   if (!batch.ok || !batch.payload?.batchId) fail(`Create batch ${name} gagal: ${errorCode(batch)}`);

@@ -17,8 +17,11 @@ select has_view('api','product_master','Product master view exists');
 select has_view('api','product_batch_master','Batch master view exists');
 select has_view('api','product_master_audit','Product audit view exists');
 select has_view('api','product_batch_master_audit','Batch audit view exists');
-select function_returns('api','create_product',array['uuid','text','text','text','text','text','text']::text[],'jsonb');
-select function_returns('api','update_product',array['uuid','text','uuid','bigint','text','text','text','text','text']::text[],'jsonb');
+select function_returns('api','create_product',array['uuid','text','text','integer','text','text','text']::text[],'jsonb');
+select function_returns('api','update_product',array['uuid','text','uuid','bigint','text','integer','text','text','text']::text[],'jsonb');
+select is((select count(*) from pg_proc p join pg_namespace n on n.oid=p.pronamespace where n.nspname='api' and p.proname='create_product'),1::bigint,'legacy create_product overload is retired');
+select is((select count(*) from pg_proc p join pg_namespace n on n.oid=p.pronamespace where n.nspname='api' and p.proname='update_product'),1::bigint,'legacy update_product overload is retired');
+select ok(not has_function_privilege('authenticated','catalog.generate_sku(text,integer)','EXECUTE'),'authenticated cannot call internal SKU generator');
 select function_returns('api','archive_product',array['uuid','text','uuid','bigint','text']::text[],'jsonb');
 select function_returns('api','reactivate_product',array['uuid','text','uuid','bigint','text']::text[],'jsonb');
 select function_returns('api','create_product_batch',array['uuid','text','uuid','text','date','date','timestamp with time zone','text','text']::text[],'jsonb');
@@ -43,8 +46,8 @@ select ok(not has_table_privilege('authenticated','catalog.product_batches','DEL
 select ok(not has_table_privilege('authenticated','catalog.master_data_audit_events','INSERT'),'authenticated cannot insert audit');
 select ok(not has_table_privilege('authenticated','catalog.master_data_audit_events','UPDATE'),'authenticated cannot update audit');
 select ok(not has_table_privilege('authenticated','catalog.master_data_audit_events','DELETE'),'authenticated cannot delete audit');
-select ok(has_function_privilege('authenticated','api.create_product(uuid,text,text,text,text,text,text)','EXECUTE'),'authenticated may create Product through RPC');
-select ok(not has_function_privilege('anon','api.create_product(uuid,text,text,text,text,text,text)','EXECUTE'),'anon cannot create Product');
+select ok(has_function_privilege('authenticated','api.create_product(uuid,text,text,integer,text,text,text)','EXECUTE'),'authenticated may create Product through RPC');
+select ok(not has_function_privilege('anon','api.create_product(uuid,text,text,integer,text,text,text)','EXECUTE'),'anon cannot create Product');
 
 insert into app.organizations(id,code,name,timezone,is_active,created_at) values
 ('00000000-0000-4000-8000-000000000053','PGTAP_MASTER_053','pgTAP Master 053','Asia/Jakarta',true,'2026-07-23 08:00:00+07'),
@@ -62,25 +65,29 @@ select set_config('request.jwt.claim.role','authenticated',true);
 select set_config('request.jwt.claims',jsonb_build_object('sub','95300000-0000-4000-8000-000000000001','role','authenticated','email','pgtap.master.053@glowlab.invalid')::text,true);
 set local role authenticated;
 -- Product lifecycle and idempotency.
-select throws_ok($sql$select api.create_product('00000000-0000-4000-8000-000000000054','053-CROSS','CROSS-053','Cross','UNIT',null,null)$sql$,'42501','ORGANIZATION_ACCESS_DENIED','cross-organization command is denied');
-select throws_ok($sql$select api.create_product('00000000-0000-4000-8000-000000000053','053-EMPTY-SKU','   ','Empty','UNIT',null,null)$sql$,'P0001','PRODUCT_REQUIRED_FIELDS_MISSING','blank SKU is rejected');
-select throws_ok($sql$select api.create_product('00000000-0000-4000-8000-000000000053','053-EMPTY-NAME','EMPTY-053','   ','UNIT',null,null)$sql$,'P0001','PRODUCT_REQUIRED_FIELDS_MISSING','blank name is rejected');
-select throws_ok($sql$select api.create_product('00000000-0000-4000-8000-000000000053','053-BAD-UNIT','BAD-UNIT-053','Bad Unit','BOX',null,null)$sql$,'P0001','UNSUPPORTED_UNIT','unsupported unit is rejected');
-insert into master_results select 'P_CREATE',api.create_product('00000000-0000-4000-8000-000000000053','053-P-CREATE','  sku   alpha  053  ','Product Alpha 053',' unit ','Initial description','Initial note');
-select is((select result->>'sku' from master_results where kind='P_CREATE'),'SKU ALPHA 053','SKU normalization is deterministic');
+select throws_ok($sql$select api.create_product('00000000-0000-4000-8000-000000000054','053-CROSS','Cross',1000,'UNIT',null,null)$sql$,'42501','ORGANIZATION_ACCESS_DENIED','cross-organization command is denied');
+select throws_ok($sql$select api.create_product('00000000-0000-4000-8000-000000000053','053-BAD-SIZE','Invalid Size',0,'UNIT',null,null)$sql$,'P0001','INVALID_PRODUCT_SIZE','non-positive Product size is rejected');
+select throws_ok($sql$select api.create_product('00000000-0000-4000-8000-000000000053','053-EMPTY-NAME','   ',1000,'UNIT',null,null)$sql$,'P0001','PRODUCT_REQUIRED_FIELDS_MISSING','blank name is rejected');
+select throws_ok($sql$select api.create_product('00000000-0000-4000-8000-000000000053','053-BAD-UNIT','Bad Unit',1000,'BOX',null,null)$sql$,'P0001','UNSUPPORTED_UNIT','unsupported unit is rejected');
+insert into master_results select 'P_CREATE',api.create_product('00000000-0000-4000-8000-000000000053','053-P-CREATE','Product Alpha 053',1000,' unit ','Initial description','Initial note');
+select is((select result->>'sku' from master_results where kind='P_CREATE'),'PRO-ALP-1000','SKU normalization is deterministic');
 select is((select result->>'stockEffect' from master_results where kind='P_CREATE'),'NONE','Product create is stock-neutral');
 select is((select (result->>'rowVersion')::bigint from master_results where kind='P_CREATE'),1::bigint,'Product starts version one');
-insert into master_results select 'P_REPLAY',api.create_product('00000000-0000-4000-8000-000000000053','053-P-CREATE','  sku   alpha  053  ','Product Alpha 053',' unit ','Initial description','Initial note');
+select is((select (result->>'sizeMl')::integer from master_results where kind='P_CREATE'),1000::integer,'Product create returns size in ml');
+select is((select size_ml from api.product_master where product_id=(select (result->>'productId')::uuid from master_results where kind='P_CREATE')),1000,'Product view exposes size in ml');
+select is((select (after_snapshot->>'sizeMl')::integer from catalog.master_data_audit_events where id=(select (result->>'auditId')::uuid from master_results where kind='P_CREATE')),1000::integer,'Product audit snapshot stores size in ml');
+insert into master_results select 'P_REPLAY',api.create_product('00000000-0000-4000-8000-000000000053','053-P-CREATE','Product Alpha 053',1000,' unit ','Initial description','Initial note');
 select is((select result->>'productId' from master_results where kind='P_REPLAY'),(select result->>'productId' from master_results where kind='P_CREATE'),'identical Product replay returns same entity');
 select is((select count(*) from catalog.products where organization_id='00000000-0000-4000-8000-000000000053'),1::bigint,'Product replay creates one row');
 select is((select count(*) from catalog.master_data_audit_events where organization_id='00000000-0000-4000-8000-000000000053' and action_code='PRODUCT_CREATE'),1::bigint,'Product replay creates one audit');
-select throws_ok($sql$select api.create_product('00000000-0000-4000-8000-000000000053','053-P-CREATE','SKU ALPHA 053','Changed','UNIT',null,null)$sql$,'P0001','IDEMPOTENCY_KEY_REUSED','changed payload on same key conflicts');
-select throws_ok($sql$select api.create_product('00000000-0000-4000-8000-000000000053','053-P-DUP',' sku  alpha 053 ','Duplicate','UNIT',null,null)$sql$,'P0001','DUPLICATE_SKU','normalized duplicate SKU is rejected');
-insert into master_results select 'P_UPDATE_PRE',api.update_product('00000000-0000-4000-8000-000000000053','053-P-UPDATE-PRE',(select (result->>'productId')::uuid from master_results where kind='P_CREATE'),1,' sku  beta 053 ','Product Beta 053','UNIT','Before history','Allowed prehistory SKU change');
-select is((select result->>'sku' from master_results where kind='P_UPDATE_PRE'),'SKU BETA 053','SKU may change before history');
+select throws_ok($sql$select api.create_product('00000000-0000-4000-8000-000000000053','053-P-CREATE','Changed',1000,'UNIT',null,null)$sql$,'P0001','IDEMPOTENCY_KEY_REUSED','changed payload on same key conflicts');
+select throws_ok($sql$select api.create_product('00000000-0000-4000-8000-000000000053','053-P-DUP','Product Alpha Dupe',1000,'UNIT',null,null)$sql$,'P0001','DUPLICATE_SKU','normalized duplicate SKU is rejected');
+insert into master_results select 'P_UPDATE_PRE',api.update_product('00000000-0000-4000-8000-000000000053','053-P-UPDATE-PRE',(select (result->>'productId')::uuid from master_results where kind='P_CREATE'),1,'Product Beta 053',1500,'UNIT','Before history','Allowed prehistory name and size change');
+select is((select result->>'sku' from master_results where kind='P_UPDATE_PRE'),'PRO-BET-1500','name and size may regenerate SKU before history');
 select is((select (result->>'rowVersion')::bigint from master_results where kind='P_UPDATE_PRE'),2::bigint,'Product update increments row version');
-select throws_ok(format($sql$select api.update_product('00000000-0000-4000-8000-000000000053','053-P-STALE','%s',1,'SKU BETA 053','Stale','UNIT',null,null)$sql$,(select result->>'productId' from master_results where kind='P_CREATE')),'P0001','PRODUCT_STALE_VERSION','stale Product update is rejected');
-insert into master_results select 'P_SECOND',api.create_product('00000000-0000-4000-8000-000000000053','053-P-SECOND','SECOND 053','Second Product','UNIT',null,null);
+select is((select (result->>'sizeMl')::integer from master_results where kind='P_UPDATE_PRE'),1500::integer,'Product size may change before history');
+select throws_ok(format($sql$select api.update_product('00000000-0000-4000-8000-000000000053','053-P-STALE','%s',1,'Stale',1000,'UNIT',null,null)$sql$,(select result->>'productId' from master_results where kind='P_CREATE')),'P0001','PRODUCT_STALE_VERSION','stale Product update is rejected');
+insert into master_results select 'P_SECOND',api.create_product('00000000-0000-4000-8000-000000000053','053-P-SECOND','Second Product',1000,'UNIT',null,null);
 insert into master_results select 'P_SECOND_ARCHIVE',api.archive_product('00000000-0000-4000-8000-000000000053','053-P-SECOND-ARCHIVE',(select (result->>'productId')::uuid from master_results where kind='P_SECOND'),1,'Inactive fixture');
 select throws_ok(format($sql$select api.create_product_batch('00000000-0000-4000-8000-000000000053','053-INACTIVE-BATCH','%s','INACTIVE LOT','2028-01-01',null,null,'STANDARD',null)$sql$,(select result->>'productId' from master_results where kind='P_SECOND')),'P0001','INACTIVE_PRODUCT_FOR_TRANSACTION','inactive Product cannot receive new Batch');
 select is((select snapshot from master_baseline where phase='ZERO'),jsonb_build_object('tx',(select count(*) from inventory.stock_transactions where organization_id='00000000-0000-4000-8000-000000000053'),'ledger',(select count(*) from inventory.stock_ledger_entries where organization_id='00000000-0000-4000-8000-000000000053'),'batch',(select count(*) from inventory.stock_batch_balances where organization_id='00000000-0000-4000-8000-000000000053'),'product',(select count(*) from inventory.stock_product_positions where organization_id='00000000-0000-4000-8000-000000000053'),'reservation',(select count(*) from inventory.stock_reservations where organization_id='00000000-0000-4000-8000-000000000053')),'Product mutations have zero stock-domain delta');
@@ -106,16 +113,33 @@ insert into master_results select 'RECEIPT',api.post_receipt('00000000-0000-4000
 select ok(catalog.product_has_authoritative_history('00000000-0000-4000-8000-000000000053',(select (result->>'productId')::uuid from master_results where kind='P_CREATE')),'Product history helper detects domain history');
 select ok(catalog.product_batch_has_authoritative_history('00000000-0000-4000-8000-000000000053',(select (result->>'batchId')::uuid from master_results where kind='B_CREATE')),'Batch history helper detects domain history');
 insert into master_baseline values('HISTORY',jsonb_build_object('tx',(select count(*) from inventory.stock_transactions where organization_id='00000000-0000-4000-8000-000000000053'),'ledger',(select count(*) from inventory.stock_ledger_entries where organization_id='00000000-0000-4000-8000-000000000053'),'batch',(select jsonb_agg(to_jsonb(b) order by batch_id) from inventory.stock_batch_balances b where organization_id='00000000-0000-4000-8000-000000000053'),'product',(select jsonb_agg(to_jsonb(p) order by product_id) from inventory.stock_product_positions p where organization_id='00000000-0000-4000-8000-000000000053'),'reservation',(select jsonb_agg(to_jsonb(r) order by id) from inventory.stock_reservations r where organization_id='00000000-0000-4000-8000-000000000053')));
-insert into master_results select 'P_RENAME',api.update_product('00000000-0000-4000-8000-000000000053','053-P-RENAME',(select (result->>'productId')::uuid from master_results where kind='P_CREATE'),2,'SKU BETA 053','Product Renamed 053','UNIT','After history','Rename only');
+insert into master_results select 'P_RENAME',api.update_product('00000000-0000-4000-8000-000000000053','053-P-RENAME',(select (result->>'productId')::uuid from master_results where kind='P_CREATE'),2,'Product Renamed 053',1500,'UNIT','After history','Rename only');
 select is((select name from catalog.products where id=(select (result->>'productId')::uuid from master_results where kind='P_CREATE')),'Product Renamed 053','name and description update succeeds');
 select is((select after_snapshot->>'name' from catalog.master_data_audit_events where organization_id='00000000-0000-4000-8000-000000000053' and action_code='PRODUCT_CREATE' and entity_id=(select (result->>'productId')::uuid from master_results where kind='P_CREATE')),'Product Alpha 053','historical audit snapshot survives rename');
-select is((select product_sku_snapshot from inventory.stock_ledger_entries where organization_id='00000000-0000-4000-8000-000000000053' limit 1),'SKU BETA 053','ledger SKU snapshot remains unchanged');
-select throws_ok(format($sql$select api.update_product('00000000-0000-4000-8000-000000000053','053-SKU-HISTORY','%s',3,'SKU GAMMA 053','Forbidden','UNIT',null,null)$sql$,(select result->>'productId' from master_results where kind='P_CREATE')),'P0001','TRANSACTED_SKU_CHANGE_FORBIDDEN','SKU change after history is rejected');
+select is((select product_sku_snapshot from inventory.stock_ledger_entries where transaction_id=(select (result->>'transactionId')::uuid from master_results where kind='RECEIPT') limit 1),'PRO-BET-1500','ledger SKU snapshot remains unchanged');
+select throws_ok(format($sql$select api.update_product('00000000-0000-4000-8000-000000000053','053-SIZE-HISTORY','%s',3,'Product Renamed 053',2000,'UNIT',null,null)$sql$,(select result->>'productId' from master_results where kind='P_CREATE')),'P0001','TRANSACTED_SKU_CHANGE_FORBIDDEN','Product size change after history is rejected');
+
+-- Legacy Product regression: authoritative history may receive one verified size without rewriting historical SKU.
+reset role;
+insert into catalog.products(id,organization_id,sku,name,size_ml,unit_code,is_batch_tracked,is_expiry_tracked,is_active,created_at,updated_at,row_version) values('95311000-0000-4000-8000-000000000053','00000000-0000-4000-8000-000000000053','LEG-VER-1250','Legacy Verified 053',null,'UNIT',true,true,true,clock_timestamp(),clock_timestamp(),1);
+set local role authenticated;
+insert into master_results select 'LEGACY_B_CREATE',api.create_product_batch('00000000-0000-4000-8000-000000000053','053-LEGACY-BATCH','95311000-0000-4000-8000-000000000053','LEGACY LOT 053','2028-12-31','2026-07-01',null,'STANDARD','Legacy size verification fixture');
+insert into master_results select 'LEGACY_RECEIPT',api.post_receipt('00000000-0000-4000-8000-000000000053','053-LEGACY-RECEIPT','RCV-LEGACY-053','2026-07-23 10:30:00+07',jsonb_build_array(jsonb_build_object('productId','95311000-0000-4000-8000-000000000053','batchId',(select result->>'batchId' from master_results where kind='LEGACY_B_CREATE'),'quantity',1,'sourceLineRef','LEGACY-HISTORY-1')),'Legacy authoritative history fixture','{}');
+select ok(catalog.product_has_authoritative_history('00000000-0000-4000-8000-000000000053','95311000-0000-4000-8000-000000000053'),'legacy Product fixture has authoritative history');
+insert into master_results select 'LEGACY_SIZE_FILL',api.update_product('00000000-0000-4000-8000-000000000053','053-LEGACY-SIZE-FILL','95311000-0000-4000-8000-000000000053',1,'Legacy Verified 053',1500,'UNIT','Verified legacy size','One-time verified legacy size');
+select is((select result->>'status' from master_results where kind='LEGACY_SIZE_FILL'),'UPDATED','legacy Product verified size fill succeeds');
+select is((select result->>'sku' from master_results where kind='LEGACY_SIZE_FILL'),'LEG-VER-1250','legacy Product keeps historical SKU while verified size is filled');
+select is((select (result->>'sizeMl')::integer from master_results where kind='LEGACY_SIZE_FILL'),1500,'legacy Product response exposes verified size');
+select is((select size_ml from catalog.products where id='95311000-0000-4000-8000-000000000053'),1500,'legacy Product persists verified size');
+select is((select sku from catalog.products where id='95311000-0000-4000-8000-000000000053'),'LEG-VER-1250','legacy Product stored SKU remains immutable after history');
+select is((select product_sku_snapshot from inventory.stock_ledger_entries where transaction_id=(select (result->>'transactionId')::uuid from master_results where kind='LEGACY_RECEIPT') limit 1),'LEG-VER-1250','legacy ledger keeps original historical SKU snapshot');
+select throws_ok($sql$select api.update_product('00000000-0000-4000-8000-000000000053','053-LEGACY-SIZE-SECOND','95311000-0000-4000-8000-000000000053',2,'Legacy Verified 053',1600,'UNIT',null,null)$sql$,'P0001','TRANSACTED_SKU_CHANGE_FORBIDDEN','legacy Product verified size cannot change again after history');
+
 select throws_ok(format($sql$select api.update_product_batch('00000000-0000-4000-8000-000000000053','053-EXPIRY-NO-REASON','%s',3,'%s','STANDARD','LOT BETA 053','2026-01-02','2028-01-31','2026-07-23 10:00:00+07',null,null)$sql$,(select result->>'batchId' from master_results where kind='B_CREATE'),(select result->>'productId' from master_results where kind='P_CREATE')),'P0001','EXPIRY_CHANGE_REASON_REQUIRED','expiry history change requires reason');
 insert into master_results select 'B_EXPIRY',api.update_product_batch('00000000-0000-4000-8000-000000000053','053-EXPIRY-REASON',(select (result->>'batchId')::uuid from master_results where kind='B_CREATE'),3,(select (result->>'productId')::uuid from master_results where kind='P_CREATE'),'STANDARD','LOT BETA 053','2026-01-02','2028-01-31','2026-07-23 10:00:00+07','Supplier correction','Audited correction');
 select is((select before_snapshot->>'expiryDate' from catalog.master_data_audit_events where id=(select (result->>'auditId')::uuid from master_results where kind='B_EXPIRY')),'2027-12-30','expiry audit stores before');
 select is((select after_snapshot->>'expiryDate' from catalog.master_data_audit_events where id=(select (result->>'auditId')::uuid from master_results where kind='B_EXPIRY')),'2028-01-31','expiry audit stores after');
-select is((select expiry_date_snapshot from inventory.stock_ledger_entries where organization_id='00000000-0000-4000-8000-000000000053' limit 1),'2027-12-30'::date,'expiry edit preserves ledger snapshot');
+select is((select expiry_date_snapshot from inventory.stock_ledger_entries where transaction_id=(select (result->>'transactionId')::uuid from master_results where kind='RECEIPT') limit 1),'2027-12-30'::date,'expiry edit preserves ledger snapshot');
 -- Lifecycle status, effective expiry, audit immutability, and neutrality.
 select throws_ok(format($sql$select api.block_product_batch('00000000-0000-4000-8000-000000000053','053-BLOCK-NO-REASON','%s',4,'   ',null)$sql$,(select result->>'batchId' from master_results where kind='B_CREATE')),'P0001','BATCH_STATUS_REASON_REQUIRED','block requires reason');
 insert into master_results select 'B_BLOCK',api.block_product_batch('00000000-0000-4000-8000-000000000053','053-BLOCK',(select (result->>'batchId')::uuid from master_results where kind='B_CREATE'),4,'Quality hold',null);
@@ -192,7 +216,7 @@ $sql$,'P0001','LEDGER_MASTER_SNAPSHOT_MISMATCH','non-REVERSAL fixture rejects th
 select is((select count(*) from inventory.stock_ledger_entries where transaction_id='95350000-0000-4000-8000-000000000002'),0::bigint,'failed non-REVERSAL snapshot insert leaves no ledger entry');
 drop index catalog.uidx_products_org_normalized_sku;
 drop index catalog.uidx_product_batches_org_product_normalized_code;
-insert into catalog.products(id,organization_id,sku,name,unit_code,is_batch_tracked,is_expiry_tracked,is_active,created_at,updated_at,row_version) values('95310000-0000-4000-8000-000000000001','00000000-0000-4000-8000-000000000053','second 053','Conflicting active Product','UNIT',true,true,true,clock_timestamp(),clock_timestamp(),1);
+insert into catalog.products(id,organization_id,sku,name,unit_code,is_batch_tracked,is_expiry_tracked,is_active,created_at,updated_at,row_version) values('95310000-0000-4000-8000-000000000001','00000000-0000-4000-8000-000000000053','sec-pro-1000','Conflicting active Product','UNIT',true,true,true,clock_timestamp(),clock_timestamp(),1);
 insert into catalog.product_batches(id,organization_id,product_id,batch_code,expiry_date,status_code,created_at,updated_at,row_version,batch_kind_code) values('95320000-0000-4000-8000-000000000001','00000000-0000-4000-8000-000000000053',(select (result->>'productId')::uuid from master_results where kind='P_CREATE'),'lot beta 053','2028-01-31','ACTIVE',clock_timestamp(),clock_timestamp(),1,'STANDARD');
 set local role authenticated;
 select throws_ok(format($sql$select api.reactivate_product('00000000-0000-4000-8000-000000000053','053-P-REACT-CONFLICT','%s',2,'Conflict expected')$sql$,(select result->>'productId' from master_results where kind='P_SECOND')),'P0001','PRODUCT_REACTIVATION_CONFLICT','Product reactivation rejects normalized SKU conflict');

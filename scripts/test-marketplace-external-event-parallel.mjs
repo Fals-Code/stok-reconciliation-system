@@ -48,8 +48,10 @@ function sqlJson(container, sql) {
   const line = result.stdout.split(/\r?\n/).map((value) => value.trim()).findLast((value) => value.startsWith("{") || value === "null");
   return line ? JSON.parse(line) : null;
 }
+function fixtureSizeMl(value) { let hash = 2166136261; for (const char of String(value)) { hash ^= char.charCodeAt(0); hash = Math.imul(hash, 16777619); } return 1000 + ((hash >>> 0) % 1000000000); }
+
 function fixtureNames() {
-  return { sku: `${PREFIX}-PRODUCT`, batch: `${PREFIX}-BATCH`, listing: `${PREFIX}-LISTING`, productKey: `${PREFIX}-PRODUCT-KEY`, batchKey: `${PREFIX}-BATCH-KEY`, receiptKey: `${PREFIX}-RECEIPT-KEY` };
+  return { productName: "Fixture external identity concurrency", batch: `${PREFIX}-BATCH`, listing: `${PREFIX}-LISTING`, productKey: `${PREFIX}-PRODUCT-KEY`, batchKey: `${PREFIX}-BATCH-KEY`, receiptKey: `${PREFIX}-RECEIPT-KEY` };
 }
 
 async function env() {
@@ -100,12 +102,12 @@ function fixture(container, organizationId, names) {
     from catalog.products p join catalog.product_batches b on b.organization_id = p.organization_id and b.product_id = p.id
     join catalog.marketplace_listings l on l.organization_id = p.organization_id and l.external_listing_code = ${literal(names.listing)}
     join catalog.marketplace_single_listing_versions v on v.organization_id = l.organization_id and v.listing_id = l.id and v.status_code = 'ACTIVE'
-    where p.organization_id = ${literal(organizationId)}::uuid and p.sku = ${literal(names.sku)} and b.batch_code = ${literal(names.batch)} limit 1), 'null'::jsonb);`);
+    where p.organization_id = ${literal(organizationId)}::uuid and p.name = ${literal(names.productName)} and b.batch_code = ${literal(names.batch)} limit 1), 'null'::jsonb);`);
 }
 async function ensureFixture(config, token, container, organizationId) {
   const names = fixtureNames(); let current = fixture(container, organizationId, names);
   if (current) return current;
-  const product = await rpc(config, token, "create_product", { p_organization_id: organizationId, p_idempotency_key: names.productKey, p_sku: names.sku, p_name: "Fixture external identity concurrency", p_unit_code: "UNIT", p_description: "Fixture durable Issue #56.", p_note: "External identity concurrency fixture." });
+  const product = await rpc(config, token, "create_product", { p_organization_id: organizationId, p_idempotency_key: names.productKey, p_name: names.productName, p_size_ml: fixtureSizeMl(names.productKey), p_unit_code: "UNIT", p_description: "Fixture durable Issue #56.", p_note: "External identity concurrency fixture." });
   if (!product.ok || !product.payload?.productId) fail(`Create product fixture gagal: ${errorText(product)}`);
   const batch = await rpc(config, token, "create_product_batch", { p_organization_id: organizationId, p_idempotency_key: names.batchKey, p_product_id: product.payload.productId, p_batch_code: names.batch, p_expiry_date: "2028-01-01", p_manufactured_date: "2026-06-01", p_received_first_at: EFFECTIVE_AT, p_batch_kind_code: "STANDARD", p_note: "Fixture durable Issue #56." });
   if (!batch.ok || !batch.payload?.batchId) fail(`Create batch fixture gagal: ${errorText(batch)}`);
