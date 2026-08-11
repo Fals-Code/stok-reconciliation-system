@@ -15,8 +15,8 @@ export function PageHeader({
   title: ReactNode;
   description?: ReactNode;
   action?: ReactNode;
-  breadcrumb?: any;
-  status?: any;
+  breadcrumb?: ReactNode;
+  status?: ReactNode;
 }) {
   return (
     <header
