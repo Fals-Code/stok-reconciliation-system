@@ -1085,13 +1085,12 @@ export default async function ReturnDetailPage({
                         Notifikasi terkait
                       </p>
                       <p className="mt-1 text-xs text-ui-text-muted">
-                        Buka Notification Center untuk melihat episode dan riwayat tindak lanjut notifikasi klaim ini.
+                        Riwayat pengingat untuk klaim ini tetap tersedia sebagai bukti. Tindakan klaim dilakukan langsung di halaman retur ini.
                       </p>
                       <div className="mt-3 divide-y divide-ui-border border-y border-ui-border">
                         {claimData.notifications.map((notification) => (
-                          <Link
-                            className="flex items-start justify-between gap-3 py-3 text-sm hover:text-ui-primary"
-                            href={`/notifications?notificationId=${encodeURIComponent(notification.notification_id)}#detail`}
+                          <article
+                            className="flex items-start justify-between gap-3 py-3 text-sm"
                             key={notification.notification_id}
                           >
                             <span>
@@ -1115,7 +1114,7 @@ export default async function ReturnDetailPage({
                             >
                               {notification.lifecycle_status_code}
                             </StatusBadge>
-                          </Link>
+                          </article>
                         ))}
                       </div>
                     </div>

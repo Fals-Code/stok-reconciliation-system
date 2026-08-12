@@ -812,7 +812,7 @@ Audit source lokal setelah rebuild operator-first mengunci kondisi berikut:
 | `/stocktakes/*` | COMPLETE WITH GAP | Flow utama tersedia; cancel session end-to-end belum ada |
 | `/marketplace` dan detail pesanan | DONE / KEEP utama-contextual | Partial cancellation tersedia; reserve/ship tetap event/adapter-driven |
 | `/returns` dan detail retur | KEEP sub-flow/contextual | Retur & Klaim tetap di bawah Pesanan |
-| `/notifications` | COMPATIBILITY WITH GAP | Redirect ke Beranda; deep-link notificationId dari retur masih kehilangan konteks |
+| `/notifications` | COMPATIBILITY DONE | Bookmark lama redirect ke Beranda; work item Retur/Klaim memakai direct object route yang mempertahankan returnId/claimId; diagnostics tetap terpisah |
 | `/notifications/operations` | KEEP admin-contextual / TECHNICAL-ONLY | Admin troubleshooting tersedia dari Pengaturan; bukan menu utama |
 | `/settings` | DONE / KEEP utama | Pintu Setup Stok Awal, Marketplace, import/simulator, dan diagnostics administratif |
 | `/opening-balances` | KEEP contextual / ADMIN-REACHABLE | Setup Stok Awal tersedia dari Pengaturan |
@@ -823,6 +823,5 @@ Audit source lokal setelah rebuild operator-first mengunci kondisi berikut:
 
 1. Tutup flow cancel Hitung Stok secara end-to-end, auditable, idempotent, dan tanpa perubahan stok sebelum posting.
 
-2. Perbaiki deep-link notifikasi dari detail retur agar konteks tidak hilang setelah `/notifications` digabung ke Beranda.
-3. Audit final seluruh back/returnTo, success recovery, failure recovery, dead action, dan route orphan.
-4. Pertahankan reserve/shipment sebagai event/adapter-driven flow kecuali source prioritas lebih tinggi secara eksplisit meminta mutation manual dari UI.
+2. Audit final seluruh back/returnTo, success recovery, failure recovery, dead action, dan route orphan.
+3. Pertahankan reserve/shipment sebagai event/adapter-driven flow kecuali source prioritas lebih tinggi secara eksplisit meminta mutation manual dari UI.

@@ -470,6 +470,33 @@ async function main() {
     [302, 303, 307, 308].includes(notifCompat.response.status) && new URL(notifCompat.response.headers.get("location") ?? "/", notifCompat.uri).pathname === "/",
   );
 
+  const notifContextCompat = await page(
+    "/notifications?notificationId=00000000-0000-4000-8000-000000000001#detail",
+  );
+  const notifContextLocation = new URL(
+    notifContextCompat.response.headers.get("location") ?? "/",
+    notifContextCompat.uri,
+  );
+  check(
+    "Bookmark notification lama tetap kompatibel tanpa open redirect",
+    [302, 303, 307, 308].includes(notifContextCompat.response.status) &&
+      notifContextLocation.origin === new URL(baseUrl).origin &&
+      notifContextLocation.pathname === "/",
+  );
+
+  const operations = await page("/notifications/operations");
+  check(
+    "Diagnostics notification tetap terpisah dan dapat dibuka",
+    operations.response.status === 200 &&
+      operations.html.includes("Notification operations"),
+  );
+  check(
+    "Diagnostics mengarahkan pekerjaan operasional ke Beranda",
+    operations.html.includes('href="/"') &&
+      operations.html.includes("Buka Beranda") &&
+      !operations.html.includes('href="/notifications"'),
+  );
+
   // ── Domain state unchanged (read-only proof) ──
   const after = stateSnapshot();
   check("Buka/navigasi/refresh tidak mengubah domain", JSON.stringify(after) === JSON.stringify(baseline), `organization=${organizationId}`);

@@ -7,6 +7,8 @@ const baseURL = (
   process.env.PLAYWRIGHT_BASE_URL ??
   "http://localhost:3000"
 ).replace(/\/+$/, "");
+const useExternalServer =
+  process.env.PLAYWRIGHT_EXTERNAL_SERVER === "true";
 
 export default defineConfig({
   testDir: "./tests/e2e",
@@ -41,14 +43,16 @@ export default defineConfig({
     video: "retain-on-failure",
   },
 
-  webServer: {
-    command: "npm run dev",
-    url: `${baseURL}/login`,
-    reuseExistingServer: true,
-    timeout: 120_000,
-    stdout: "pipe",
-    stderr: "pipe",
-  },
+  webServer: useExternalServer
+    ? undefined
+    : {
+        command: "npm run dev",
+        url: `${baseURL}/login`,
+        reuseExistingServer: true,
+        timeout: 120_000,
+        stdout: "pipe",
+        stderr: "pipe",
+      },
 
   projects: [
     {

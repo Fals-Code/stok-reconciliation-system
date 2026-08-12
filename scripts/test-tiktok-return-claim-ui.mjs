@@ -47,6 +47,52 @@ function run(command, args, input) {
   return result.stdout ?? "";
 }
 
+async function runNotificationBrowserSmoke(adminEmail, actionRoute) {
+  const previous = {
+    baseUrl: process.env.PLAYWRIGHT_BASE_URL,
+    email: process.env.PLAYWRIGHT_ADMIN_EMAIL,
+    password: process.env.PLAYWRIGHT_ADMIN_PASSWORD,
+    route: process.env.PLAYWRIGHT_RETURN_NOTIFICATION_ROUTE,
+    externalServer: process.env.PLAYWRIGHT_EXTERNAL_SERVER,
+  };
+
+  process.env.PLAYWRIGHT_BASE_URL = baseUrl;
+  process.env.PLAYWRIGHT_ADMIN_EMAIL = adminEmail;
+  process.env.PLAYWRIGHT_ADMIN_PASSWORD = password;
+  process.env.PLAYWRIGHT_RETURN_NOTIFICATION_ROUTE = actionRoute;
+  process.env.PLAYWRIGHT_EXTERNAL_SERVER = "true";
+
+  try {
+    const output = run(process.execPath, [
+      path.resolve("node_modules/@playwright/test/cli.js"),
+      "test",
+      "tests/e2e/admin-shell.spec.ts",
+      "--grep",
+      "action Retur dari Beranda mempertahankan object context",
+      "--project=desktop-chromium",
+      "--project=mobile-chromium",
+    ]);
+    check("Browser desktop/mobile membuka action notification exact", /2 passed/.test(output), output.slice(-1000));
+  } finally {
+    for (const [key, value] of Object.entries({
+      PLAYWRIGHT_BASE_URL: previous.baseUrl,
+      PLAYWRIGHT_ADMIN_EMAIL: previous.email,
+      PLAYWRIGHT_ADMIN_PASSWORD: previous.password,
+      PLAYWRIGHT_RETURN_NOTIFICATION_ROUTE: previous.route,
+      PLAYWRIGHT_EXTERNAL_SERVER: previous.externalServer,
+    })) {
+      if (value === undefined) delete process.env[key];
+      else process.env[key] = value;
+    }
+  }
+
+  const health = await fetch(`${baseUrl}/login`).catch(() => null);
+  if (health?.status !== 200) {
+    startServer();
+    await waitForServer();
+  }
+}
+
 function sqlLiteral(value) { return `'${String(value).replaceAll("'", "''")}'`; }
 
 function resolveDb() {
@@ -176,6 +222,26 @@ function startServer() {
   server = spawn(process.execPath, [path.resolve("node_modules/next/dist/bin/next"), "dev", "--hostname", url.hostname, "--port", String(url.port || 3000)], { cwd: process.cwd(), windowsHide: true, stdio: ["ignore", "pipe", "pipe"] });
   server.stdout.on("data", (chunk) => { serverOutput = (serverOutput + chunk.toString()).slice(-30000); });
   server.stderr.on("data", (chunk) => { serverOutput = (serverOutput + chunk.toString()).slice(-30000); });
+}
+
+function stopServer() {
+  if (!server?.pid) return;
+
+  const serverPid = server.pid;
+  server.stdout?.destroy();
+  server.stderr?.destroy();
+  server.unref();
+
+  if (process.platform === "win32") {
+    spawnSync("taskkill", ["/PID", String(serverPid), "/T", "/F"], {
+      windowsHide: true,
+      stdio: "ignore",
+    });
+  } else {
+    server.kill();
+  }
+
+  server = undefined;
 }
 
 async function waitForServer() {
@@ -398,7 +464,11 @@ async function main() {
   const notificationRows = await rpc("notification_list", { p_lifecycle_status_code: null, p_severity_code: null, p_category_code: null, p_read_state_code: null, p_include_archived: true, p_limit: 100, p_before_last_seen_at: null, p_before_id: null });
   const notification = (notificationRows ?? []).find((row) => row.entity_id === claimA.id || row.action_route?.includes(claimA.id));
   check("Notification tertaut ke claim dan route exact", Boolean(notification) && notification.action_route === `/returns?returnId=${scenarioA.returnId}&claimId=${claimA.id}#claim-detail`);
-  check("Link kembali ke Notification Center tersedia", current.html.includes(`/notifications?notificationId=${notification?.notification_id}#detail`));
+  const claimDestination = await page(notification.action_route);
+  check("Action notification claim membuka return dan claim exact", new URL(claimDestination.uri).pathname === `/returns/${scenarioA.returnId}` && new URL(claimDestination.uri).searchParams.get("claimId") === claimA.id && new URL(claimDestination.uri).hash === "#claim-detail" && claimDestination.html.includes(scenarioA.returnRef) && claimDestination.html.includes(claimA.id));
+  check("Action notification claim tetap berada di navigasi Pesanan", /<a\b[^>]*href="\/marketplace"[^>]*aria-current="page"[^>]*>/i.test(claimDestination.html) || /<a\b[^>]*aria-current="page"[^>]*href="\/marketplace"[^>]*>/i.test(claimDestination.html));
+  check("Detail claim tidak menautkan kembali ke Notification Center lama", !current.html.includes(`/notifications?notificationId=${notification?.notification_id}#detail`) && !htmlContains(current.html, "Buka Notification Center"));
+  await runNotificationBrowserSmoke(primary.email, notification.action_route);
 
   const submitRejected = await submitForm({ uri: current.uri, html: current.html, marker: "Referensi klaim TikTok", fields: { claimId: claimA.id, returnId: scenarioA.returnId, externalClaimRef: `${prefix}:CLAIM-A`, occurredAt: localDateTime() } });
   check("Submit tanpa confirmation ditolak", htmlContains(submitRejected.html, "Konfirmasi operator"));
@@ -413,6 +483,11 @@ async function main() {
   check("Resolve valid menghasilkan RESOLVED", claimAAfter.status_code === "RESOLVED" && claimAAfter.resolution_code === "APPROVED" && htmlContains(resolved.html, "Selesai"));
   check("Riwayat immutable klaim tampil", htmlContains(resolved.html, "Riwayat klaim") && htmlContains(resolved.html, "Detail audit"));
   assertSnapshotSame(beforeCreate, stockSnapshot(), "Resolve tetap stock-neutral");
+  const claimResolutionObservedAt = runSqlJson(`select json_build_object('observed_at', (greatest(clock_timestamp(), coalesce((select max(deadline_at) from operations.return_claims where organization_id=${sqlLiteral(organizationId)}::uuid), '-infinity'::timestamptz), coalesce((select max(last_seen_at) from notification.notifications where organization_id=${sqlLiteral(organizationId)}::uuid), '-infinity'::timestamptz)) + interval '1 microsecond')::text);`).observed_at;
+  const claimNotificationResolution = runSqlJson(`select notification.evaluate_tiktok_claim_deadlines(${sqlLiteral(organizationId)}::uuid,${sqlLiteral(`${prefix}:notification:resolve`)},${sqlLiteral(claimResolutionObservedAt)}::timestamptz,'tiktok-return-claim-ui-smoke');`);
+  check("Notification claim resolved setelah pekerjaan selesai", claimNotificationResolution && claimNotificationResolution.action === "COMPLETED" && Number(claimNotificationResolution.resolvedCount) >= 1, JSON.stringify(claimNotificationResolution));
+  const resolvedNotificationRows = await rpc("notification_list", { p_lifecycle_status_code: null, p_severity_code: null, p_category_code: null, p_read_state_code: null, p_include_archived: true, p_limit: 100, p_before_last_seen_at: null, p_before_id: null });
+  check("Episode notification claim tidak lagi aktif", (resolvedNotificationRows ?? []).some((row) => row.notification_id === notification.notification_id && row.lifecycle_status_code === "RESOLVED"));
 
   const lateBefore = stockSnapshot();
   current = await page(`/returns?returnId=${scenarioA.returnId}&claimId=${claimA.id}#claims`);
@@ -485,6 +560,16 @@ async function main() {
     check(`${suffix} receipt stock-neutral`, htmlContains(receipt.html, "tidak mengubah stok"));
     const receiptLines = await restRows(`return_receipt_lines?organization_id=eq.${organizationId}&receipt_ref=eq.${encodeURIComponent(`${prefix}:${suffix}:RECEIPT`)}&select=*&limit=10`);
     check(`${suffix} receipt line membawa provenance shipment exact`, receiptLines.length === 1 && receiptLines[0].marketplace_ship_allocation_id === fixture.marketplaceShipAllocationId && receiptLines[0].source_batch_id === fixture.sourceBatchId && receiptLines[0].source_batch_code_snapshot === fixture.sourceBatchCode && receiptLines[0].source_expiry_date_snapshot === fixture.sourceExpiryDate && receiptLines[0].batch_identity_verified === true, `expectedAllocation=${fixture.marketplaceShipAllocationId} expectedBatch=${fixture.sourceBatchId} actual=${JSON.stringify(receiptLines)}`);
+    const inspectionObservedAt = runSqlJson(`select json_build_object('observedAt', (greatest(clock_timestamp(), coalesce((select max(last_seen_at) from notification.notifications where organization_id=${sqlLiteral(organizationId)}::uuid and rule_code_snapshot='RETURN_INSPECTION_PENDING'), '-infinity'::timestamptz)) + interval '1 microsecond')::text);`).observedAt;
+    const inspectionEvaluation = runSqlJson(`select notification.evaluate_return_inspection(${sqlLiteral(organizationId)}::uuid,${sqlLiteral(`${prefix}:${suffix}:inspection-notification`)},${sqlLiteral(inspectionObservedAt)}::timestamptz,'MANUAL',gen_random_uuid(),'tiktok-return-claim-ui-smoke');`);
+    check(`${suffix} evaluator inspection selesai`, inspectionEvaluation && inspectionEvaluation.action === "COMPLETED" && inspectionEvaluation.status === "SUCCEEDED", JSON.stringify(inspectionEvaluation));
+    const inspectionNotificationRows = await rpc("notification_list", { p_lifecycle_status_code: null, p_severity_code: null, p_category_code: null, p_read_state_code: null, p_include_archived: true, p_limit: 100, p_before_last_seen_at: null, p_before_id: null });
+    const inspectionNotification = (inspectionNotificationRows ?? []).find((row) => row.action_route === `/returns?returnId=${fixture.returnId}` && row.lifecycle_status_code !== "RESOLVED");
+    check(`${suffix} notification inspection membawa return context exact`, Boolean(inspectionNotification) && inspectionNotification.entity_id === fixture.returnId);
+    const inspectionDestination = await page(inspectionNotification.action_route);
+    check(`${suffix} action notification inspection membuka detail retur exact`, new URL(inspectionDestination.uri).pathname === `/returns/${fixture.returnId}` && inspectionDestination.html.includes(fixture.returnRef));
+    check(`${suffix} action notification inspection tetap berada di navigasi Pesanan`, /<a\b[^>]*href="\/marketplace"[^>]*aria-current="page"[^>]*>/i.test(inspectionDestination.html) || /<a\b[^>]*aria-current="page"[^>]*href="\/marketplace"[^>]*>/i.test(inspectionDestination.html));
+    if (suffix === "SELLABLE") await runNotificationBrowserSmoke(primary.email, inspectionNotification.action_route);
     const inspectionBefore = stockSnapshot();
     const inspectPage = await page(`/returns?returnId=${fixture.returnId}#actions`);
     const receiptLineId = receiptLines[0].receipt_line_id; const inspectionFields = { returnId: fixture.returnId, returnRef: fixture.returnRef, inspectionReceiptLineId: receiptLineId, inspectionRef: `${prefix}:${suffix}:INSPECTION`, occurredAt: localDateTime(), [`sellableQuantity_${receiptLineId}`]: mode === "1" ? "1" : "0", [`damagedQuantity_${receiptLineId}`]: mode === "2" ? "1" : "0", note: "UI smoke inspection", confirmation: "on" };
@@ -500,6 +585,9 @@ async function main() {
       assertSnapshotSame(inspectionBefore, after, "DAMAGED inspection tidak menambah movement");
       check("DAMAGED feedback menyatakan tanpa movement stok", htmlContains(inspected.html, "tanpa movement stok tambahan"));
     }
+    const inspectionResolvedAt = runSqlJson(`select json_build_object('observedAt', (greatest(clock_timestamp(), coalesce((select max(last_seen_at) from notification.notifications where organization_id=${sqlLiteral(organizationId)}::uuid and rule_code_snapshot='RETURN_INSPECTION_PENDING'), '-infinity'::timestamptz)) + interval '1 microsecond')::text);`).observedAt;
+    const inspectionResolution = runSqlJson(`select notification.evaluate_return_inspection(${sqlLiteral(organizationId)}::uuid,${sqlLiteral(`${prefix}:${suffix}:inspection-notification-resolve`)},${sqlLiteral(inspectionResolvedAt)}::timestamptz,'MANUAL',gen_random_uuid(),'tiktok-return-claim-ui-smoke');`);
+    check(`${suffix} notification inspection resolved setelah pekerjaan selesai`, inspectionResolution && inspectionResolution.action === "COMPLETED" && inspectionResolution.status === "SUCCEEDED" && Number(inspectionResolution.resolvedCount) >= 1, JSON.stringify(inspectionResolution));
   }
 
   const second = secondary;
@@ -514,10 +602,23 @@ async function main() {
   check("Fixture source line memiliki provenance historis", Boolean(scenarioA.marketplaceOrderItemId) && Boolean(scenarioA.sourceLineRef));
   check("Tidak ada error server/hydration relevan", !/(Unhandled Runtime Error|Internal Server Error|Hydration failed|UnhandledPromiseRejection)/i.test(serverOutput));
   console.log(`Smoke fixture sengaja dipertahankan sebagai audit evidence dengan prefix ${prefix}.`);
+  stopServer();
 }
 
-main().catch((error) => {
+let exitCode = 0;
+
+try {
+  await main();
+} catch (error) {
   console.error(`[FAIL] ${error instanceof Error ? error.stack ?? error.message : error}`);
   if (serverOutput) console.error(`\n== Next server output ==\n${serverOutput}`);
-  process.exitCode = 1;
-}).finally(() => { if (server) server.kill(); });
+  exitCode = 1;
+} finally {
+  stopServer();
+}
+
+await Promise.all([
+  new Promise((resolve) => process.stdout.write("", resolve)),
+  new Promise((resolve) => process.stderr.write("", resolve)),
+]);
+process.exit(exitCode);

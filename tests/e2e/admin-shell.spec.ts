@@ -71,7 +71,9 @@ test(
     await loginAsAdmin(page);
 
     // 1. Desktop sidebar navigation sidebar visible
-    const sidebar = page.locator("aside");
+    const sidebar = page.locator("aside").filter({
+      has: page.locator("nav[aria-label='Navigasi utama']"),
+    });
     await expect(sidebar).toBeVisible();
 
     // 2. Primary & Settings navigation links exist
@@ -115,7 +117,7 @@ test(
     await loginAsAdmin(page);
 
     // Mobile header is visible
-    await expect(page.locator("header")).toBeVisible();
+    await expect(page.locator("header.lg\\:hidden")).toBeVisible();
 
     // Mobile bottom navigation contains 4 links
     const bottomNav = page.locator("nav[aria-label='Navigasi utama'].lg\\:hidden");
@@ -274,7 +276,9 @@ test(
 
     await loginAsAdmin(page);
 
-    const sidebar = page.locator("aside");
+    const sidebar = page.locator("aside").filter({
+      has: page.locator("nav[aria-label='Navigasi utama']"),
+    });
     const stockLink = sidebar.getByRole("link", { name: "Stok", exact: true });
     const orderLink = sidebar.getByRole("link", { name: "Pesanan", exact: true });
     const settingsLink = sidebar.getByRole("link", { name: "Pengaturan", exact: true });
@@ -290,6 +294,95 @@ test(
     // Goto /opening-balances -> should light up 'Pengaturan'
     await page.goto("/opening-balances", { waitUntil: "domcontentloaded" });
     await expect(settingsLink).toHaveAttribute("aria-current", "page");
+  },
+);
+
+test(
+  "action Retur dari Beranda mempertahankan object context",
+  async ({ page }) => {
+    const expectedHref =
+      process.env.PLAYWRIGHT_RETURN_NOTIFICATION_ROUTE;
+    test.skip(
+      !expectedHref,
+      "Memerlukan action route dari fixture notification Retur aktif.",
+    );
+
+    const runtimeErrors: string[] = [];
+    const serverFailures: string[] = [];
+
+    page.on("console", (message) => {
+      if (message.type() === "error") {
+        runtimeErrors.push(message.text());
+      }
+    });
+    page.on("pageerror", (error) => {
+      runtimeErrors.push(error.message);
+    });
+    page.on("response", (response) => {
+      if (response.status() >= 500) {
+        serverFailures.push(`${response.status()} ${response.url()}`);
+      }
+    });
+
+    await loginAsAdmin(page);
+
+    const action = page
+      .locator(`main a[href=${JSON.stringify(expectedHref)}]`)
+      .first();
+    await expect(action).toBeVisible();
+
+    const href = await action.getAttribute("href");
+    expect(href).toBeTruthy();
+
+    const expected = new URL(href!, "http://internal.local");
+    const returnId = expected.searchParams.get("returnId");
+    const claimId = expected.searchParams.get("claimId");
+
+    expect(returnId).toMatch(
+      /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i,
+    );
+
+    await action.click();
+    await page.waitForURL((url) => {
+      return (
+        url.pathname === `/returns/${returnId}` &&
+        (!claimId || url.searchParams.get("claimId") === claimId)
+      );
+    });
+
+    if (claimId) {
+      await expect(page.locator("#claim-detail")).toBeVisible();
+      expect(new URL(page.url()).hash).toBe("#claim-detail");
+    }
+
+    const orderLink = page
+      .locator("nav[aria-label='Navigasi utama']")
+      .getByRole("link", { name: "Pesanan", exact: true })
+      .filter({ visible: true });
+    await expect(orderLink).toHaveAttribute("aria-current", "page");
+
+    await page.reload({ waitUntil: "domcontentloaded" });
+    expect(new URL(page.url()).pathname).toBe(`/returns/${returnId}`);
+    if (claimId) {
+      expect(new URL(page.url()).searchParams.get("claimId")).toBe(claimId);
+      await expect(page.locator("#claim-detail")).toBeVisible();
+    }
+
+    const overflow = await page.evaluate(() => ({
+      scrollWidth: document.documentElement.scrollWidth,
+      viewportWidth: document.documentElement.clientWidth,
+    }));
+    expect(overflow.scrollWidth).toBeLessThanOrEqual(
+      overflow.viewportWidth + 1,
+    );
+
+    await page
+      .getByRole("link", { name: "Kembali ke Retur & Klaim", exact: true })
+      .click();
+    await page.waitForURL((url) => url.pathname === "/returns");
+
+    expect(runtimeErrors).toEqual([]);
+    expect(serverFailures).toEqual([]);
   },
 );
 

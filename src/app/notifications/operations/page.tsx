@@ -199,9 +199,9 @@ function ConfigurationError({ message }: { message: string }) {
         </p>
         <Link
           className="mt-6 inline-flex rounded-xl border border-white/10 px-4 py-2 text-sm text-slate-200 hover:bg-white/[0.05]"
-          href="/notifications"
+          href="/"
         >
-          Kembali ke Notification Center
+          Kembali ke Beranda
         </Link>
       </div>
     </main>
@@ -232,9 +232,9 @@ function SummarySection({
         <div className="flex flex-col items-start gap-2 lg:items-end">
           <Link
             className="rounded-xl border border-white/10 px-4 py-2 text-sm text-slate-300 transition hover:bg-white/[0.05] hover:text-white"
-            href="/notifications"
+            href="/"
           >
-            Buka Notification Center
+            Buka Beranda
           </Link>
           <p className="text-xs text-slate-500">
             Snapshot {formatDate(summary.generatedAt)} WIB
