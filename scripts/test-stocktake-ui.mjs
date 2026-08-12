@@ -14,6 +14,8 @@ const files = {
   review: "src/app/stocktakes/components/review-panel.tsx",
   approval: "src/app/stocktakes/components/approval-panel.tsx",
   posting: "src/app/stocktakes/components/posting-panel.tsx",
+  cancellation: "src/app/stocktakes/components/cancel-stocktake-panel.tsx",
+  actions: "src/app/stocktakes/actions.ts",
 };
 const pgtapFiles = [
   "supabase/tests/023_stocktake_session_commands.test.sql",
@@ -22,6 +24,7 @@ const pgtapFiles = [
   "supabase/tests/026_stocktake_adjustment_posting.test.sql",
   "supabase/tests/027_stocktake_review_view_contract.test.sql",
   "supabase/tests/028_stocktake_list_blind_confidentiality.test.sql",
+  "supabase/tests/069_stocktake_cancellation.test.sql",
 ];
 const reviewReasons = [
   "UNRECORDED_MANUAL_OUTBOUND",
@@ -102,7 +105,10 @@ function runPgtap(filePath) {
 
 async function main() {
   const source = await readSources();
-  const combined = Object.values(source).join("\n");
+  const combined = Object.entries(source)
+    .filter(([name]) => name !== "actions")
+    .map(([, value]) => value)
+    .join("\n");
 
   assert(/requireAdminSession/.test(source.landing) && /requireAdminSession/.test(source.create) && /requireAdminSession/.test(source.detail), "Semua route Hitung Stok harus menjaga akses Admin.");
   assert(source.createForm.startsWith('"use client"'), "Form buat harus interaktif di browser.");
@@ -151,6 +157,16 @@ async function main() {
   assert(/status === "POSTING"/.test(source.posting), "Posting harus menjelaskan status pemrosesan tanpa mengulangi perintah.");
   assert(/status === "APPROVED"/.test(source.posting) && /postStocktakeAdjustmentAction/.test(source.posting), "Posting hanya boleh tersedia setelah hasil disetujui.");
   assert(/details.status_code === "EXCEPTION"/.test(source.detail) && /details.status_code === "CANCELLED"/.test(source.detail) && /tidak memiliki tindakan\s+lanjutan/.test(source.detail), "State bermasalah dan dibatalkan harus terminal tanpa action.");
+  assert(/CancelStocktakePanel/.test(source.detail), "Detail harus menyediakan panel Batal Hitung Stok kontekstual.");
+  assert(/cancelStocktakeAction/.test(source.actions), "Server Action cancel stocktake harus tersedia.");
+  assertFormContract(source.cancellation, "cancelStocktakeAction", [
+    "stocktakeId",
+    "returnTo",
+    "reason",
+    "confirmation",
+  ]);
+  assert(/variant="danger"/.test(source.cancellation), "Cancel harus memakai tindakan bahaya yang eksplisit.");
+  assert(/tidak berubah/.test(source.cancellation) && /tetap tersimpan untuk audit/.test(source.cancellation), "Konfirmasi cancel harus menjelaskan stock-neutral dan preservasi audit.");
   assert(/activeStocktakes/.test(source.landing) && /historyStocktakes/.test(source.landing), "Landing harus memisahkan pekerjaan aktif dan riwayat terminal.");
   assert(!/<table/.test(combined), "Hitung Stok tidak boleh memakai tabel horizontal sebagai UI utama mobile.");
   assertNoPrimaryTechnicalCopy(combined);

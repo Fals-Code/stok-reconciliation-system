@@ -17,6 +17,7 @@ import {
   STOCKTAKE_TYPES,
   STOCKTAKE_VISIBILITIES,
   type StocktakeApprovalResponse,
+  type StocktakeCancellationResponse,
   type StocktakeBucket,
   type StocktakeCompleteCountingResponse,
   type StocktakeCountResponse,
@@ -233,7 +234,8 @@ function lifecycleMetadata(
     | "review-line"
     | "review-recount"
     | "approve"
-    | "post",
+    | "post"
+    | "cancel",
 ) {
   return {
     source: "admin-stocktake-ui",
@@ -241,6 +243,50 @@ function lifecycleMetadata(
     action,
     actorUserId,
   };
+}
+
+export async function cancelStocktakeAction(formData: FormData) {
+  const session = await requireAdminSession();
+  const stocktakeId = requiredUuid(formData, "stocktakeId");
+  let destination: string;
+
+  try {
+    const reason = required(formData, "reason");
+    const result = await callRpc<StocktakeCancellationResponse>(
+      "cancel_stocktake",
+      {
+        p_organization_id: session.profile.organization_id,
+        p_idempotency_key:
+          "stocktake:" + stocktakeId + ":cancel:v1",
+        p_stocktake_id: stocktakeId,
+        p_reason: reason,
+        p_confirmation: checkbox(formData, "confirmation"),
+        p_metadata: lifecycleMetadata(session.user.id, "cancel"),
+      },
+    );
+
+    revalidatePath("/");
+    revalidatePath("/stocktakes");
+    revalidatePath("/stocktakes/" + stocktakeId);
+
+    destination = detailDestination(
+      stocktakeId,
+      "success",
+      "Hitung Stok " +
+        result.stocktakeNo +
+        " dibatalkan tanpa mengubah stok.",
+      formData,
+    );
+  } catch (error) {
+    destination = detailDestination(
+      stocktakeId,
+      "error",
+      stocktakeErrorMessage(error),
+      formData,
+    );
+  }
+
+  redirect(destination);
 }
 
 export async function createStocktakeAction(formData: FormData) {

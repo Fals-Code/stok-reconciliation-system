@@ -31,6 +31,7 @@
     "test:manual-outbound-parallel": "node scripts/test-manual-outbound-parallel.mjs",
     "test:inventory-mutations-parallel": "node scripts/test-inventory-mutations-parallel.mjs",
     "test:stocktake-opening-balance-parallel": "node scripts/test-stocktake-opening-balance-parallel.mjs",
+    "test:stocktake-cancellation-parallel": "node scripts/test-stocktake-cancellation-parallel.mjs",
     "test:marketplace-lifecycle-parallel": "node scripts/test-marketplace-lifecycle-parallel.mjs",
     "test:marketplace-external-event-parallel": "node scripts/test-marketplace-external-event-parallel.mjs",
     "test:marketplace-version-snapshot-parallel": "node scripts/test-marketplace-version-snapshot-parallel.mjs",
@@ -42,7 +43,9 @@
     "test:navigation-contract": "node scripts/test-navigation-contract.mjs",
     "test:demo": "node scripts/test-demo.mjs",
     "test:admin-shell-browser": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/test-admin-shell-browser.ps1",
-    "test:admin-shell-browser:headed": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/test-admin-shell-browser.ps1 -Headed"
+    "test:admin-shell-browser:headed": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/test-admin-shell-browser.ps1 -Headed",
+    "test:stocktake-cancellation-browser": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/test-stocktake-cancellation-browser.ps1",
+    "test:stocktake-cancellation-browser:headed": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/test-stocktake-cancellation-browser.ps1 -Headed"
   },
   "dependencies": {
     "csv-parse": "^7.0.1",

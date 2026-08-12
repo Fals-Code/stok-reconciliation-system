@@ -4,6 +4,7 @@ import { notFound, redirect } from "next/navigation";
 import { AppShell } from "@/app/app-shell/app-shell";
 import { PageHeader } from "@/app/app-shell/page-header";
 import { ApprovalPanel } from "@/app/stocktakes/components/approval-panel";
+import { CancelStocktakePanel } from "@/app/stocktakes/components/cancel-stocktake-panel";
 import { CountingPanel } from "@/app/stocktakes/components/counting-panel";
 import { PostingPanel } from "@/app/stocktakes/components/posting-panel";
 import { ReviewPanel } from "@/app/stocktakes/components/review-panel";
@@ -18,6 +19,7 @@ import { safeInternalRoute } from "@/lib/safe-internal-route";
 import {
   getLatestStocktakeApproval,
   getLatestStocktakePosting,
+  getStocktakeCancellation,
   getStocktakeApprovalLines,
   getStocktakeCountAttempts,
   getStocktakeCountingLines,
@@ -28,6 +30,7 @@ import {
 import type {
   StocktakeApproval,
   StocktakeApprovalLine,
+  StocktakeCancellation,
   StocktakeCountAttempt,
   StocktakeCountingLine,
   StocktakePosting,
@@ -151,6 +154,7 @@ export default async function StocktakeDetailPage({
   let approvalLines: StocktakeApprovalLine[] = [];
   let posting: StocktakePosting | null = null;
   let postingLines: StocktakePostingLine[] = [];
+  let cancellation: StocktakeCancellation | null = null;
   let downstreamError = false;
 
   try {
@@ -164,6 +168,8 @@ export default async function StocktakeDetailPage({
         getStocktakeReviewLines(stocktakeId),
         getStocktakeCountAttempts(stocktakeId),
       ]);
+    } else if (details.status_code === "CANCELLED") {
+      cancellation = await getStocktakeCancellation(stocktakeId);
     } else if (
       details.status_code === "APPROVED" ||
       details.status_code === "POSTING" ||
@@ -429,6 +435,15 @@ export default async function StocktakeDetailPage({
               />
             ) : null}
 
+            {["DRAFT", "READY", "COUNTING", "REVIEW"].includes(
+              details.status_code,
+            ) ? (
+              <CancelStocktakePanel
+                returnTo={returnTo}
+                stocktakeId={stocktakeId}
+              />
+            ) : null}
+
             {details.status_code === "EXCEPTION" ? (
               <Alert
                 className="mt-6"
@@ -447,7 +462,13 @@ export default async function StocktakeDetailPage({
                 tone="warning"
               >
                 Sesi ini hanya dapat dibaca dan tidak memiliki tindakan
-                lanjutan.
+                lanjutan. Hasil hitung sebelumnya tetap tersimpan dan stok
+                tidak berubah.
+                {cancellation ? (
+                  <span className="mt-2 block">
+                    Alasan: {cancellation.reason}
+                  </span>
+                ) : null}
               </Alert>
             ) : null}
           </>

@@ -752,7 +752,7 @@ Keputusan yang dianggap terkunci untuk audit berikutnya:
 
 9. Detail Produk, Detail Batch, Detail Transaksi, Detail Retur, dan Detail Hitung Stok tetap route contextual.
 
-10. Flow cancel Hitung Stok adalah gap nyata yang harus ditutup setelah domain contract diaudit.
+10. Cancel Hitung Stok selesai sebagai tindakan kontekstual pada detail sesi; tidak menambah menu atau route utama.
 
 11. Marketplace listing administration dan CSV import/simulator tersedia dari Pengaturan sebagai capability administratif; keduanya tetap di luar primary navigation dan bukan menu harian operator.
 
@@ -815,7 +815,7 @@ Status ini berasal dari inventory aktual `src/app/**/page.tsx`, route handler ak
 | `/stock-disposals` | Pemusnahan stok dengan preview | Stok | Aksi workspace Stok | `/products` | Preview lalu post; failure tetap dapat diperbaiki | Draft/preview aman | KEEP CONTEXTUAL |
 | `/stocktakes` | Daftar pekerjaan Hitung Stok | Stok | Workspace Stok | `/products` | Read/retry; membuka sesi existing | Filter `status/type` di URL | KEEP CONTEXTUAL |
 | `/stocktakes/new` | Membuat sesi Hitung Stok | Stok | Daftar Hitung Stok | `/stocktakes` | Success ke detail; failure memulihkan isian | Notice aman, command identity baru | KEEP CONTEXTUAL |
-| `/stocktakes/[stocktakeId]` | Counting, review, approval, posting existing | Stok | Daftar Hitung Stok/deep-link | `returnTo` tepat ke `/stocktakes` beserta filter | Semua action kembali ke detail dengan feedback dan `returnTo` | Context tetap setelah refresh | KEEP CONTEXTUAL / GAP CANCEL |
+| `/stocktakes/[stocktakeId]` | Counting, review, approval, posting, dan pembatalan sesi | Stok | Daftar Hitung Stok/deep-link | `returnTo` tepat ke `/stocktakes` beserta filter | Semua action kembali ke detail dengan feedback dan `returnTo` | Context tetap setelah refresh; CANCELLED terminal | KEEP CONTEXTUAL |
 | `/stock-issues` | Masalah Stok dan rekonsiliasi harian | Stok | Workspace Stok/deep-link | `/products` | Evaluasi memberi feedback pada halaman | Query stabil | KEEP CONTEXTUAL |
 | `/reconciliation` | Bookmark nama teknis lama | Stok | Direct/bookmark lama | — | Redirect ke `/stock-issues`, query dipertahankan | Stabil | COMPATIBILITY |
 | `/ledger` | Riwayat Stok authoritative | Stok | Workspace Stok, produk, batch, hasil transaksi | `/products` | Read/retry; membuka detail transaksi | Filter/page di URL | KEEP CONTEXTUAL |
@@ -875,11 +875,18 @@ Perubahan pada commit `b113912` dipertahankan. `PLAYWRIGHT_EXTERNAL_SERVER=true`
 - `npm run lint`: PASS dengan 0 error; empat warning unused-variable sudah ada pada source baseline.
 - `npm run typecheck`: PASS.
 - `npm run build`: PASS; build menginventarisasi seluruh page dan handler di atas.
-- `npx supabase test db`: PASS, 68 file dan 3.751 test.
+- `npx supabase test db`: PASS, 69 file dan 3.789 assertion.
 - `git diff --check`: PASS.
 
-### 25.7 Gap yang masih tersisa
+### 25.7 Cancel Hitung Stok — COMPLETE
 
-Satu-satunya gap besar yang ditemukan oleh source dan test aktual adalah **Cancel Hitung Stok**. Audit ini hanya mencatatnya; tidak membuat RPC, migration, tombol, atau perubahan state machine.
+- Pembatalan hanya tersedia secara kontekstual pada `/stocktakes/[stocktakeId]`: `DRAFT`, `READY`, `COUNTING`, dan `REVIEW` dapat dibatalkan. `APPROVED`, `POSTING`, `POSTED`, `CANCELLED`, dan `EXCEPTION` terminal/non-cancellable.
+- RPC atomik menulis audit append-only `operations.stocktake_cancellations` bersama idempotency command, actor, alasan, metadata, dan timestamp; count attempt yang telah tersimpan tidak dihapus.
+- Pembatalan stock-neutral: tidak menulis transaksi/ledger stok, batch/product projection, reservation, atau marketplace allocation. `CANCELLED` tidak dapat dilanjutkan atau kemudian diposting.
+- pgTAP 069 (38 assertion) membuktikan transition, isolasi organisasi, audit, idempotency, notification evaluator, count preservation, dan invariants stock-neutral.
+- Playwright focused PASS pada desktop dan mobile: Admin membuat DRAFT, alasan kosong ditolak, pembatalan memberi feedback/status `Dibatalkan`, refresh dan back navigation aman, serta tidak ada HTTP 5xx/page error/root overflow.
+- Harness dua sesi PASS: replay identik menghasilkan satu effect; changed payload mengembalikan `IDEMPOTENCY_KEY_REUSED`; command identity berbeda menghasilkan satu winner; cancel-vs-count serializable; APPROVED/POSTED menolak cancel. Durable rerun tidak menambah effect.
 
-Reserve/shipment tetap event/adapter-driven. Tidak ada kebutuhan backend/domain baru lain yang ditemukan dalam scope final frontend flow/reachability ini.
+### 25.8 Gap besar tersisa
+
+Tidak ada gap besar frontend/domain lain yang ditemukan oleh source dan test aktual dalam scope audit ini. Reserve/shipment tetap event/adapter-driven.
