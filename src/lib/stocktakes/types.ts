@@ -163,6 +163,34 @@ export type StocktakeStartResponse = {
   startedAt: string;
 };
 
+export type StocktakeCancellation = {
+  cancellation_id: string;
+  organization_id: string;
+  stocktake_id: string;
+  status_before_code: "DRAFT" | "READY" | "COUNTING" | "REVIEW";
+  status_after_code: "CANCELLED";
+  reason: string;
+  cancelled_at: string;
+  cancelled_by: string | null;
+  process_name: string | null;
+  idempotency_command_id: string;
+  metadata: Record<string, unknown>;
+  created_at: string;
+};
+
+export type StocktakeCancellationResponse = {
+  status: "CANCELLED";
+  stocktakeId: string;
+  stocktakeNo: string;
+  statusBefore: StocktakeCancellation["status_before_code"];
+  cancellationId: string;
+  reason: string;
+  cancelledAt: string;
+  idempotencyKey: string;
+  requestHash: string;
+  versionNo: number;
+};
+
 export type StocktakeDetailData = {
   details: StocktakeDetails;
   summary: StocktakeListItem | null;

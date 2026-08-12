@@ -2,6 +2,7 @@ import PageContextBar from "@/app/app-shell/page-context-bar";
 import { notFound } from "next/navigation";
 
 import ApprovalPanel from "@/app/stocktakes/components/approval-panel";
+import { CancelStocktakePanel } from "@/app/stocktakes/components/cancel-stocktake-panel";
 import CountingPanel from "@/app/stocktakes/components/counting-panel";
 import PostingPanel from "@/app/stocktakes/components/posting-panel";
 import ReviewPanel from "@/app/stocktakes/components/review-panel";
@@ -20,6 +21,7 @@ import {
 import {
   getLatestStocktakeApproval,
   getLatestStocktakePosting,
+  getStocktakeCancellation,
   getStocktakeApprovalLines,
   getStocktakeCountAttempts,
   getStocktakeCountingLines,
@@ -188,6 +190,10 @@ export default async function StocktakeDetailPage({
   }
 
   const { details, summary } = data;
+  const cancellation =
+    details.status_code === "CANCELLED"
+      ? await getStocktakeCancellation(stocktakeId)
+      : null;
   const countingLines =
     details.status_code === "COUNTING"
       ? await getStocktakeCountingLines(
@@ -435,6 +441,12 @@ export default async function StocktakeDetailPage({
           />
         ) : null}
 
+        {["DRAFT", "READY", "COUNTING", "REVIEW"].includes(
+          details.status_code,
+        ) ? (
+          <CancelStocktakePanel stocktakeId={stocktakeId} />
+        ) : null}
+
         {approvalVisible ? (
           <ApprovalPanel
             details={details}
@@ -455,6 +467,21 @@ export default async function StocktakeDetailPage({
             attempts={countAttempts}
           />
         ) : null}
+        {details.status_code === "CANCELLED" ? (
+          <section className="mt-6 rounded-2xl border border-amber-400/20 bg-amber-400/[0.055] p-5">
+            <p className="font-semibold text-amber-100">Hitung Stok dibatalkan.</p>
+            <p className="mt-2 text-sm leading-6 text-slate-400">
+              Sesi ini hanya dapat dibaca dan tidak memiliki tindakan lanjutan.
+              Hasil hitung sebelumnya tetap tersimpan untuk audit dan stok tidak berubah.
+            </p>
+            {cancellation ? (
+              <p className="mt-3 text-sm text-slate-300">
+                Alasan: {cancellation.reason}
+              </p>
+            ) : null}
+          </section>
+        ) : null}
+
       </div>
     </main>
   );

@@ -5,6 +5,7 @@ import type {
   StocktakeApproval,
   StocktakeApprovalLine,
   StocktakeBatchOption,
+  StocktakeCancellation,
   StocktakeCountAttempt,
   StocktakeCreateOptions,
   StocktakeCountingLine,
@@ -151,6 +152,27 @@ export async function getStocktakeDetails(
     details,
     summary: summaryRows[0] ?? null,
   };
+}
+
+export async function getStocktakeCancellation(
+  stocktakeId: string,
+): Promise<StocktakeCancellation | null> {
+  const context = await getRequestContext();
+  const organizationId = encodeURIComponent(
+    context.session.profile.organization_id,
+  );
+  const encodedStocktakeId = encodeURIComponent(stocktakeId);
+
+  const rows = await authenticatedFetch<StocktakeCancellation[]>(
+    "stocktake_cancellations?organization_id=eq." +
+      organizationId +
+      "&stocktake_id=eq." +
+      encodedStocktakeId +
+      "&select=*&limit=1",
+    context,
+  );
+
+  return rows[0] ?? null;
 }
 
 export async function getStocktakeCountingLines(
