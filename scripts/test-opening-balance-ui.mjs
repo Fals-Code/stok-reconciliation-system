@@ -806,17 +806,17 @@ async function main() {
 
   let page = await getPage(`${args.baseUrl}/opening-balances`);
   assertTest(
-    containsText(page.html, "Saldo Awal produksi yang dapat diaudit"),
+    containsText(page.html, "Setup Stok Awal"),
     "Halaman authenticated dapat dirender",
   );
   assertTest(
-    hasForm(page.html, "Buat draft saldo awal"),
+    hasForm(page.html, "Buat Draft"),
     "Form pembuatan draft tersedia",
   );
 
   page = await invokeServerActionForm({
     page,
-    marker: "Buat draft saldo awal",
+    marker: "Buat Draft",
     baseUrl: args.baseUrl,
     fields: {
       sourceRef,
@@ -829,7 +829,7 @@ async function main() {
     containsText(page.html, "dibuat sebagai draft"),
     "Server Action membuat draft",
   );
-  const draftForm = findForm(page.html, "Simpan draft saldo awal");
+  const draftForm = findForm(page.html, "Simpan Draft");
   assertTest(
     containsText(draftForm, eligibleSelectorBatch.batchCode),
     "Batch eligible tampil pada selector transaksi baru",
@@ -889,7 +889,7 @@ async function main() {
 
   page = await invokeServerActionForm({
     page,
-    marker: "Simpan draft saldo awal",
+    marker: "Simpan Draft",
     baseUrl: args.baseUrl,
     fields: {
       cutoverId: cutover.cutover_id,
@@ -919,7 +919,7 @@ async function main() {
 
   page = await invokeServerActionForm({
     page,
-    marker: "Kirim ke review",
+    marker: "Periksa Sebelum Simpan",
     baseUrl: args.baseUrl,
     fields: {
       cutoverId: saved.cutover_id,
@@ -927,11 +927,11 @@ async function main() {
     },
   });
   assertTest(
-    containsText(page.html, "Preview authoritative"),
+    containsText(page.html, "Periksa dampak stok awal"),
     "Review menampilkan preview authoritative",
   );
   assertTest(
-    hasForm(page.html, "Posting Saldo Awal"),
+    hasForm(page.html, "Simpan Stok Awal"),
     "Preview eligible menyediakan konfirmasi final",
   );
 
@@ -953,7 +953,7 @@ async function main() {
 
   page = await invokeServerActionForm({
     page,
-    marker: "Posting Saldo Awal",
+    marker: "Simpan Stok Awal",
     baseUrl: args.baseUrl,
     fields: {
       cutoverId: saved.cutover_id,
@@ -967,11 +967,11 @@ async function main() {
     "Server Action posting berhasil",
   );
   assertTest(
-    containsText(page.html, "UNVERIFIED"),
+    containsText(page.html, "Belum terverifikasi"),
     "Status sesudah posting tetap UNVERIFIED",
   );
   assertTest(
-    !hasForm(page.html, "Posting Saldo Awal"),
+    !hasForm(page.html, "Simpan Stok Awal"),
     "Dokumen posted tidak menyediakan posting ulang",
   );
 
@@ -1013,12 +1013,16 @@ async function main() {
   );
   assertTest(
     containsText(refreshed.html, posted.cutover_no) &&
-      containsText(refreshed.html, "Ledger drill-down"),
+      containsText(refreshed.html, "Riwayat perubahan stok awal") &&
+      containsText(
+        refreshed.html,
+        `/ledger/${encodeURIComponent(posted.transaction_id)}`,
+      ),
     "Detail dan feedback bertahan setelah refresh",
   );
   assertTest(
-    containsText(refreshed.html, "Preview exact reversal") &&
-      hasForm(refreshed.html, "Balik Saldo Awal"),
+    containsText(refreshed.html, "Koreksi Stok Awal") &&
+      hasForm(refreshed.html, "Koreksi Stok Awal"),
     "Cutover aktif menampilkan preview dan konfirmasi exact reversal",
   );
 
@@ -1029,7 +1033,7 @@ async function main() {
   assertTest(
     JSON.stringify(reversalPreviewLedgerAfter) ===
       JSON.stringify(reversalPreviewLedgerBefore),
-    "Preview exact reversal tidak mengubah ledger",
+    "Koreksi Stok Awal tidak mengubah ledger",
   );
 
   const replacementSourceRef = `OB-SMOKE-REPL-${runId.slice(0, 8)}`;
@@ -1073,7 +1077,7 @@ async function main() {
   );
   assertTest(
     containsText(blockedPage.html, "Diblokir") &&
-      !hasForm(blockedPage.html, "Posting Saldo Awal"),
+      !hasForm(blockedPage.html, "Simpan Stok Awal"),
     "Active cutover menghasilkan blocked preview tanpa commit action",
   );
   const staleReversalPreview = await rpc(
@@ -1085,7 +1089,7 @@ async function main() {
   );
   assertTest(
     staleReversalPreview.eligible === true,
-    "Preview exact reversal awal eligible",
+    "Koreksi Stok Awal awal eligible",
   );
 
   const temporaryReceipt = await postTemporaryReceipt({
@@ -1105,7 +1109,7 @@ async function main() {
 
   const staleActionPage = await invokeServerActionForm({
     page: refreshed,
-    marker: "Balik Saldo Awal",
+    marker: "Koreksi Stok Awal",
     baseUrl: args.baseUrl,
     fields: {
       cutoverId: saved.cutover_id,
@@ -1154,7 +1158,7 @@ async function main() {
     "Membalik saldo awal fixture melalui Admin UI exact reversal.";
   const reversedPage = await invokeServerActionForm({
     page: freshReversalPage,
-    marker: "Balik Saldo Awal",
+    marker: "Koreksi Stok Awal",
     baseUrl: args.baseUrl,
     fields: {
       cutoverId: saved.cutover_id,
@@ -1169,9 +1173,10 @@ async function main() {
     "Server Action exact reversal berhasil",
   );
   assertTest(
-    containsText(reversedPage.html, "Exact reversal selesai") &&
-      containsText(reversedPage.html, "Buat cutover pengganti") &&
-      !hasForm(reversedPage.html, "Balik Saldo Awal"),
+    containsText(reversedPage.html, "Koreksi stok awal selesai") &&
+      containsText(reversedPage.html, "Buat Saldo Awal Pengganti") &&
+      containsText(reversedPage.html, "Buka Transaksi Koreksi") &&
+      !hasForm(reversedPage.html, "Koreksi Stok Awal"),
     "Detail reversal immutable dan link replacement tampil",
   );
 

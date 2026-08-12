@@ -2,7 +2,12 @@ import { randomUUID } from "node:crypto";
 
 import Link from "next/link";
 
-import PageSectionNav from "@/app/app-shell/page-section-nav";
+import {
+  AppShell,
+} from "@/app/app-shell/app-shell";
+import {
+  PageHeader,
+} from "@/app/app-shell/page-header";
 import {
   createOpeningBalanceAction,
   postOpeningBalanceAction,
@@ -13,40 +18,39 @@ import {
 import OpeningBalanceDraftForm from "@/app/opening-balances/components/draft-form";
 import type { OpeningBalanceDraftLine } from "@/app/opening-balances/draft";
 import {
+  Alert,
+  Button,
+  EmptyState,
+  StatusBadge,
+} from "@/components/ui";
+import {
+  requireAdminSession,
+} from "@/lib/auth";
+import {
   getOpeningBalanceData,
   previewOpeningBalanceCutover,
   previewOpeningBalanceReversal,
   type OpeningBalanceCutover,
   type OpeningBalancePreview,
-  type OpeningBalanceReversalAudit,
   type OpeningBalanceReversalPreview,
   type OpeningBalanceVerificationStatus,
-  type StockLedgerEntry,
 } from "@/lib/supabase-rest";
 
 export const dynamic = "force-dynamic";
 
-type SearchParams = {
-  cutoverId?: string;
-  transactionId?: string;
-  success?: string;
-  error?: string;
-};
+type SearchParams = Record<string, string | string[] | undefined>;
 
 const numberFormatter = new Intl.NumberFormat("id-ID");
 
-function formatNumber(value: number | null | undefined) {
-  if (value === null || value === undefined) return "-";
-  return numberFormatter.format(Number(value));
+function first(value: SearchParams[string]) {
+  return Array.isArray(value) ? value[0] : value;
 }
 
-function formatSigned(value: number | null | undefined) {
-  if (value === null || value === undefined) return "-";
-  const normalized = Number(value);
-  return `${normalized > 0 ? "+" : ""}${formatNumber(normalized)}`;
+function number(value: number | null | undefined) {
+  return numberFormatter.format(Number(value ?? 0));
 }
 
-function formatDate(value: string | null) {
+function formatDate(value: string | null | undefined) {
   if (!value) return "Belum tersedia";
 
   const date = new Date(value);
@@ -70,196 +74,194 @@ function defaultDateTimeLocal() {
     minute: "2-digit",
     hour12: false,
   }).formatToParts(new Date());
-  const values = Object.fromEntries(
+
+  const fields = Object.fromEntries(
     parts.map((part) => [part.type, part.value]),
   );
 
-  return `${values.year}-${values.month}-${values.day}T${values.hour}:${values.minute}`;
+  return `${fields.year}-${fields.month}-${fields.day}T${fields.hour}:${fields.minute}`;
 }
 
-function verificationTone(
-  status: OpeningBalanceVerificationStatus,
-): "success" | "warning" | "danger" | "info" | "neutral" {
-  if (status === "VERIFIED") return "success";
-  if (status === "PARTIALLY_VERIFIED") return "warning";
-  if (status === "UNVERIFIED") return "danger";
-  if (status === "NOT_APPLICABLE") return "neutral";
-  return "info";
+function verificationPresentation(status: OpeningBalanceVerificationStatus) {
+  if (status === "VERIFIED") {
+    return { label: "Terverifikasi", tone: "selected" as const };
+  }
+
+  if (status === "PARTIALLY_VERIFIED") {
+    return { label: "Sebagian terverifikasi", tone: "warning" as const };
+  }
+
+  if (status === "UNVERIFIED") {
+    return { label: "Belum terverifikasi", tone: "warning" as const };
+  }
+
+  if (status === "PENDING_POST") {
+    return { label: "Belum diposting", tone: "neutral" as const };
+  }
+
+  return { label: "Tidak berlaku", tone: "neutral" as const };
 }
 
-function Pill({
-  label,
-  tone = "neutral",
-}: {
-  label: string;
-  tone?: "success" | "warning" | "danger" | "info" | "neutral";
-}) {
-  const tones = {
-    success: "border-emerald-400/25 bg-emerald-400/10 text-emerald-200",
-    warning: "border-amber-400/25 bg-amber-400/10 text-amber-100",
-    danger: "border-rose-400/25 bg-rose-400/10 text-rose-100",
-    info: "border-sky-400/25 bg-sky-400/10 text-sky-100",
-    neutral: "border-white/10 bg-white/[0.04] text-slate-300",
-  };
+function operationalPresentation(cutover: OpeningBalanceCutover) {
+  if (cutover.operational_status_code === "ACTIVE") {
+    return { label: "Aktif", tone: "selected" as const };
+  }
 
-  return (
-    <span
-      className={`inline-flex rounded-full border px-2.5 py-1 text-xs font-medium ${tones[tone]}`}
-    >
-      {label}
-    </span>
-  );
+  if (cutover.operational_status_code === "REVERSED") {
+    return { label: "Sudah dikoreksi", tone: "danger" as const };
+  }
+
+  if (cutover.status_code === "REVIEW") {
+    return { label: "Perlu dikonfirmasi", tone: "warning" as const };
+  }
+
+  if (cutover.status_code === "DRAFT") {
+    return { label: "Draft", tone: "neutral" as const };
+  }
+
+  return { label: "Tidak aktif", tone: "neutral" as const };
 }
 
-function operationalTone(
-  cutover: OpeningBalanceCutover,
-): "success" | "warning" | "danger" | "info" | "neutral" {
-  if (cutover.operational_status_code === "ACTIVE") return "success";
-  if (cutover.operational_status_code === "REVERSED") return "danger";
-  if (cutover.status_code === "REVIEW") return "warning";
-  if (cutover.status_code === "DRAFT") return "info";
-  return "neutral";
+function bucketLabel(code: string) {
+  if (code === "SELLABLE") return "Barang baik";
+  if (code === "QUARANTINE") return "Karantina";
+  if (code === "DAMAGED") return "Rusak";
+  return code;
 }
 
-function PreviewPanel({
-  preview,
-}: {
-  preview: OpeningBalancePreview;
-}) {
+function PreviewPanel({ preview }: { preview: OpeningBalancePreview }) {
   const intentId = preview.eligible ? randomUUID() : null;
 
   return (
-    <section className="panel-card">
-      <div className="flex flex-col gap-4 border-b border-white/10 pb-5 sm:flex-row sm:items-end sm:justify-between">
+    <section
+      aria-labelledby="opening-preview-heading"
+      className="mt-6 border-t border-ui-border pt-6"
+      id="preview"
+    >
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
         <div>
-          <p className="section-kicker">Preview authoritative</p>
-          <h2 className="mt-2 text-2xl font-semibold text-white">
-            Dampak saldo awal sebelum posting.
+          <p className="text-xs font-semibold uppercase tracking-wide text-ui-primary">
+            Langkah 2 dari 3
+          </p>
+          <h2
+            className="mt-1 text-lg font-semibold text-ui-text"
+            id="opening-preview-heading"
+          >
+            Periksa dampak stok awal
           </h2>
-          <p className="mt-3 max-w-3xl text-sm leading-6 text-slate-400">
-            Preview membaca ledger dan projection saat ini tanpa membuat
-            transaksi, movement, projection update, atau idempotency effect.
+          <p className="mt-1 max-w-3xl text-sm leading-6 text-ui-text-muted">
+            Sistem menghitung ulang posisi stok dari data yang tersimpan.
+            Belum ada perubahan stok pada tahap ini.
           </p>
         </div>
-        <Pill
-          label={preview.eligible ? "Siap diposting" : "Diblokir"}
-          tone={preview.eligible ? "success" : "danger"}
-        />
+
+        <StatusBadge tone={preview.eligible ? "selected" : "danger"}>
+          {preview.eligible ? "Siap dikonfirmasi" : "Diblokir"}
+        </StatusBadge>
       </div>
 
-      <dl className="mt-5 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
-        {[
-          ["Dokumen", preview.cutoverNo],
-          ["Tanggal efektif", preview.effectiveLocalDate],
-          ["Jumlah baris", formatNumber(preview.lineCount)],
-          ["Baris movement", formatNumber(preview.positiveLineCount)],
-          ["Total quantity", formatNumber(preview.totalQuantity)],
-          ["Referensi sumber", preview.sourceRef],
-          ["Referensi estimasi", preview.sourceEstimateRef],
-          ["Status verifikasi awal", "UNVERIFIED"],
-        ].map(([label, value]) => (
-          <div
-            className="rounded-2xl border border-white/10 bg-slate-950/35 p-4"
-            key={label}
-          >
-            <dt className="text-xs text-slate-500">{label}</dt>
-            <dd className="mt-2 text-sm font-medium text-slate-100">
-              {value}
-            </dd>
-          </div>
-        ))}
+      <dl className="mt-5 grid gap-4 border-y border-ui-border py-4 sm:grid-cols-3">
+        <div>
+          <dt className="text-sm text-ui-text-muted">Baris stok</dt>
+          <dd className="ui-number mt-1 text-xl font-semibold text-ui-text">
+            {number(preview.positiveLineCount)}
+          </dd>
+        </div>
+        <div>
+          <dt className="text-sm text-ui-text-muted">Total unit</dt>
+          <dd className="ui-number mt-1 text-xl font-semibold text-ui-text">
+            {number(preview.totalQuantity)}
+          </dd>
+        </div>
+        <div>
+          <dt className="text-sm text-ui-text-muted">Status setelah disimpan</dt>
+          <dd className="mt-1 text-sm font-semibold text-ui-text">
+            Belum terverifikasi
+          </dd>
+        </div>
       </dl>
 
-      {preview.blockers.length ? (
+      {preview.blockers.length > 0 ? (
         <div className="mt-5 space-y-3">
           {preview.blockers.map((blocker, index) => (
-            <article
-              className="rounded-2xl border border-rose-400/20 bg-rose-400/[0.06] p-4"
+            <Alert
               key={`${blocker.code}-${blocker.lineNo ?? "document"}-${index}`}
+              title={
+                blocker.lineNo
+                  ? `Baris ${blocker.lineNo} perlu diperbaiki`
+                  : "Stok awal belum dapat disimpan"
+              }
+              tone="danger"
             >
-              <p className="font-medium text-rose-100">
-                {blocker.message}
-              </p>
-              <p className="mt-2 font-mono text-xs text-rose-300/75">
-                {blocker.lineNo ? `baris ${blocker.lineNo} · ` : ""}
-                {blocker.code}
-              </p>
-            </article>
+              {blocker.message}
+            </Alert>
           ))}
         </div>
       ) : null}
 
-      <div className="mt-6 overflow-x-auto rounded-2xl border border-white/10 bg-slate-950/35">
-        <table>
-          <thead>
-            <tr>
-              <th>Baris</th>
-              <th>Produk</th>
-              <th>Batch</th>
-              <th>Bucket</th>
-              <th className="text-right">Quantity</th>
-              <th className="text-right">Batch kini</th>
-              <th className="text-right">Batch setelah</th>
-              <th className="text-right">Produk kini</th>
-              <th className="text-right">Produk setelah</th>
-            </tr>
-          </thead>
-          <tbody>
-            {preview.lines.map((line) => (
-              <tr key={line.openingBalanceLineId}>
-                <td>{line.lineNo}</td>
-                <td>
-                  <p className="font-medium text-white">
-                    {line.productSku}
-                  </p>
-                  <p className="mt-1 text-xs text-slate-500">
-                    {line.productName}
-                  </p>
-                </td>
-                <td>
-                  <p className="font-medium text-white">
-                    {line.batchCode}
-                  </p>
-                  <p className="mt-1 text-xs text-slate-500">
-                    exp {line.expiryDate}
-                  </p>
-                </td>
-                <td>{line.bucketCode}</td>
-                <td className="text-right font-mono font-semibold text-emerald-200">
-                  +{formatNumber(line.quantity)}
-                </td>
-                <td className="text-right font-mono">
-                  {formatNumber(line.currentBatchBucketQty)}
-                </td>
-                <td className="text-right font-mono font-semibold text-white">
-                  {formatNumber(line.resultingBatchBucketQty)}
-                </td>
-                <td className="text-right font-mono">
-                  {formatNumber(line.currentProductBucketQty)}
-                </td>
-                <td className="text-right font-mono font-semibold text-white">
-                  {formatNumber(line.resultingProductBucketQty)}
-                </td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
+      <div className="mt-5 overflow-hidden border-y border-ui-border">
+        <div className="hidden grid-cols-[minmax(0,1fr)_minmax(0,1fr)_8rem_7rem_7rem] gap-4 border-b border-ui-border bg-ui-surface-subtle px-4 py-3 text-xs font-semibold uppercase tracking-wide text-ui-text-muted md:grid">
+          <span>Produk</span>
+          <span>Batch</span>
+          <span>Kondisi</span>
+          <span className="text-right">Saat ini</span>
+          <span className="text-right">Setelah</span>
+        </div>
+
+        <div className="divide-y divide-ui-border">
+          {preview.lines.map((line) => (
+            <article
+              className="grid gap-3 px-4 py-4 md:grid-cols-[minmax(0,1fr)_minmax(0,1fr)_8rem_7rem_7rem] md:items-center md:gap-4"
+              key={line.openingBalanceLineId}
+            >
+              <div>
+                <p className="text-sm font-semibold text-ui-text">
+                  {line.productSku}
+                </p>
+                <p className="mt-1 text-xs text-ui-text-muted">
+                  {line.productName}
+                </p>
+              </div>
+
+              <div>
+                <p className="text-sm font-medium text-ui-text">
+                  {line.batchCode}
+                </p>
+                <p className="mt-1 text-xs text-ui-text-muted">
+                  Kedaluwarsa {line.expiryDate}
+                </p>
+              </div>
+
+              <p className="text-sm text-ui-text">
+                {bucketLabel(line.bucketCode)}
+              </p>
+
+              <p className="ui-number text-right text-sm text-ui-text">
+                {number(line.currentBatchBucketQty)}
+              </p>
+
+              <p className="ui-number text-right text-sm font-semibold text-ui-text">
+                {number(line.resultingBatchBucketQty)}
+              </p>
+            </article>
+          ))}
+        </div>
       </div>
 
-      <details className="mt-4 rounded-2xl border border-white/10 bg-white/[0.02]">
-        <summary className="cursor-pointer px-5 py-4 text-sm font-medium text-slate-300">
-          Detail teknis preview
+      <details className="mt-4 border-t border-ui-border pt-4">
+        <summary className="cursor-pointer text-sm font-semibold text-ui-text">
+          Detail teknis
         </summary>
-        <dl className="grid gap-3 border-t border-white/10 p-5 sm:grid-cols-2">
+        <dl className="mt-3 grid gap-3 text-xs text-ui-text-muted sm:grid-cols-2">
           <div>
-            <dt className="text-xs text-slate-500">Basis hash</dt>
-            <dd className="mt-2 break-all font-mono text-xs text-slate-300">
+            <dt>Basis preview</dt>
+            <dd className="ui-code mt-1 break-all text-ui-text">
               {preview.basisHash}
             </dd>
           </div>
           <div>
-            <dt className="text-xs text-slate-500">Request hash</dt>
-            <dd className="mt-2 break-all font-mono text-xs text-slate-300">
+            <dt>Request</dt>
+            <dd className="ui-code mt-1 break-all text-ui-text">
               {preview.requestHash}
             </dd>
           </div>
@@ -269,13 +271,9 @@ function PreviewPanel({
       {preview.eligible && intentId ? (
         <form
           action={postOpeningBalanceAction}
-          className="mt-6 rounded-3xl border border-amber-400/25 bg-amber-400/[0.055] p-5"
+          className="mt-6 border-t border-ui-border pt-5"
         >
-          <input
-            name="cutoverId"
-            type="hidden"
-            value={preview.cutoverId}
-          />
+          <input name="cutoverId" type="hidden" value={preview.cutoverId} />
           <input
             name="previewBasisHash"
             type="hidden"
@@ -283,54 +281,37 @@ function PreviewPanel({
           />
           <input name="intentId" type="hidden" value={intentId} />
 
-          <p className="section-kicker text-amber-300">
-            Konfirmasi final
+          <p className="text-xs font-semibold uppercase tracking-wide text-ui-primary">
+            Langkah 3 dari 3
           </p>
-          <h3 className="mt-2 text-xl font-semibold text-white">
-            Posting seluruh saldo awal secara atomik.
+          <h3 className="mt-1 text-base font-semibold text-ui-text">
+            Konfirmasi stok awal
           </h3>
-          <p className="mt-3 max-w-3xl text-sm leading-6 text-slate-400">
-            Database menghitung ulang basis di bawah lock. Perubahan ledger,
-            master batch, atau projection membuat preview stale.
-          </p>
 
-          <label className="mt-4 flex items-start gap-3 rounded-xl border border-white/10 bg-slate-950/45 p-4">
+          <label className="mt-4 flex items-start gap-3 rounded-[var(--ui-radius-md)] border border-ui-border bg-ui-surface-subtle p-4 text-sm leading-6 text-ui-text">
             <input
-              className="mt-1"
+              className="mt-1 h-4 w-4"
               name="confirmation"
               required
               type="checkbox"
             />
             <span>
-              <span className="text-sm font-semibold text-white">
-                Saya sudah meninjau semua batch, bucket, dan quantity.
-              </span>
-              <span className="mt-1 block text-xs leading-5 text-slate-500">
-                Dokumen dan ledger yang diposting immutable. Kesalahan
-                diperbaiki melalui exact reversal, bukan edit saldo.
-              </span>
+              Saya sudah memeriksa produk, batch, kondisi, dan jumlah.
+              Setelah disimpan, stok awal tidak diedit langsung. Koreksi
+              dilakukan melalui pembalikan yang tetap menyimpan jejak audit.
             </span>
           </label>
 
-          <button
-            className="mt-5 rounded-xl bg-amber-300 px-4 py-2.5 text-sm font-semibold text-slate-950 transition hover:bg-amber-200"
-            type="submit"
-          >
-            Posting Saldo Awal
-          </button>
+          <Button className="mt-4" type="submit">
+            Simpan Stok Awal
+          </Button>
         </form>
-      ) : (
-        <div className="mt-6 rounded-2xl border border-rose-400/20 bg-rose-400/[0.055] p-5 text-sm leading-6 text-rose-100">
-          Tombol posting tidak tersedia karena database menemukan blocker.
-          Preview tidak mengubah stok atau ledger.
-        </div>
-      )}
+      ) : null}
     </section>
   );
 }
 
-
-function ReversalPreviewPanel({
+function ReversalPanel({
   preview,
 }: {
   preview: OpeningBalanceReversalPreview;
@@ -338,178 +319,70 @@ function ReversalPreviewPanel({
   const intentId = preview.eligible ? randomUUID() : null;
 
   return (
-    <section id="reversal" className="panel-card scroll-mt-24 border-rose-400/20">
-      <div className="flex flex-col gap-4 border-b border-white/10 pb-5 sm:flex-row sm:items-end sm:justify-between">
+    <section
+      aria-labelledby="opening-correction-heading"
+      className="mt-8 border-t border-ui-border pt-7"
+      id="reversal"
+    >
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
         <div>
-          <p className="section-kicker text-rose-300">
-            Preview exact reversal
-          </p>
-          <h2 className="mt-2 text-2xl font-semibold text-white">
-            Batalkan seluruh movement saldo awal tanpa mengedit histori.
+          <h2
+            className="text-lg font-semibold text-ui-text"
+            id="opening-correction-heading"
+          >
+            Koreksi Stok Awal
           </h2>
-          <p className="mt-3 max-w-3xl text-sm leading-6 text-slate-400">
-            Database memakai produk, batch, bucket, dan quantity dari
-            INITIAL_BALANCE asli. Tidak ada FEFO, substitusi batch, atau
-            pengurangan parsial.
+          <p className="mt-1 max-w-3xl text-sm leading-6 text-ui-text-muted">
+            Gunakan hanya bila dokumen stok awal memang salah. Sistem akan
+            membalik movement asli pada produk, batch, dan kondisi yang sama.
           </p>
         </div>
-        <Pill
-          label={preview.eligible ? "Reversal tersedia" : "Diblokir"}
-          tone={preview.eligible ? "warning" : "danger"}
-        />
+        <StatusBadge tone={preview.eligible ? "warning" : "danger"}>
+          {preview.eligible ? "Koreksi tersedia" : "Diblokir"}
+        </StatusBadge>
       </div>
 
-      <dl className="mt-5 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
-        {[
-          ["Dokumen", preview.cutoverNo],
-          ["Transaksi asal", preview.originalTransactionNo ?? "-"],
-          ["Movement dibalik", formatNumber(preview.lineCount)],
-          [
-            "Total quantity",
-            formatNumber(preview.totalAbsoluteQuantity),
-          ],
-          [
-            "Bukti verifikasi tersimpan",
-            formatNumber(preview.verificationApplicationCount),
-          ],
-          ["Metode", "Exact full reversal"],
-          ["Alokasi batch", "Sama dengan ledger asal"],
-          ["Dampak setelah sukses", "Pointer aktif dilepas"],
-        ].map(([label, value]) => (
-          <div
-            className="rounded-2xl border border-white/10 bg-slate-950/35 p-4"
-            key={label}
-          >
-            <dt className="text-xs text-slate-500">{label}</dt>
-            <dd className="mt-2 text-sm font-medium text-slate-100">
-              {value}
-            </dd>
-          </div>
-        ))}
-      </dl>
-
-      {preview.blockers.length ? (
+      {preview.blockers.length > 0 ? (
         <div className="mt-5 space-y-3">
           {preview.blockers.map((blocker, index) => (
-            <article
-              className="rounded-2xl border border-rose-400/20 bg-rose-400/[0.06] p-4"
+            <Alert
               key={`${blocker.code}-${index}`}
+              title="Koreksi belum dapat dilakukan"
+              tone="danger"
             >
-              <p className="font-medium text-rose-100">
-                {blocker.message}
-              </p>
-              <p className="mt-2 font-mono text-xs text-rose-300/75">
-                {blocker.code}
-              </p>
-            </article>
+              {blocker.message}
+            </Alert>
           ))}
         </div>
       ) : null}
 
-      <div className="mt-6 overflow-x-auto rounded-2xl border border-white/10 bg-slate-950/35">
-        <table>
-          <thead>
-            <tr>
-              <th>Baris</th>
-              <th>Produk</th>
-              <th>Batch</th>
-              <th>Bucket</th>
-              <th className="text-right">Movement asal</th>
-              <th className="text-right">Reversal</th>
-              <th className="text-right">Batch kini</th>
-              <th className="text-right">Batch setelah</th>
-              <th>Posisi produk setelah reversal</th>
-            </tr>
-          </thead>
-          <tbody>
-            {preview.lines.map((line) => (
-              <tr key={line.openingBalanceLineId}>
-                <td>{line.lineNo}</td>
-                <td>
-                  <p className="font-medium text-white">
-                    {line.productSku}
-                  </p>
-                  <p className="mt-1 font-mono text-xs text-slate-600">
-                    {line.productId}
-                  </p>
-                </td>
-                <td>
-                  <p className="font-medium text-white">
-                    {line.batchCode}
-                  </p>
-                  <p className="mt-1 text-xs text-slate-500">
-                    exp {line.expiryDate}
-                  </p>
-                </td>
-                <td>{line.bucketCode}</td>
-                <td className="text-right font-mono text-emerald-200">
-                  +{formatNumber(line.originalQuantity)}
-                </td>
-                <td className="text-right font-mono font-semibold text-rose-200">
-                  {formatNumber(line.reversalDelta)}
-                </td>
-                <td className="text-right font-mono">
-                  {formatNumber(line.currentBatchBucketQty)}
-                </td>
-                <td className="text-right font-mono font-semibold text-white">
-                  {formatNumber(line.resultingBatchBucketQty)}
-                </td>
-                <td className="text-xs leading-5 text-slate-400">
-                  <span className="block">
-                    Sellable{" "}
-                    {formatNumber(line.resultingProductSellableQty)}
-                  </span>
-                  <span className="block">
-                    Quarantine{" "}
-                    {formatNumber(line.resultingProductQuarantineQty)}
-                  </span>
-                  <span className="block">
-                    Damaged{" "}
-                    {formatNumber(line.resultingProductDamagedQty)}
-                  </span>
-                  <span className="block">
-                    Reserved{" "}
-                    {formatNumber(line.currentProductReservedQty)}
-                  </span>
-                </td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-      </div>
-
-      <details className="mt-4 rounded-2xl border border-white/10 bg-white/[0.02]">
-        <summary className="cursor-pointer px-5 py-4 text-sm font-medium text-slate-300">
-          Detail teknis preview reversal
-        </summary>
-        <dl className="grid gap-3 border-t border-white/10 p-5 sm:grid-cols-2">
-          <div>
-            <dt className="text-xs text-slate-500">Basis hash</dt>
-            <dd className="mt-2 break-all font-mono text-xs text-slate-300">
-              {preview.basisHash}
-            </dd>
-          </div>
-          <div>
-            <dt className="text-xs text-slate-500">
-              Transaksi asal
-            </dt>
-            <dd className="mt-2 break-all font-mono text-xs text-slate-300">
-              {preview.originalTransactionId ?? "-"}
-            </dd>
-          </div>
-        </dl>
-      </details>
+      <dl className="mt-5 grid gap-4 border-y border-ui-border py-4 sm:grid-cols-3">
+        <div>
+          <dt className="text-sm text-ui-text-muted">Baris yang dibalik</dt>
+          <dd className="ui-number mt-1 text-xl font-semibold text-ui-text">
+            {number(preview.lineCount)}
+          </dd>
+        </div>
+        <div>
+          <dt className="text-sm text-ui-text-muted">Total unit</dt>
+          <dd className="ui-number mt-1 text-xl font-semibold text-ui-text">
+            {number(preview.totalAbsoluteQuantity)}
+          </dd>
+        </div>
+        <div>
+          <dt className="text-sm text-ui-text-muted">Bukti opname tersimpan</dt>
+          <dd className="ui-number mt-1 text-xl font-semibold text-ui-text">
+            {number(preview.verificationApplicationCount)}
+          </dd>
+        </div>
+      </dl>
 
       {preview.eligible && intentId ? (
         <form
           action={reverseOpeningBalanceAction}
-          className="mt-6 rounded-3xl border border-rose-400/25 bg-rose-400/[0.055] p-5"
+          className="mt-5 space-y-4"
         >
-          <input
-            name="cutoverId"
-            type="hidden"
-            value={preview.cutoverId}
-          />
+          <input name="cutoverId" type="hidden" value={preview.cutoverId} />
           <input
             name="previewBasisHash"
             type="hidden"
@@ -517,193 +390,38 @@ function ReversalPreviewPanel({
           />
           <input name="intentId" type="hidden" value={intentId} />
 
-          <p className="section-kicker text-rose-300">
-            Tindakan destruktif terkontrol
-          </p>
-          <h3 className="mt-2 text-xl font-semibold text-white">
-            Balik seluruh saldo awal secara exact.
-          </h3>
-          <p className="mt-3 max-w-3xl text-sm leading-6 text-slate-400">
-            Ledger asal, cutover, dan bukti stok opname tidak dihapus.
-            Sistem menambahkan transaksi REVERSAL dan melepas pointer cutover
-            aktif agar dokumen pengganti dapat diposting.
-          </p>
-
-          <label className="mt-5 block space-y-2">
-            <span className="text-sm font-medium text-slate-200">
+          <label className="block">
+            <span className="text-sm font-medium text-ui-text">
               Alasan koreksi
             </span>
             <textarea
-              className="min-h-28 w-full rounded-xl border border-rose-400/20 bg-slate-950/60 px-3 py-2.5 text-sm text-white"
+              className="mt-2 min-h-28 w-full rounded-[var(--ui-radius-md)] border border-ui-border bg-ui-surface px-3 py-2 text-sm text-ui-text"
               maxLength={2000}
               name="note"
-              placeholder="Jelaskan kesalahan sumber dan alasan exact reversal."
+              placeholder="Jelaskan kesalahan pada dokumen sumber."
               required
             />
           </label>
 
-          <label className="mt-4 flex items-start gap-3 rounded-xl border border-white/10 bg-slate-950/45 p-4">
+          <label className="flex items-start gap-3 rounded-[var(--ui-radius-md)] border border-ui-border bg-ui-surface-subtle p-4 text-sm leading-6 text-ui-text">
             <input
-              className="mt-1"
+              className="mt-1 h-4 w-4"
               name="confirmation"
               required
               type="checkbox"
             />
             <span>
-              <span className="text-sm font-semibold text-white">
-                Saya memahami seluruh movement saldo awal akan dibalik.
-              </span>
-              <span className="mt-1 block text-xs leading-5 text-slate-500">
-                Reversal hanya berhasil bila saldo bucket tetap nonnegatif,
-                reserved tidak melampaui sellable, dan basis preview belum
-                berubah.
-              </span>
+              Saya memahami seluruh movement dari stok awal ini akan dibalik.
+              Riwayat asli dan bukti opname tidak dihapus.
             </span>
           </label>
 
-          <button
-            className="mt-5 rounded-xl bg-rose-300 px-4 py-2.5 text-sm font-semibold text-slate-950 transition hover:bg-rose-200"
-            type="submit"
-          >
-            Balik Saldo Awal
-          </button>
+          <Button type="submit" variant="danger">
+            Koreksi Stok Awal
+          </Button>
         </form>
-      ) : (
-        <div className="mt-6 rounded-2xl border border-rose-400/20 bg-rose-400/[0.055] p-5 text-sm leading-6 text-rose-100">
-          Tombol exact reversal tidak tersedia karena database menemukan
-          blocker. Tidak ada transaksi atau movement yang dibuat.
-        </div>
-      )}
+      ) : null}
     </section>
-  );
-}
-
-function ReversalAuditPanel({
-  reversal,
-  ledger,
-}: {
-  reversal: OpeningBalanceReversalAudit;
-  ledger: StockLedgerEntry[];
-}) {
-  return (
-    <section id="reversal" className="panel-card scroll-mt-24 border-rose-400/20">
-      <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
-        <div>
-          <p className="section-kicker text-rose-300">
-            Exact reversal selesai
-          </p>
-          <h2 className="mt-2 text-2xl font-semibold text-white">
-            Histori asal dipertahankan, pointer aktif sudah dilepas.
-          </h2>
-          <p className="mt-3 max-w-3xl text-sm leading-6 text-slate-400">
-            Dokumen lama tetap POSTED sebagai bukti audit, tetapi status
-            operasionalnya REVERSED. Cutover pengganti kini dapat dibuat dan
-            diposting melalui workflow normal.
-          </p>
-        </div>
-        <Pill label="REVERSED" tone="danger" />
-      </div>
-
-      <dl className="mt-5 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
-        {[
-          ["Dokumen", reversal.cutover_no],
-          ["Transaksi asal", reversal.original_transaction_no],
-          ["Transaksi reversal", reversal.reversal_transaction_no],
-          ["Waktu reversal", formatDate(reversal.reversed_at)],
-          ["Movement reversal", formatNumber(reversal.line_count)],
-          [
-            "Total quantity",
-            formatNumber(reversal.total_absolute_quantity),
-          ],
-          ["Ledger sebelum", formatNumber(reversal.ledger_seq_before)],
-          ["Ledger setelah", formatNumber(reversal.ledger_seq_after)],
-        ].map(([label, value]) => (
-          <div
-            className="rounded-2xl border border-white/10 bg-slate-950/35 p-4"
-            key={label}
-          >
-            <dt className="text-xs text-slate-500">{label}</dt>
-            <dd className="mt-2 text-sm font-medium text-slate-100">
-              {value}
-            </dd>
-          </div>
-        ))}
-      </dl>
-
-      <div className="mt-5 rounded-2xl border border-white/10 bg-slate-950/35 p-4">
-        <p className="text-xs text-slate-500">Alasan koreksi</p>
-        <p className="mt-2 text-sm leading-6 text-slate-200">
-          {reversal.note}
-        </p>
-      </div>
-
-      <div className="mt-6 overflow-x-auto rounded-2xl border border-white/10">
-        <table>
-          <thead>
-            <tr>
-              <th>Ledger seq</th>
-              <th>Produk</th>
-              <th>Batch</th>
-              <th>Bucket</th>
-              <th className="text-right">Delta</th>
-              <th>Entry ID</th>
-            </tr>
-          </thead>
-          <tbody>
-            {ledger.map((entry) => (
-              <tr key={entry.ledger_entry_id}>
-                <td>{entry.ledger_seq}</td>
-                <td>{entry.product_sku_snapshot}</td>
-                <td>{entry.batch_code_snapshot}</td>
-                <td>{entry.bucket_code}</td>
-                <td className="text-right font-mono font-semibold text-rose-200">
-                  {formatNumber(entry.quantity_delta)}
-                </td>
-                <td className="font-mono text-xs text-slate-500">
-                  {entry.ledger_entry_id}
-                </td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-      </div>
-
-      <div className="mt-6 flex flex-wrap gap-3">
-        <Link
-          className="rounded-xl bg-sky-300 px-4 py-2.5 text-sm font-semibold text-slate-950 transition hover:bg-sky-200"
-          href="#new"
-        >
-          Buat cutover pengganti
-        </Link>
-        <Link
-          className="rounded-xl border border-white/10 px-4 py-2.5 text-sm font-medium text-slate-200 transition hover:bg-white/[0.05]"
-          href={`/entry-corrections?transactionId=${encodeURIComponent(
-            reversal.reversal_transaction_id,
-          )}`}
-        >
-          Buka transaksi reversal
-        </Link>
-      </div>
-    </section>
-  );
-}
-
-function ConfigurationError({ message }: { message: string }) {
-  return (
-    <main className="min-h-screen bg-slate-950 px-6 py-16 text-slate-100">
-      <section className="mx-auto max-w-3xl rounded-3xl border border-amber-400/20 bg-amber-400/[0.06] p-8">
-        <p className="section-kicker text-amber-300">
-          Saldo Awal tidak tersedia
-        </p>
-        <h1 className="mt-3 text-3xl font-semibold">
-          Data operasional gagal dimuat.
-        </h1>
-        <p className="mt-4 leading-7 text-slate-300">{message}</p>
-        <Link className="nav-link mt-6 inline-flex" href="/">
-          Kembali ke dashboard
-        </Link>
-      </section>
-    </main>
   );
 }
 
@@ -712,18 +430,44 @@ export default async function OpeningBalancesPage({
 }: {
   searchParams: Promise<SearchParams>;
 }) {
-  const params = await searchParams;
-  let data;
+  const [session, params] = await Promise.all([
+    requireAdminSession(),
+    searchParams,
+  ]);
+
+  let data: Awaited<ReturnType<typeof getOpeningBalanceData>> | null = null;
+  let loadError: string | null = null;
 
   try {
-    data = await getOpeningBalanceData(undefined, params.cutoverId);
+    data = await getOpeningBalanceData(
+      session.profile.organization_id,
+      first(params.cutoverId),
+    );
   } catch (error) {
+    loadError =
+      error instanceof Error
+        ? error.message
+        : "Setup stok awal belum dapat dimuat.";
+  }
+
+  if (!data) {
     return (
-      <ConfigurationError
-        message={
-          error instanceof Error ? error.message : "Konfigurasi tidak valid."
-        }
-      />
+      <AppShell profile={session.profile}>
+        <div className="mx-auto w-full max-w-[1120px] px-4 py-6 sm:px-6 lg:px-8 lg:py-8">
+          <PageHeader
+            description="Siapkan stok awal sebelum operasional berjalan."
+            eyebrow="Pengaturan"
+            title="Setup Stok Awal"
+          />
+          <Alert
+            className="mt-6"
+            title="Setup stok awal belum dapat dimuat"
+            tone="danger"
+          >
+            {loadError ?? "Coba muat ulang halaman."}
+          </Alert>
+        </div>
+      </AppShell>
     );
   }
 
@@ -731,16 +475,19 @@ export default async function OpeningBalancesPage({
   let preview: OpeningBalancePreview | null = null;
   let previewError: string | null = null;
   let reversalPreview: OpeningBalanceReversalPreview | null = null;
-  let reversalPreviewError: string | null = null;
+  let reversalError: string | null = null;
 
   if (selected?.status_code === "REVIEW") {
     try {
       preview = await previewOpeningBalanceCutover(
         selected.cutover_id,
+        session.profile.organization_id,
       );
     } catch (error) {
       previewError =
-        error instanceof Error ? error.message : "Preview gagal dimuat.";
+        error instanceof Error
+          ? error.message
+          : "Dampak stok awal belum dapat diperiksa.";
     }
   }
 
@@ -748,12 +495,13 @@ export default async function OpeningBalancesPage({
     try {
       reversalPreview = await previewOpeningBalanceReversal(
         selected.cutover_id,
+        session.profile.organization_id,
       );
     } catch (error) {
-      reversalPreviewError =
+      reversalError =
         error instanceof Error
           ? error.message
-          : "Preview exact reversal gagal dimuat.";
+          : "Dampak koreksi belum dapat diperiksa.";
     }
   }
 
@@ -769,92 +517,153 @@ export default async function OpeningBalancesPage({
     }),
   );
 
-  const verificationEvidenceLines = data.lines.filter(
-    (line) => line.verification_application_id !== null,
-  );
+  const success = first(params.success);
+  const error = first(params.error);
 
   return (
-    <main className="min-h-screen bg-slate-950 text-slate-100">
-      <PageSectionNav
-        items={[
-          { href: "#overview", label: "Ringkasan" },
-          { href: "#new", label: "Buat draft" },
-          { href: "#detail", label: "Detail" },
-          ...(selected?.status_code === "POSTED"
-            ? ([{ href: "#reversal", label: "Koreksi" }] as const)
-            : []),
-          { href: "#history", label: "Riwayat" },
-        ] as const}
-      />
+    <AppShell profile={session.profile}>
+      <div className="mx-auto w-full max-w-[1120px] px-4 py-6 sm:px-6 lg:px-8 lg:py-8">
+        <PageHeader
+          description="Masukkan perkiraan stok awal, periksa dampaknya, lalu simpan. Stok awal tetap belum terverifikasi sampai opname pertama."
+          eyebrow="Pengaturan"
+          title="Setup Stok Awal"
+        />
 
-      <div className="mx-auto max-w-[1500px] px-5 py-8 lg:px-8">
-        <section id="overview" className="scroll-mt-24">
-          <div className="flex flex-col gap-5 lg:flex-row lg:items-end lg:justify-between">
+        <div className="mt-4">
+          <Link
+            className="text-sm font-semibold text-ui-primary hover:underline"
+            href="/settings"
+          >
+            Kembali ke Pengaturan
+          </Link>
+        </div>
+
+        {success ? (
+          <Alert className="mt-6" title="Berhasil" tone="success">
+            {success}
+          </Alert>
+        ) : null}
+
+        {error ? (
+          <Alert className="mt-6" title="Belum berhasil" tone="danger">
+            {error}
+          </Alert>
+        ) : null}
+
+        <section
+          aria-labelledby="opening-status-heading"
+          className="mt-6 border-y border-ui-border py-5"
+        >
+          <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
             <div>
-              <p className="section-kicker">Kontrol stok</p>
-              <h1 className="mt-3 text-3xl font-semibold tracking-tight sm:text-4xl">
-                Saldo Awal produksi yang dapat diaudit.
-              </h1>
-              <p className="mt-3 max-w-3xl text-sm leading-6 text-slate-400 sm:text-base">
-                Posting saldo awal menulis INITIAL_BALANCE ke ledger.
-                Estimasi tetap belum terverifikasi sampai stok opname pertama
-                menghitung produk, batch, dan bucket yang sama.
+              <h2
+                className="text-lg font-semibold text-ui-text"
+                id="opening-status-heading"
+              >
+                Status setup
+              </h2>
+              <p className="mt-1 text-sm text-ui-text-muted">
+                Stok awal perkiraan baru menjadi terverifikasi setelah
+                opname pertama untuk produk, batch, dan kondisi yang sama.
               </p>
             </div>
-            <div className="flex flex-wrap gap-2">
-              <Pill label="Ledger append-only" tone="info" />
-              <Pill label="Preview stock-neutral" tone="warning" />
-              <Pill label="Verifikasi lewat opname" tone="success" />
-            </div>
+
+            {selected ? (
+              <div className="flex flex-wrap gap-2">
+                <StatusBadge tone={operationalPresentation(selected).tone}>
+                  {operationalPresentation(selected).label}
+                </StatusBadge>
+                <StatusBadge
+                  tone={
+                    verificationPresentation(
+                      selected.verification_status_code,
+                    ).tone
+                  }
+                >
+                  {
+                    verificationPresentation(
+                      selected.verification_status_code,
+                    ).label
+                  }
+                </StatusBadge>
+              </div>
+            ) : (
+              <StatusBadge tone="neutral">Belum disiapkan</StatusBadge>
+            )}
           </div>
 
-          {params.success ? (
-            <div className="mt-6 rounded-2xl border border-emerald-400/20 bg-emerald-400/10 px-5 py-4 text-sm text-emerald-100">
-              {params.success}
-            </div>
-          ) : null}
-
-          {params.error ? (
-            <div className="mt-6 rounded-2xl border border-rose-400/20 bg-rose-400/10 px-5 py-4 text-sm text-rose-100">
-              {params.error}
-            </div>
+          {selected ? (
+            <dl className="mt-5 grid gap-5 sm:grid-cols-4">
+              <div>
+                <dt className="text-sm text-ui-text-muted">Dokumen</dt>
+                <dd className="mt-1 text-sm font-semibold text-ui-text">
+                  {selected.cutover_no}
+                </dd>
+              </div>
+              <div>
+                <dt className="text-sm text-ui-text-muted">Total unit</dt>
+                <dd className="ui-number mt-1 text-xl font-semibold text-ui-text">
+                  {number(selected.total_quantity)}
+                </dd>
+              </div>
+              <div>
+                <dt className="text-sm text-ui-text-muted">Terverifikasi</dt>
+                <dd className="ui-number mt-1 text-xl font-semibold text-ui-text">
+                  {number(selected.verified_line_count)}
+                </dd>
+              </div>
+              <div>
+                <dt className="text-sm text-ui-text-muted">Belum terverifikasi</dt>
+                <dd className="ui-number mt-1 text-xl font-semibold text-ui-text">
+                  {number(selected.unverified_line_count)}
+                </dd>
+              </div>
+            </dl>
           ) : null}
         </section>
 
-        <section id="new" className="mt-10 scroll-mt-24">
-          <div className="panel-card">
-            <p className="section-kicker">Dokumen baru</p>
-            <h2 className="mt-2 text-2xl font-semibold text-white">
-              Buat header draft saldo awal.
+        {!selected ? (
+          <section
+            aria-labelledby="new-opening-heading"
+            className="mt-8"
+            id="new"
+          >
+            <p className="text-xs font-semibold uppercase tracking-wide text-ui-primary">
+              Langkah 1 dari 3
+            </p>
+            <h2
+              className="mt-1 text-lg font-semibold text-ui-text"
+              id="new-opening-heading"
+            >
+              Buat dokumen stok awal
             </h2>
-            <p className="mt-3 max-w-3xl text-sm leading-6 text-slate-400">
-              Header belum mengubah stok. Baris produk dan batch ditambahkan
-              setelah draft dibuat.
+            <p className="mt-1 max-w-3xl text-sm leading-6 text-ui-text-muted">
+              Membuat draft belum mengubah stok.
             </p>
 
             <form
               action={createOpeningBalanceAction}
-              className="mt-6 grid gap-4 lg:grid-cols-2"
+              className="mt-5 grid gap-4 sm:grid-cols-2"
             >
-              <label className="space-y-2">
-                <span className="text-sm text-slate-300">
+              <label>
+                <span className="text-sm font-medium text-ui-text">
                   Referensi dokumen sumber
                 </span>
                 <input
-                  className="w-full rounded-xl border border-white/10 bg-slate-950/60 px-3 py-2.5 text-sm text-white"
+                  className="mt-2 min-h-[var(--ui-control-height)] w-full rounded-[var(--ui-radius-md)] border border-ui-border bg-ui-surface px-3 text-sm text-ui-text"
                   maxLength={200}
                   name="sourceRef"
-                  placeholder="OB-2026-GUDANG-UTAMA"
+                  placeholder="Contoh: STOK-AWAL-2026"
                   required
                 />
               </label>
 
-              <label className="space-y-2">
-                <span className="text-sm text-slate-300">
-                  Waktu cutover
+              <label>
+                <span className="text-sm font-medium text-ui-text">
+                  Waktu mulai
                 </span>
                 <input
-                  className="w-full rounded-xl border border-white/10 bg-slate-950/60 px-3 py-2.5 text-sm text-white"
+                  className="mt-2 min-h-[var(--ui-control-height)] w-full rounded-[var(--ui-radius-md)] border border-ui-border bg-ui-surface px-3 text-sm text-ui-text"
                   defaultValue={defaultDateTimeLocal()}
                   name="cutoverAt"
                   required
@@ -862,584 +671,430 @@ export default async function OpeningBalancesPage({
                 />
               </label>
 
-              <label className="space-y-2 lg:col-span-2">
-                <span className="text-sm text-slate-300">
-                  Referensi estimasi / bukti sumber
+              <label className="sm:col-span-2">
+                <span className="text-sm font-medium text-ui-text">
+                  Referensi estimasi atau bukti
                 </span>
                 <input
-                  className="w-full rounded-xl border border-white/10 bg-slate-950/60 px-3 py-2.5 text-sm text-white"
+                  className="mt-2 min-h-[var(--ui-control-height)] w-full rounded-[var(--ui-radius-md)] border border-ui-border bg-ui-surface px-3 text-sm text-ui-text"
                   maxLength={200}
                   name="sourceEstimateRef"
-                  placeholder="Berita acara, spreadsheet opname awal, atau nomor dokumen"
+                  placeholder="Contoh: berita acara atau spreadsheet awal"
                   required
                 />
               </label>
 
-              <label className="space-y-2 lg:col-span-2">
-                <span className="text-sm text-slate-300">
-                  Catatan dasar saldo awal
+              <label className="sm:col-span-2">
+                <span className="text-sm font-medium text-ui-text">
+                  Catatan
                 </span>
                 <textarea
-                  className="min-h-24 w-full rounded-xl border border-white/10 bg-slate-950/60 px-3 py-2.5 text-sm text-white"
+                  className="mt-2 min-h-24 w-full rounded-[var(--ui-radius-md)] border border-ui-border bg-ui-surface px-3 py-2 text-sm text-ui-text"
                   maxLength={2000}
                   name="note"
+                  placeholder="Jelaskan dasar angka stok awal."
                   required
                 />
               </label>
 
-              <button
-                className="rounded-xl bg-sky-300 px-4 py-2.5 text-sm font-semibold text-slate-950 transition hover:bg-sky-200 lg:col-span-2 lg:w-fit"
-                type="submit"
-              >
-                Buat draft saldo awal
-              </button>
+              <div className="sm:col-span-2">
+                <Button type="submit">Buat Draft</Button>
+              </div>
             </form>
-          </div>
-        </section>
+          </section>
+        ) : null}
 
-        <section id="detail" className="mt-10 scroll-mt-24">
-          {selected ? (
-            <div className="space-y-6">
-              <div className="panel-card">
-                <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
-                  <div>
-                    <p className="section-kicker">Detail dokumen</p>
-                    <h2 className="mt-2 text-2xl font-semibold text-white">
-                      {selected.cutover_no}
-                    </h2>
-                    <p className="mt-2 text-sm text-slate-400">
-                      {selected.source_ref} · efektif{" "}
-                      {selected.effective_local_date}
-                    </p>
-                  </div>
-                  <div className="flex flex-wrap gap-2">
-                    <Pill
-                      label={selected.operational_status_code}
-                      tone={operationalTone(selected)}
-                    />
-                    <Pill
-                      label={selected.verification_status_code}
-                      tone={verificationTone(
-                        selected.verification_status_code,
-                      )}
-                    />
-                  </div>
-                </div>
-
-                <dl className="mt-5 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
-                  {[
-                    ["Status lifecycle", selected.status_code],
-                    ["Baris", formatNumber(selected.line_count)],
-                    [
-                      "Baris movement",
-                      formatNumber(selected.positive_line_count),
-                    ],
-                    ["Total quantity", formatNumber(selected.total_quantity)],
-                    [
-                      "Terverifikasi",
-                      formatNumber(selected.verified_line_count),
-                    ],
-                    [
-                      "Belum terverifikasi",
-                      formatNumber(selected.unverified_line_count),
-                    ],
-                    ["Dibuat", formatDate(selected.created_at)],
-                    ["Diposting", formatDate(selected.posted_at)],
-                  ].map(([label, value]) => (
-                    <div
-                      className="rounded-2xl border border-white/10 bg-slate-950/35 p-4"
-                      key={label}
-                    >
-                      <dt className="text-xs text-slate-500">{label}</dt>
-                      <dd className="mt-2 text-sm text-slate-100">
-                        {value}
-                      </dd>
-                    </div>
-                  ))}
-                </dl>
-
-                <div className="mt-5 rounded-2xl border border-white/10 bg-slate-950/35 p-4">
-                  <p className="text-xs text-slate-500">
-                    Referensi estimasi
-                  </p>
-                  <p className="mt-2 text-sm text-white">
-                    {selected.source_estimate_ref}
-                  </p>
-                  <p className="mt-4 text-xs text-slate-500">Catatan</p>
-                  <p className="mt-2 text-sm leading-6 text-slate-300">
-                    {selected.note}
-                  </p>
-                </div>
+        {selected ? (
+          <section className="mt-8" id="detail">
+            <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+              <div>
+                <h2 className="text-lg font-semibold text-ui-text">
+                  {selected.cutover_no}
+                </h2>
+                <p className="mt-1 text-sm text-ui-text-muted">
+                  {selected.source_ref} {"Ã‚Â·"} efektif{" "}
+                  {selected.effective_local_date}
+                </p>
               </div>
 
-              {selected.status_code === "DRAFT" ? (
-                <>
-                  <section id="draft" className="scroll-mt-24">
-                    <OpeningBalanceDraftForm
-                      action={saveOpeningBalanceDraftAction}
-                      batches={data.batches}
-                      eligibleBatches={data.eligibleBatches}
-                      cutoverAt={selected.cutover_at}
-                      cutoverId={selected.cutover_id}
-                      initialLines={initialDraftLines}
-                      note={selected.note}
-                      rowVersion={selected.row_version}
-                      sourceEstimateRef={selected.source_estimate_ref}
-                    />
-                  </section>
+              <Link
+                className="text-sm font-semibold text-ui-primary hover:underline"
+                href="/opening-balances"
+              >
+                Lihat setup terbaru
+              </Link>
+            </div>
 
-                  <form
-                    action={submitOpeningBalanceReviewAction}
-                    className="panel-card border-amber-400/20 bg-amber-400/[0.04]"
-                  >
-                    <input
-                      name="cutoverId"
-                      type="hidden"
-                      value={selected.cutover_id}
-                    />
-                    <input
-                      name="rowVersion"
-                      type="hidden"
-                      value={selected.row_version}
-                    />
-                    <p className="section-kicker text-amber-300">
-                      Kunci draft
-                    </p>
-                    <h3 className="mt-2 text-xl font-semibold text-white">
-                      Kirim ke review authoritative.
-                    </h3>
-                    <p className="mt-3 text-sm leading-6 text-slate-400">
-                      Setelah review, baris tidak lagi dapat diedit. Preview
-                      membaca ulang ledger, projection, dan master batch.
-                    </p>
-                    <button
-                      className="mt-5 rounded-xl bg-amber-300 px-4 py-2.5 text-sm font-semibold text-slate-950 transition hover:bg-amber-200 disabled:cursor-not-allowed disabled:opacity-40"
-                      disabled={selected.line_count === 0}
-                      type="submit"
-                    >
-                      Kirim ke review
-                    </button>
-                  </form>
-                </>
-              ) : null}
+            <dl className="mt-5 grid gap-4 border-y border-ui-border py-4 sm:grid-cols-2">
+              <div>
+                <dt className="text-sm text-ui-text-muted">Referensi bukti</dt>
+                <dd className="mt-1 text-sm text-ui-text">
+                  {selected.source_estimate_ref}
+                </dd>
+              </div>
+              <div>
+                <dt className="text-sm text-ui-text-muted">Dibuat</dt>
+                <dd className="mt-1 text-sm text-ui-text">
+                  {formatDate(selected.created_at)}
+                </dd>
+              </div>
+              <div className="sm:col-span-2">
+                <dt className="text-sm text-ui-text-muted">Catatan</dt>
+                <dd className="mt-1 text-sm leading-6 text-ui-text">
+                  {selected.note}
+                </dd>
+              </div>
+            </dl>
 
-              {previewError ? (
-                <div className="panel-card border-rose-400/20 bg-rose-400/[0.05] text-rose-100">
-                  {previewError}
+            {selected.status_code === "DRAFT" ? (
+              <>
+                <div className="mt-6">
+                  <OpeningBalanceDraftForm
+                    action={saveOpeningBalanceDraftAction}
+                    batches={data.batches}
+                    eligibleBatches={data.eligibleBatches}
+                    cutoverAt={selected.cutover_at}
+                    cutoverId={selected.cutover_id}
+                    initialLines={initialDraftLines}
+                    note={selected.note}
+                    rowVersion={selected.row_version}
+                    sourceEstimateRef={selected.source_estimate_ref}
+                  />
                 </div>
-              ) : null}
 
-              {preview ? <PreviewPanel preview={preview} /> : null}
+                <form
+                  action={submitOpeningBalanceReviewAction}
+                  className="mt-6 border-t border-ui-border pt-5"
+                >
+                  <input
+                    name="cutoverId"
+                    type="hidden"
+                    value={selected.cutover_id}
+                  />
+                  <input
+                    name="rowVersion"
+                    type="hidden"
+                    value={selected.row_version}
+                  />
 
-              {selected.status_code === "POSTED" ? (
-                <>
-                  <section className="panel-card">
-                    <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
-                      <div>
-                        <p className="section-kicker">
-                          Verifikasi per baris
-                        </p>
-                        <h3 className="mt-2 text-xl font-semibold text-white">
-                          Bukti stok opname pertama.
-                        </h3>
-                      </div>
-                      {selected.reversal_transaction_id ? (
-                        <Pill label="Cutover sudah dibalik" tone="danger" />
-                      ) : null}
-                    </div>
+                  <p className="text-sm leading-6 text-ui-text-muted">
+                    Setelah masuk tahap periksa, baris stok tidak dapat diedit.
+                    Sistem akan menghitung ulang dampaknya terhadap stok.
+                  </p>
 
-                    <div className="mt-5 overflow-x-auto rounded-2xl border border-white/10">
-                      <table>
-                        <thead>
-                          <tr>
-                            <th>Baris</th>
-                            <th>Produk</th>
-                            <th>Batch</th>
-                            <th>Bucket</th>
-                            <th className="text-right">Quantity</th>
-                            <th>Status</th>
-                            <th>Opname verifikator</th>
-                            <th>Ledger</th>
-                          </tr>
-                        </thead>
-                        <tbody>
-                          {data.lines.map((line) => (
-                            <tr key={line.opening_balance_line_id}>
-                              <td>{line.line_no}</td>
-                              <td>
-                                <p className="font-medium text-white">
-                                  {line.product_sku_snapshot}
-                                </p>
-                                <p className="mt-1 text-xs text-slate-500">
-                                  {line.product_name_snapshot}
-                                </p>
-                              </td>
-                              <td>
-                                <p className="font-medium text-white">
-                                  {line.batch_code_snapshot}
-                                </p>
-                                <p className="mt-1 text-xs text-slate-500">
-                                  exp {line.expiry_date_snapshot}
-                                </p>
-                              </td>
-                              <td>{line.bucket_code}</td>
-                              <td className="text-right font-mono">
-                                {formatNumber(line.quantity)}
-                              </td>
-                              <td>
-                                <Pill
-                                  label={line.verification_status_code}
-                                  tone={verificationTone(
-                                    line.verification_status_code,
-                                  )}
-                                />
-                              </td>
-                              <td>
-                                {line.verifying_stocktake_id ? (
-                                  <Link
-                                    className="text-sky-200 underline decoration-sky-400/30 underline-offset-4"
-                                    href={`/stocktakes/${line.verifying_stocktake_id}`}
-                                  >
-                                    {line.verifying_stocktake_no ??
-                                      line.verifying_stocktake_id}
-                                  </Link>
-                                ) : (
-                                  <span className="text-slate-600">
-                                    Belum dihitung
-                                  </span>
-                                )}
-                              </td>
-                              <td className="font-mono text-xs text-slate-500">
-                                {line.ledger_entry_id ?? "zero line"}
-                              </td>
-                            </tr>
-                          ))}
-                        </tbody>
-                      </table>
-                    </div>
+                  <Button
+                    className="mt-4"
+                    disabled={selected.line_count === 0}
+                    type="submit"
+                  >
+                    Periksa Sebelum Simpan
+                  </Button>
+                </form>
+              </>
+            ) : null}
 
-                    {verificationEvidenceLines.length ? (
-                      <div className="mt-6 space-y-4">
+            {previewError ? (
+              <Alert
+                className="mt-6"
+                title="Dampak stok awal belum dapat diperiksa"
+                tone="danger"
+              >
+                {previewError}
+              </Alert>
+            ) : null}
+
+            {preview ? <PreviewPanel preview={preview} /> : null}
+
+            {selected.status_code === "POSTED" ? (
+              <section className="mt-8 border-t border-ui-border pt-7">
+                <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+                  <div>
+                    <h2 className="text-lg font-semibold text-ui-text">
+                      Verifikasi melalui opname
+                    </h2>
+                    <p className="mt-1 max-w-3xl text-sm leading-6 text-ui-text-muted">
+                      Setiap baris stok awal diverifikasi ketika opname pertama
+                      untuk produk, batch, dan kondisi yang sama selesai diposting.
+                    </p>
+                  </div>
+                  <StatusBadge
+                    tone={
+                      verificationPresentation(
+                        selected.verification_status_code,
+                      ).tone
+                    }
+                  >
+                    {
+                      verificationPresentation(
+                        selected.verification_status_code,
+                      ).label
+                    }
+                  </StatusBadge>
+                </div>
+
+                <div className="mt-5 divide-y divide-ui-border border-y border-ui-border">
+                  {data.lines.map((line) => {
+                    const presentation = verificationPresentation(
+                      line.verification_status_code,
+                    );
+
+                    return (
+                      <article
+                        className="grid gap-3 py-4 sm:grid-cols-[minmax(0,1fr)_9rem_10rem] sm:items-center"
+                        key={line.opening_balance_line_id}
+                      >
                         <div>
-                          <p className="section-kicker">
-                            Bukti verifikasi immutable
+                          <p className="text-sm font-semibold text-ui-text">
+                            {line.product_sku_snapshot} {"Ã‚Â·"}{" "}
+                            {line.batch_code_snapshot}
                           </p>
-                          <p className="mt-2 max-w-3xl text-sm leading-6 text-slate-400">
-                            Setiap bukti menghubungkan baris saldo awal dengan
-                            sesi stok opname, approval, posting, count attempt,
-                            dan movement adjustment bila variance tidak nol.
+                          <p className="mt-1 text-xs text-ui-text-muted">
+                            {bucketLabel(line.bucket_code)} {"Ã‚Â·"}{" "}
+                            {number(line.quantity)} unit
                           </p>
                         </div>
 
-                        {verificationEvidenceLines.map((line) => (
-                          <article
-                            className="rounded-2xl border border-emerald-400/20 bg-emerald-400/[0.045] p-5"
-                            key={line.verification_application_id ?? line.opening_balance_line_id}
+                        <StatusBadge tone={presentation.tone}>
+                          {presentation.label}
+                        </StatusBadge>
+
+                        {line.verifying_stocktake_id ? (
+                          <Link
+                            className="text-sm font-semibold text-ui-primary hover:underline"
+                            href={`/stocktakes/${line.verifying_stocktake_id}`}
                           >
-                            <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
-                              <div>
-                                <p className="font-semibold text-white">
-                                  {line.product_sku_snapshot} ·{" "}
-                                  {line.batch_code_snapshot} · {line.bucket_code}
-                                </p>
-                                <p className="mt-1 text-xs text-slate-500">
-                                  Baris {formatNumber(line.line_no)} · diverifikasi{" "}
-                                  {formatDate(line.verified_at)}
-                                </p>
-                              </div>
-                              <Pill label="VERIFIED" tone="success" />
-                            </div>
-
-                            <dl className="mt-5 grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
-                              <div className="rounded-xl border border-white/10 bg-slate-950/35 p-4">
-                                <dt className="text-xs text-slate-500">
-                                  Stok opname
-                                </dt>
-                                <dd className="mt-2 text-sm font-medium text-slate-100">
-                                  {line.verifying_stocktake_id ? (
-                                    <Link
-                                      className="text-sky-200 underline decoration-sky-400/30 underline-offset-4"
-                                      href={`/stocktakes/${line.verifying_stocktake_id}`}
-                                    >
-                                      {line.verifying_stocktake_no ??
-                                        line.verifying_stocktake_id}
-                                    </Link>
-                                  ) : (
-                                    "Tidak tersedia"
-                                  )}
-                                </dd>
-                              </div>
-
-                              <div className="rounded-xl border border-white/10 bg-slate-950/35 p-4">
-                                <dt className="text-xs text-slate-500">
-                                  Approval
-                                </dt>
-                                <dd className="mt-2 text-sm text-slate-100">
-                                  Approval version{" "}
-                                  {formatNumber(
-                                    line.verifying_approval_version_no,
-                                  )}
-                                </dd>
-                                <dd className="mt-2 break-all font-mono text-xs text-slate-500">
-                                  {line.verifying_stocktake_approval_id}
-                                </dd>
-                              </div>
-
-                              <div className="rounded-xl border border-white/10 bg-slate-950/35 p-4">
-                                <dt className="text-xs text-slate-500">
-                                  Posting
-                                </dt>
-                                <dd className="mt-2 break-all font-mono text-xs text-slate-300">
-                                  {line.verifying_stocktake_posting_id}
-                                </dd>
-                                <dd className="mt-2 break-all font-mono text-xs text-slate-500">
-                                  Posting line{" "}
-                                  {line.verifying_stocktake_posting_line_id}
-                                </dd>
-                              </div>
-
-                              <div className="rounded-xl border border-white/10 bg-slate-950/35 p-4">
-                                <dt className="text-xs text-slate-500">
-                                  Count attempt
-                                </dt>
-                                <dd className="mt-2 break-all font-mono text-xs text-slate-300">
-                                  {line.verifying_count_attempt_id}
-                                </dd>
-                                <dd className="mt-2 text-xs text-slate-500">
-                                  {formatDate(line.verifying_counted_at)}
-                                </dd>
-                              </div>
-
-                              <div className="rounded-xl border border-white/10 bg-slate-950/35 p-4">
-                                <dt className="text-xs text-slate-500">
-                                  Quantity fisik
-                                </dt>
-                                <dd className="mt-2 font-mono text-sm text-white">
-                                  {formatNumber(
-                                    line.verifying_physical_quantity,
-                                  )}
-                                </dd>
-                              </div>
-
-                              <div className="rounded-xl border border-white/10 bg-slate-950/35 p-4">
-                                <dt className="text-xs text-slate-500">
-                                  Variance
-                                </dt>
-                                <dd className="mt-2 font-mono text-sm text-white">
-                                  {formatSigned(
-                                    line.verifying_variance_quantity ?? 0,
-                                  )}
-                                </dd>
-                              </div>
-
-                              <div className="rounded-xl border border-white/10 bg-slate-950/35 p-4 sm:col-span-2">
-                                <dt className="text-xs text-slate-500">
-                                  Adjustment ledger
-                                </dt>
-                                <dd className="mt-2 break-all font-mono text-xs text-slate-300">
-                                  {line.verifying_adjustment_ledger_entry_id ??
-                                    "Zero variance tanpa movement adjustment"}
-                                </dd>
-                              </div>
-                            </dl>
-
-                            <details className="mt-4 rounded-xl border border-white/10 bg-slate-950/30">
-                              <summary className="cursor-pointer px-4 py-3 text-xs font-medium text-slate-300">
-                                Identitas evidence
-                              </summary>
-                              <dl className="grid gap-3 border-t border-white/10 p-4 sm:grid-cols-2">
-                                <div>
-                                  <dt className="text-xs text-slate-500">
-                                    Verification application
-                                  </dt>
-                                  <dd className="mt-2 break-all font-mono text-xs text-slate-300">
-                                    {line.verification_application_id}
-                                  </dd>
-                                </div>
-                                <div>
-                                  <dt className="text-xs text-slate-500">
-                                    Stocktake line
-                                  </dt>
-                                  <dd className="mt-2 break-all font-mono text-xs text-slate-300">
-                                    {line.verifying_stocktake_line_id}
-                                  </dd>
-                                </div>
-                              </dl>
-                            </details>
-                          </article>
-                        ))}
-                      </div>
-                    ) : (
-                      <div className="mt-6 rounded-2xl border border-dashed border-white/10 bg-slate-950/25 p-5 text-sm leading-6 text-slate-500">
-                        Belum ada bukti stok opname pertama. Status tetap
-                        UNVERIFIED sampai posting stok opname yang cocok
-                        selesai.
-                      </div>
-                    )}
-                  </section>
-
-                  <section className="panel-card">
-                    <p className="section-kicker">Ledger drill-down</p>
-                    <h3 className="mt-2 text-xl font-semibold text-white">
-                      Movement INITIAL_BALANCE.
-                    </h3>
-                    <div className="mt-5 overflow-x-auto rounded-2xl border border-white/10">
-                      <table>
-                        <thead>
-                          <tr>
-                            <th>Ledger seq</th>
-                            <th>Produk</th>
-                            <th>Batch</th>
-                            <th>Bucket</th>
-                            <th className="text-right">Delta</th>
-                            <th>Entry ID</th>
-                          </tr>
-                        </thead>
-                        <tbody>
-                          {data.ledger.length ? (
-                            data.ledger.map((entry) => (
-                              <tr key={entry.ledger_entry_id}>
-                                <td>{entry.ledger_seq}</td>
-                                <td>{entry.product_sku_snapshot}</td>
-                                <td>{entry.batch_code_snapshot}</td>
-                                <td>{entry.bucket_code}</td>
-                                <td className="text-right font-mono font-semibold text-emerald-200">
-                                  +{formatNumber(entry.quantity_delta)}
-                                </td>
-                                <td className="font-mono text-xs text-slate-500">
-                                  {entry.ledger_entry_id}
-                                </td>
-                              </tr>
-                            ))
-                          ) : (
-                            <tr>
-                              <td
-                                className="text-center text-slate-500"
-                                colSpan={6}
-                              >
-                                Tidak ada movement untuk baris quantity nol.
-                              </td>
-                            </tr>
-                          )}
-                        </tbody>
-                      </table>
-                    </div>
-                  </section>
-                </>
-              ) : null}
-
-              {reversalPreviewError ? (
-                <div
-                  id="reversal"
-                  className="panel-card scroll-mt-24 border-rose-400/20 bg-rose-400/[0.05] text-rose-100"
-                >
-                  {reversalPreviewError}
+                            Buka Opname
+                          </Link>
+                        ) : (
+                          <span className="text-sm text-ui-text-muted">
+                            Belum dihitung
+                          </span>
+                        )}
+                      </article>
+                    );
+                  })}
                 </div>
-              ) : null}
 
-              {reversalPreview ? (
-                <ReversalPreviewPanel preview={reversalPreview} />
-              ) : null}
+                <details className="mt-5 border-t border-ui-border pt-4">
+                  <summary className="cursor-pointer text-sm font-semibold text-ui-text">
+                    Bukti audit
+                  </summary>
+                  <div className="mt-3 space-y-3">
+                    {data.lines
+                      .filter((line) => line.verification_application_id)
+                      .map((line) => (
+                        <div
+                          className="rounded-[var(--ui-radius-md)] border border-ui-border p-4 text-xs text-ui-text-muted"
+                          key={line.opening_balance_line_id}
+                        >
+                          <p className="font-semibold text-ui-text">
+                            {line.product_sku_snapshot} {"Ã‚Â·"}{" "}
+                            {line.batch_code_snapshot}
+                          </p>
+                          <p className="mt-2">
+                            Opname: {line.verifying_stocktake_no ?? "Tidak tersedia"}
+                          </p>
+                          <p className="mt-1">
+                            Jumlah fisik: {number(line.verifying_physical_quantity)}
+                            {" Ã‚Â· "}Selisih: {number(line.verifying_variance_quantity)}
+                          </p>
+                          <p className="ui-code mt-2 break-all">
+                            {line.verification_application_id}
+                          </p>
+                        </div>
+                      ))}
+                  </div>
+                </details>
+              </section>
+            ) : null}
 
-              {data.selectedReversal ? (
-                <ReversalAuditPanel
-                  ledger={data.reversalLedger}
-                  reversal={data.selectedReversal}
-                />
-              ) : null}
-            </div>
+            {selected.status_code === "POSTED" && data.ledger.length > 0 ? (
+              <section className="mt-8 border-t border-ui-border pt-7">
+                <div>
+                  <h2 className="text-lg font-semibold text-ui-text">
+                    Riwayat perubahan stok awal
+                  </h2>
+                  <p className="mt-1 text-sm leading-6 text-ui-text-muted">
+                    Movement INITIAL_BALANCE tetap tersedia sebagai bukti audit.
+                  </p>
+                </div>
+
+                <div className="mt-5 divide-y divide-ui-border border-y border-ui-border">
+                  {data.ledger.map((entry) => (
+                    <article
+                      className="grid gap-2 py-4 sm:grid-cols-[7rem_minmax(0,1fr)_minmax(0,1fr)_8rem] sm:items-center"
+                      key={entry.ledger_entry_id}
+                    >
+                      <p className="ui-number text-sm text-ui-text-muted">
+                        #{number(entry.ledger_seq)}
+                      </p>
+                      <div>
+                        <p className="text-sm font-semibold text-ui-text">
+                          {entry.product_sku_snapshot}
+                        </p>
+                        <p className="mt-1 text-xs text-ui-text-muted">
+                          {entry.batch_code_snapshot}
+                        </p>
+                      </div>
+                      <p className="text-sm text-ui-text">
+                        {bucketLabel(entry.bucket_code)}
+                      </p>
+                      <p className="ui-number text-sm font-semibold text-ui-text sm:text-right">
+                        {entry.quantity_delta > 0 ? "+" : ""}
+                        {number(entry.quantity_delta)}
+                      </p>
+                    </article>
+                  ))}
+                </div>
+
+                {selected.transaction_id ? (
+                  <Link
+                    className="mt-4 inline-flex min-h-[var(--ui-control-height)] items-center font-semibold text-ui-primary hover:underline"
+                    href={`/ledger/${encodeURIComponent(selected.transaction_id)}`}
+                  >
+                    Buka Riwayat Stok
+                  </Link>
+                ) : null}
+              </section>
+            ) : null}
+
+            {reversalError ? (
+              <Alert
+                className="mt-6"
+                title="Koreksi stok awal belum dapat diperiksa"
+                tone="danger"
+              >
+                {reversalError}
+              </Alert>
+            ) : null}
+
+            {reversalPreview ? (
+              <ReversalPanel preview={reversalPreview} />
+            ) : null}
+
+            {data.selectedReversal ? (
+              <section className="mt-8 border-t border-ui-border pt-7" id="reversal-audit">
+                <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+                  <div>
+                    <h2 className="text-lg font-semibold text-ui-text">
+                      Koreksi stok awal selesai
+                    </h2>
+                    <p className="mt-1 max-w-3xl text-sm leading-6 text-ui-text-muted">
+                      Riwayat asli tetap tersimpan. Movement koreksi tercatat terpisah sebagai jejak audit.
+                    </p>
+                  </div>
+                  <StatusBadge tone="danger">Sudah dikoreksi</StatusBadge>
+                </div>
+
+                <dl className="mt-5 grid gap-4 border-y border-ui-border py-4 sm:grid-cols-2 lg:grid-cols-4">
+                  <div><dt className="text-sm text-ui-text-muted">Dokumen</dt><dd className="mt-1 text-sm font-semibold text-ui-text">{data.selectedReversal.cutover_no}</dd></div>
+                  <div><dt className="text-sm text-ui-text-muted">Transaksi asal</dt><dd className="mt-1 text-sm text-ui-text">{data.selectedReversal.original_transaction_no}</dd></div>
+                  <div><dt className="text-sm text-ui-text-muted">Transaksi koreksi</dt><dd className="mt-1 text-sm text-ui-text">{data.selectedReversal.reversal_transaction_no}</dd></div>
+                  <div><dt className="text-sm text-ui-text-muted">Waktu koreksi</dt><dd className="mt-1 text-sm text-ui-text">{formatDate(data.selectedReversal.reversed_at)}</dd></div>
+                </dl>
+
+                <p className="mt-4 text-sm leading-6 text-ui-text-muted">
+                  Alasan koreksi: <span className="font-medium text-ui-text">{data.selectedReversal.note}</span>
+                </p>
+
+                {data.reversalLedger.length > 0 ? (
+                  <div className="mt-5 divide-y divide-ui-border border-y border-ui-border">
+                    {data.reversalLedger.map((entry) => (
+                      <article className="grid gap-2 py-3 sm:grid-cols-[7rem_minmax(0,1fr)_minmax(0,1fr)_8rem] sm:items-center" key={entry.ledger_entry_id}>
+                        <p className="ui-number text-sm text-ui-text-muted">#{number(entry.ledger_seq)}</p>
+                        <p className="text-sm font-semibold text-ui-text">{entry.product_sku_snapshot}</p>
+                        <p className="text-sm text-ui-text">{entry.batch_code_snapshot}</p>
+                        <p className="ui-number text-sm font-semibold text-ui-text sm:text-right">{number(entry.quantity_delta)}</p>
+                      </article>
+                    ))}
+                  </div>
+                ) : null}
+
+                <div className="mt-5 flex flex-wrap gap-4">
+                  <Link className="inline-flex min-h-[var(--ui-control-height)] items-center font-semibold text-ui-primary hover:underline" href="/opening-balances#new">
+                    Buat Saldo Awal Pengganti
+                  </Link>
+                  <Link className="inline-flex min-h-[var(--ui-control-height)] items-center font-semibold text-ui-primary hover:underline" href={`/ledger/${encodeURIComponent(data.selectedReversal.reversal_transaction_id)}`}>
+                    Buka Transaksi Koreksi
+                  </Link>
+                </div>
+              </section>
+            ) : null}
+          </section>
+        ) : (
+          <EmptyState
+            className="mt-8"
+            description="Buat dokumen stok awal untuk memulai setup."
+            title="Belum ada setup stok awal"
+          />
+        )}
+
+        <section
+          aria-labelledby="opening-history-heading"
+          className="mt-10 border-t border-ui-border pt-7"
+        >
+          <h2
+            className="text-lg font-semibold text-ui-text"
+            id="opening-history-heading"
+          >
+            Riwayat Setup Stok Awal
+          </h2>
+          <p className="mt-1 text-sm text-ui-text-muted">
+            Dokumen lama tetap tersedia sebagai jejak audit.
+          </p>
+
+          {data.cutovers.length === 0 ? (
+            <EmptyState
+              className="mt-4"
+              description="Riwayat akan muncul setelah dokumen pertama dibuat."
+              title="Belum ada riwayat"
+            />
           ) : (
-            <div className="panel-card text-sm leading-6 text-slate-400">
-              Pilih dokumen dari riwayat atau buat draft baru. Saldo tidak
-              dapat diedit langsung dari halaman ini.
+            <div className="mt-4 divide-y divide-ui-border border-y border-ui-border">
+              {data.cutovers.map((cutover) => {
+                const operational = operationalPresentation(cutover);
+                const verification = verificationPresentation(
+                  cutover.verification_status_code,
+                );
+
+                return (
+                  <article
+                    className="grid gap-3 py-4 sm:grid-cols-[minmax(0,1fr)_9rem_11rem_auto] sm:items-center"
+                    key={cutover.cutover_id}
+                  >
+                    <div>
+                      <p className="text-sm font-semibold text-ui-text">
+                        {cutover.cutover_no}
+                      </p>
+                      <p className="mt-1 text-xs text-ui-text-muted">
+                        {cutover.source_ref} {"Ã‚Â·"}{" "}
+                        {number(cutover.total_quantity)} unit
+                      </p>
+                    </div>
+
+                    <StatusBadge tone={operational.tone}>
+                      {operational.label}
+                    </StatusBadge>
+
+                    <StatusBadge tone={verification.tone}>
+                      {verification.label}
+                    </StatusBadge>
+
+                    <Link
+                      className="text-sm font-semibold text-ui-primary hover:underline"
+                      href={`/opening-balances?cutoverId=${encodeURIComponent(
+                        cutover.cutover_id,
+                      )}#detail`}
+                    >
+                      Buka
+                    </Link>
+                  </article>
+                );
+              })}
             </div>
           )}
         </section>
-
-        <section id="history" className="mt-10 scroll-mt-24">
-          <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
-            <div>
-              <p className="section-kicker">Riwayat immutable</p>
-              <h2 className="section-title">
-                Draft, cutover aktif, dan dokumen yang sudah dibalik.
-              </h2>
-            </div>
-            <Pill
-              label={`${formatNumber(data.cutovers.length)} dokumen`}
-              tone="neutral"
-            />
-          </div>
-
-          <div className="mt-5 overflow-x-auto rounded-2xl border border-white/10 bg-slate-950/35">
-            <table>
-              <thead>
-                <tr>
-                  <th>Dokumen</th>
-                  <th>Status</th>
-                  <th>Verifikasi</th>
-                  <th>Tanggal efektif</th>
-                  <th className="text-right">Baris</th>
-                  <th className="text-right">Quantity</th>
-                  <th>Detail</th>
-                </tr>
-              </thead>
-              <tbody>
-                {data.cutovers.length ? (
-                  data.cutovers.map((cutover) => (
-                    <tr key={cutover.cutover_id}>
-                      <td>
-                        <p className="font-medium text-white">
-                          {cutover.cutover_no}
-                        </p>
-                        <p className="mt-1 text-xs text-slate-500">
-                          {cutover.source_ref}
-                        </p>
-                      </td>
-                      <td>
-                        <Pill
-                          label={cutover.operational_status_code}
-                          tone={operationalTone(cutover)}
-                        />
-                      </td>
-                      <td>
-                        <Pill
-                          label={cutover.verification_status_code}
-                          tone={verificationTone(
-                            cutover.verification_status_code,
-                          )}
-                        />
-                      </td>
-                      <td>{cutover.effective_local_date}</td>
-                      <td className="text-right font-mono">
-                        {formatNumber(cutover.line_count)}
-                      </td>
-                      <td className="text-right font-mono">
-                        {formatNumber(cutover.total_quantity)}
-                      </td>
-                      <td>
-                        <Link
-                          className="text-sky-200 underline decoration-sky-400/30 underline-offset-4"
-                          href={`/opening-balances?cutoverId=${encodeURIComponent(
-                            cutover.cutover_id,
-                          )}#detail`}
-                        >
-                          Buka
-                        </Link>
-                      </td>
-                    </tr>
-                  ))
-                ) : (
-                  <tr>
-                    <td className="text-center text-slate-500" colSpan={7}>
-                      Belum ada dokumen saldo awal produksi.
-                    </td>
-                  </tr>
-                )}
-              </tbody>
-            </table>
-          </div>
-        </section>
       </div>
-    </main>
+    </AppShell>
   );
 }

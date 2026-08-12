@@ -24,6 +24,13 @@ let publishableKey = "";
 let serviceKey = "";
 let accessToken = "";
 let organizationId = "";
+const cleanupState = {
+  runId: null,
+  sourceRef: null,
+  cutoverId: null,
+  baselineBatches: null,
+  baselineProducts: null,
+};
 
 function parseArgs(argv) {
   const args = { ...DEFAULTS };
@@ -679,6 +686,140 @@ async function reverseCutover(cutoverId, runId) {
   });
 }
 
+function isOwnedSmokeCutover(cutover) {
+  const metadata = cutover?.metadata;
+
+  return (
+    cutover?.source_ref === cleanupState.sourceRef &&
+    metadata &&
+    typeof metadata === "object" &&
+    metadata.source === "opening-balance-verification-ui-smoke" &&
+    metadata.runId === cleanupState.runId &&
+    metadata.temporary === true
+  );
+}
+
+async function readOwnedSmokeCutover() {
+  if (!cleanupState.sourceRef) return null;
+
+  const cutoverFilter = cleanupState.cutoverId
+    ? `cutover_id=eq.${encoded(cleanupState.cutoverId)}`
+    : `source_ref=eq.${encoded(cleanupState.sourceRef)}`;
+  const rows = await restRows(
+    `opening_balance_cutovers?organization_id=eq.${encoded(organizationId)}` +
+      `&${cutoverFilter}&select=*&limit=2`,
+  );
+
+  if (rows.length > 1) {
+    throw new Error(
+      `Cleanup menemukan lebih dari satu cutover untuk fixture ${cleanupState.sourceRef}.`,
+    );
+  }
+
+  const cutover = rows[0] ?? null;
+  if (!cutover) return null;
+  if (!isOwnedSmokeCutover(cutover)) {
+    throw new Error(
+      `Cleanup menolak cutover yang bukan fixture run ini: ${cleanupState.sourceRef}.`,
+    );
+  }
+
+  cleanupState.cutoverId = cutover.cutover_id;
+  return cutover;
+}
+
+async function assertCleanupProjectionBaseline() {
+  if (!cleanupState.baselineBatches || !cleanupState.baselineProducts) {
+    return;
+  }
+
+  const finalBatches = Object.fromEntries(
+    await Promise.all(
+      Object.keys(cleanupState.baselineBatches).map(async (batchId) => [
+        batchId,
+        await readBatchQuantity(batchId),
+      ]),
+    ),
+  );
+  const finalProducts = Object.fromEntries(
+    await Promise.all(
+      Object.keys(cleanupState.baselineProducts).map(async (productId) => [
+        productId,
+        await readProductQuantity(productId),
+      ]),
+    ),
+  );
+  const batchQuantitiesRestored = Object.keys(
+    cleanupState.baselineBatches,
+  ).every(
+    (batchId) =>
+      Number(finalBatches[batchId]?.sellable_qty) ===
+      Number(cleanupState.baselineBatches[batchId]?.sellable_qty),
+  );
+  const productQuantitiesRestored = Object.keys(
+    cleanupState.baselineProducts,
+  ).every(
+    (productId) =>
+      Number(finalProducts[productId]?.sellable_qty) ===
+        Number(cleanupState.baselineProducts[productId]?.sellable_qty) &&
+      Number(finalProducts[productId]?.reserved_qty) ===
+        Number(cleanupState.baselineProducts[productId]?.reserved_qty),
+  );
+
+  if (!batchQuantitiesRestored || !productQuantitiesRestored) {
+    throw new Error(
+      `Cleanup tidak mengembalikan projection ke baseline: ${JSON.stringify({
+        baselineBatches: cleanupState.baselineBatches,
+        finalBatches,
+        baselineProducts: cleanupState.baselineProducts,
+        finalProducts,
+      })}`,
+    );
+  }
+}
+
+async function cleanupVerificationSmokeEffects() {
+  if (!cleanupState.sourceRef || !organizationId || !accessToken) return;
+
+  const cutover = await readOwnedSmokeCutover();
+  if (!cutover) return;
+
+  if (cutover.operational_status_code === "ACTIVE") {
+    const reversal = await reverseCutover(
+      cutover.cutover_id,
+      cleanupState.runId,
+    );
+
+    if (reversal?.status !== "REVERSED") {
+      throw new Error(
+        `Cleanup exact reversal tidak menghasilkan REVERSED: ${JSON.stringify(reversal)}`,
+      );
+    }
+  }
+
+  const afterCleanup = await readOwnedSmokeCutover();
+  if (afterCleanup?.operational_status_code === "ACTIVE") {
+    throw new Error(
+      `Cleanup meninggalkan active cutover temporary ${afterCleanup.cutover_id}.`,
+    );
+  }
+
+  const activeRows = await restRows(
+    `opening_balance_active_cutovers?organization_id=eq.${encoded(organizationId)}` +
+      `&cutover_id=eq.${encoded(afterCleanup.cutover_id)}` +
+      "&select=cutover_id&limit=1",
+  );
+  if (activeRows.length > 0) {
+    throw new Error(
+      `Cleanup meninggalkan active pointer untuk fixture ${afterCleanup.cutover_id}.`,
+    );
+  }
+
+  if (afterCleanup?.operational_status_code === "REVERSED") {
+    await assertCleanupProjectionBaseline();
+  }
+}
+
 async function main() {
   const args = parseArgs(process.argv.slice(2));
   const uri = new URL(args.baseUrl);
@@ -863,6 +1004,10 @@ async function main() {
   );
 
   const sourceRef = `OBV-UI-${runId.slice(0, 8)}`;
+  cleanupState.runId = runId;
+  cleanupState.sourceRef = sourceRef;
+  cleanupState.baselineBatches = baselineBatches;
+  cleanupState.baselineProducts = baselineProducts;
   const created = await rpc("create_opening_balance_cutover", {
     p_organization_id: organizationId,
     p_source_ref: sourceRef,
@@ -875,6 +1020,7 @@ async function main() {
       temporary: true,
     },
   });
+  cleanupState.cutoverId = created.cutoverId;
   const openingLines = uniqueBatches.map((batch, index) => ({
     productId: batch.product_id,
     batchId: batch.batch_id,
@@ -985,14 +1131,11 @@ async function main() {
     `${args.baseUrl}/opening-balances?cutoverId=${created.cutoverId}#detail`,
   );
   assertTest(
-    containsText(page.html, "PARTIALLY_VERIFIED") &&
-      containsText(page.html, "Bukti verifikasi immutable") &&
+    containsText(page.html, "Sebagian terverifikasi") &&
+      containsText(page.html, "Bukti audit") &&
       containsText(page.html, first.create.stocktakeNo) &&
-      containsText(
-        page.html,
-        "Zero variance tanpa movement adjustment",
-      ) &&
-      containsText(page.html, "Approval version 1"),
+      containsText(page.html, "Jumlah fisik:") &&
+      containsText(page.html, "Selisih:"),
     "UI partial verification menampilkan status dan evidence lengkap",
   );
 
@@ -1000,8 +1143,10 @@ async function main() {
     `${args.baseUrl}/stocktakes/${first.create.stocktakeId}`,
   );
   assertTest(
-    containsText(firstStocktakePage.html, first.create.stocktakeNo) &&
-      containsText(firstStocktakePage.html, "Adjustment berhasil diposting"),
+    containsText(firstStocktakePage.html, "Verifikasi saldo awal 1") &&
+      containsText(firstStocktakePage.html, "Hitung Stok") &&
+      containsText(firstStocktakePage.html, "Perubahan Sudah Disimpan") &&
+      containsText(firstStocktakePage.html, "Buka transaksi di Riwayat Stok"),
     "Link evidence membuka stocktake posted",
   );
 
@@ -1073,12 +1218,13 @@ async function main() {
     `${args.baseUrl}/opening-balances?cutoverId=${created.cutoverId}#detail`,
   );
   assertTest(
-    containsText(page.html, "VERIFIED") &&
+    containsText(page.html, "Terverifikasi") &&
       containsText(page.html, first.create.stocktakeNo) &&
       containsText(page.html, second.create.stocktakeNo) &&
-      containsText(page.html, "Verification application") &&
-      containsText(page.html, "Posting line") &&
-      containsText(page.html, "Count attempt"),
+      containsText(page.html, "Bukti audit") &&
+      containsText(page.html, "Buka Opname") &&
+      containsText(page.html, "Jumlah fisik:") &&
+      containsText(page.html, "Selisih:"),
     "UI full verification bertahan setelah refresh",
   );
 
@@ -1086,8 +1232,10 @@ async function main() {
     `${args.baseUrl}/stocktakes/${second.create.stocktakeId}`,
   );
   assertTest(
-    containsText(secondStocktakePage.html, second.create.stocktakeNo) &&
-      containsText(secondStocktakePage.html, "Adjustment berhasil diposting"),
+    containsText(secondStocktakePage.html, "Verifikasi saldo awal 2") &&
+      containsText(secondStocktakePage.html, "Hitung Stok") &&
+      containsText(secondStocktakePage.html, "Perubahan Sudah Disimpan") &&
+      containsText(secondStocktakePage.html, "Buka transaksi di Riwayat Stok"),
     "Stocktake kedua memiliki audit posting",
   );
 
@@ -1102,9 +1250,12 @@ async function main() {
     `${args.baseUrl}/opening-balances?cutoverId=${created.cutoverId}#detail`,
   );
   assertTest(
-    containsText(reversedPage.html, "Cutover sudah dibalik") &&
+    containsText(reversedPage.html, "Koreksi stok awal selesai") &&
+      containsText(reversedPage.html, "Sudah dikoreksi") &&
       containsText(reversedPage.html, first.create.stocktakeNo) &&
-      containsText(reversedPage.html, second.create.stocktakeNo),
+      containsText(reversedPage.html, second.create.stocktakeNo) &&
+      containsText(reversedPage.html, "Bukti audit") &&
+      containsText(reversedPage.html, "Buka Transaksi Koreksi"),
     "Reversal mempertahankan immutable verification evidence",
   );
 
@@ -1169,6 +1320,18 @@ try {
     error instanceof Error ? error.stack ?? error.message : String(error),
   );
 } finally {
+  try {
+    await cleanupVerificationSmokeEffects();
+    if (cleanupState.sourceRef) {
+      addResult("Fallback cleanup fixture verification selesai", true);
+    }
+  } catch (error) {
+    addResult(
+      "Fallback cleanup fixture verification gagal",
+      false,
+      error instanceof Error ? error.stack ?? error.message : String(error),
+    );
+  }
   stopServer(args.keepServerRunning);
   const passed = results.filter(
     (item) => item.status === "PASS",
