@@ -90,20 +90,30 @@ test("Admin membatalkan Hitung Stok draft secara aman dan terminal", async ({ pa
 
   const cancellationReason = "Fixture browser selesai diverifikasi.";
   await reason.fill(cancellationReason);
+  const cancelButton = page.getByRole("button", {
+    name: "Batal Hitung Stok",
+    exact: true,
+  });
   await Promise.all([
     page.waitForURL((url) => /^\/stocktakes\/[^/]+$/.test(url.pathname) && (url.searchParams.get("success") ?? "").includes("dibatalkan tanpa mengubah stok.")),
-    page.getByRole("button", { name: "Batal Hitung Stok", exact: true }).click(),
+    cancelButton.evaluate((button) => {
+      if (!(button instanceof HTMLButtonElement)) {
+        throw new Error("Cancellation control must be a button.");
+      }
+      button.click();
+      button.click();
+    }),
   ]);
 
   await expect(page.getByText(/dibatalkan tanpa mengubah stok\.$/)).toBeVisible();
   await expect(stocktakeStatusMetric(page).getByText("Dibatalkan", { exact: true })).toBeVisible();
-  await expect(page.getByText(`Alasan: ${cancellationReason}`, { exact: true })).toBeVisible();
+  await expect(page.getByText(`Alasan: ${cancellationReason}`, { exact: true })).toHaveCount(1);
   await expect(page.getByRole("heading", { name: "Batal Hitung Stok", exact: true })).toHaveCount(0);
   await expect(page.getByRole("button", { name: /Validasi dan siapkan sesi|Mulai penghitungan|Simpan|Setujui|Posting/ })).toHaveCount(0);
 
   await page.reload({ waitUntil: "domcontentloaded" });
   await expect(stocktakeStatusMetric(page).getByText("Dibatalkan", { exact: true })).toBeVisible();
-  await expect(page.getByText(`Alasan: ${cancellationReason}`, { exact: true })).toBeVisible();
+  await expect(page.getByText(`Alasan: ${cancellationReason}`, { exact: true })).toHaveCount(1);
   await expect(page.getByRole("heading", { name: "Batal Hitung Stok", exact: true })).toHaveCount(0);
   await expectNoRootOverflow(page);
 

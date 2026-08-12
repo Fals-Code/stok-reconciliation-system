@@ -2,7 +2,7 @@ create extension if not exists pgtap with schema extensions;
 
 begin;
 
-select plan(38);
+select plan(41);
 
 -- 1-7: public contract and least privilege.
 select function_returns(
@@ -198,7 +198,15 @@ select
     'Cancellation contract fixture.',
     jsonb_build_object('fixture', 'stocktake-cancellation')
   )
-from unnest(array['DRAFT', 'READY', 'COUNTING', 'REVIEW']) status_code;
+from unnest(array[
+  'DRAFT',
+  'READY',
+  'COUNTING',
+  'REVIEW',
+  'APPROVED',
+  'POSTING',
+  'POSTED'
+]) status_code;
 
 insert into cancellation_results (kind, result)
 values (
@@ -229,10 +237,80 @@ values (
 
 reset role;
 
+insert into inventory.idempotency_commands (
+  id, organization_id, scope, key, request_hash, status_code,
+  started_at, completed_at, response_snapshot
+)
+select
+  fixture.command_id,
+  '00000000-0000-4000-8000-000000000001'::uuid,
+  'APPROVE_STOCKTAKE',
+  'PGTAP-STOCKTAKE-CANCEL-FORBIDDEN-' || fixture.kind,
+  repeat(fixture.hash_character, 64),
+  'SUCCEEDED',
+  '2026-08-12 19:01:00+07'::timestamptz,
+  '2026-08-12 19:01:01+07'::timestamptz,
+  jsonb_build_object('status', fixture.kind)
+from (
+  values
+    ('APPROVED'::text, '69100000-0000-4000-8000-000000000001'::uuid, 'a'::text),
+    ('POSTING'::text, '69100000-0000-4000-8000-000000000002'::uuid, 'b'::text),
+    ('POSTED'::text, '69100000-0000-4000-8000-000000000003'::uuid, 'c'::text)
+) as fixture(kind, command_id, hash_character);
+
+insert into operations.stocktake_approvals (
+  id, organization_id, stocktake_id, approval_version_no, approval_hash,
+  approved_at, approved_by, process_name, stocktake_version_no,
+  snapshot_ledger_seq, tolerance_policy_snapshot, rule_version,
+  line_count, variance_line_count, total_variance_qty,
+  idempotency_command_id, note, metadata
+)
+select
+  fixture.approval_id,
+  '00000000-0000-4000-8000-000000000001'::uuid,
+  (result.result ->> 'stocktakeId')::uuid,
+  1,
+  repeat(fixture.hash_character, 64),
+  '2026-08-12 19:01:01+07'::timestamptz,
+  '99000000-0000-4000-8000-000000000069'::uuid,
+  null,
+  1,
+  0,
+  '{"units":0,"percent":0}'::jsonb,
+  'stocktake-continuous-v1',
+  1,
+  0,
+  0,
+  fixture.command_id,
+  'Schema-valid forbidden cancellation fixture.',
+  jsonb_build_object('fixture', 'stocktake-cancellation', 'state', fixture.kind)
+from (
+  values
+    ('APPROVED'::text, '69200000-0000-4000-8000-000000000001'::uuid, '69100000-0000-4000-8000-000000000001'::uuid, 'a'::text),
+    ('POSTING'::text, '69200000-0000-4000-8000-000000000002'::uuid, '69100000-0000-4000-8000-000000000002'::uuid, 'b'::text),
+    ('POSTED'::text, '69200000-0000-4000-8000-000000000003'::uuid, '69100000-0000-4000-8000-000000000003'::uuid, 'c'::text)
+) as fixture(kind, approval_id, command_id, hash_character)
+join cancellation_results result on result.kind = fixture.kind;
+
 update operations.stocktakes stocktake
 set status_code = result.kind
 from cancellation_results result
 where result.kind in ('READY', 'COUNTING', 'REVIEW', 'EXCEPTION')
+  and stocktake.id = (result.result ->> 'stocktakeId')::uuid;
+
+update operations.stocktakes stocktake
+set
+  status_code = result.kind,
+  current_approval_id = approval.id,
+  approval_version_no = approval.approval_version_no,
+  approved_at = approval.approved_at,
+  approved_by = approval.approved_by,
+  approval_process_name = approval.process_name
+from cancellation_results result,
+     operations.stocktake_approvals approval
+where approval.organization_id = stocktake.organization_id
+  and approval.stocktake_id = (result.result ->> 'stocktakeId')::uuid
+  and result.kind in ('APPROVED', 'POSTING', 'POSTED')
   and stocktake.id = (result.result ->> 'stocktakeId')::uuid;
 
 insert into operations.stocktake_lines (
@@ -395,6 +473,45 @@ select throws_ok(
   'P0001',
   'STOCKTAKE_CANCEL_INVALID_STATE',
   'EXCEPTION cannot be cancelled'
+);
+select throws_ok(
+  format(
+    'select api.cancel_stocktake(%L::uuid,%L,%L::uuid,%L,true,%L::jsonb)',
+    '00000000-0000-4000-8000-000000000001',
+    'PGTAP-CANCEL-APPROVED',
+    (select result ->> 'stocktakeId' from cancellation_results where kind = 'APPROVED'),
+    'Approved session is terminal for cancellation.',
+    '{}'
+  ),
+  'P0001',
+  'STOCKTAKE_CANCEL_INVALID_STATE',
+  'APPROVED cannot be cancelled'
+);
+select throws_ok(
+  format(
+    'select api.cancel_stocktake(%L::uuid,%L,%L::uuid,%L,true,%L::jsonb)',
+    '00000000-0000-4000-8000-000000000001',
+    'PGTAP-CANCEL-POSTING',
+    (select result ->> 'stocktakeId' from cancellation_results where kind = 'POSTING'),
+    'Posting session is terminal for cancellation.',
+    '{}'
+  ),
+  'P0001',
+  'STOCKTAKE_CANCEL_INVALID_STATE',
+  'POSTING cannot be cancelled'
+);
+select throws_ok(
+  format(
+    'select api.cancel_stocktake(%L::uuid,%L,%L::uuid,%L,true,%L::jsonb)',
+    '00000000-0000-4000-8000-000000000001',
+    'PGTAP-CANCEL-POSTED',
+    (select result ->> 'stocktakeId' from cancellation_results where kind = 'POSTED'),
+    'Posted session is terminal for cancellation.',
+    '{}'
+  ),
+  'P0001',
+  'STOCKTAKE_CANCEL_INVALID_STATE',
+  'POSTED cannot be cancelled'
 );
 
 insert into cancellation_results (kind, result)

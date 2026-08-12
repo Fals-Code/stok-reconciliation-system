@@ -3,7 +3,7 @@ import { readFile } from "node:fs/promises";
 import process from "node:process";
 
 const EMAIL = process.env.STOCKTAKE_CANCELLATION_PARALLEL_EMAIL ?? "demo.admin@glowlab.invalid";
-const PREFIX = "CONCURRENCY-STOCKTAKE-CANCEL-V2";
+const PREFIX = "CONCURRENCY-STOCKTAKE-CANCEL-V3";
 const TIMEOUT_MS = 30_000;
 const OCCURRED_AT = "2026-08-12T09:00:00Z";
 const names = ["REPLAY", "CONFLICT", "CONTENTION", "TRANSITION", "POST-GUARD"];
@@ -100,7 +100,7 @@ function size(value) {
 
 function ids(name) {
   const base = `${PREFIX}-${name}`;
-  return { title: `Cancellation parallel V2 ${name}`, productName: `Cancellation fixture V2 ${name}`, productKey: `${base}-PRODUCT`, batchKey: `${base}-BATCH`, batchCode: `${base}-BATCH` };
+  return { title: `Cancellation parallel V3 ${name}`, productName: `Cancellation fixture V3 ${name}`, productKey: `${base}-PRODUCT`, batchKey: `${base}-BATCH`, batchCode: `${base}-BATCH` };
 }
 
 function batchFor(container, org, name) {
@@ -170,6 +170,27 @@ async function prepareApproved(config, token, org, container, name) {
   const approved = await rpc(config, token, "approve_stocktake", { p_organization_id: org, p_idempotency_key: `${PREFIX}:${name}:approve:${detail.version_no}`, p_stocktake_id: current.stocktakeId, p_expected_stocktake_version: detail.version_no, p_confirmation: true, p_note: "Concurrency fixture.", p_metadata: { source: "stocktake-cancellation-parallel" } });
   if (!approved.ok || approved.payload?.status !== "APPROVED") fail(`Approve ${name}: ${code(approved)}`);
   return { ...current, status: "APPROVED", approvalVersion: approved.payload.approvalVersion };
+}
+
+async function prepareReview(config, token, org, container, name) {
+  const current = await prepareCounting(config, token, org, container, name);
+  if (current.status === "REVIEW") return current;
+  if (current.status !== "COUNTING") fail(`Fixture ${name} partial/unexpected (${current.status}).`);
+  const line = (await rows(config, token, `stocktake_non_blind_lines?organization_id=eq.${encodeURIComponent(org)}&stocktake_id=eq.${encodeURIComponent(current.stocktakeId)}&select=*&order=line_no.asc`))[0];
+  if (!line) fail(`Line ${name} tidak tersedia.`);
+  const counted = await submitCount(config, token, org, current, line.stocktake_line_id, `${PREFIX}:${name}:count`);
+  if (!counted.ok) fail(`Count ${name}: ${code(counted)}`);
+  const completed = await rpc(config, token, "complete_stocktake_counting", { p_organization_id: org, p_idempotency_key: `${PREFIX}:${name}:complete`, p_stocktake_id: current.stocktakeId, p_metadata: { source: "stocktake-cancellation-parallel" } });
+  if (!completed.ok || completed.payload?.status !== "REVIEW") fail(`Complete ${name}: ${code(completed)}`);
+  return { ...current, status: "REVIEW" };
+}
+
+function requestReviewRecount(config, token, org, current, line, key) {
+  return rpc(config, token, "request_stocktake_review_recount", { p_organization_id: org, p_idempotency_key: key, p_stocktake_id: current.stocktakeId, p_stocktake_line_id: line.stocktake_line_id, p_expected_line_version: line.version_no, p_reason: "Race recount review.", p_metadata: { source: "stocktake-cancellation-parallel" } });
+}
+
+function reviewLine(config, token, org, current, line, key) {
+  return rpc(config, token, "review_stocktake_line", { p_organization_id: org, p_idempotency_key: key, p_stocktake_id: current.stocktakeId, p_stocktake_line_id: line.stocktake_line_id, p_expected_line_version: line.version_no, p_decision_code: "VARIANCE_ACCEPTED", p_reason_code: "PHYSICAL_SURPLUS", p_review_note: "Race review.", p_exception_code: null, p_metadata: { source: "stocktake-cancellation-parallel" } });
 }
 
 function cancel(config, token, org, current, key, reason) {
@@ -294,14 +315,65 @@ async function main() {
   assert(transitionCount.ok || code(transitionCount) === "STOCKTAKE_INVALID_STATE", `Count race harus commit atau invalid-state: ${code(transitionCount)}`);
   const transitionAfter = snapshot(container, org, transition); assertOneCancelled(transitionAfter, "Race transition final harus CANCELLED."); assert(transitionAfter.attempts === transitionBefore.attempts || transitionAfter.attempts === transitionBefore.attempts + 1, "Count attempt race tidak boleh partial."); assertNeutral(transitionBefore, transitionAfter, "Cancel versus count"); console.log("[PASS] cancel vs submit count: outcome serializable dan count evidence preserved bila commit");
 
+  const recountRace = await prepareReview(config, tokenA, org, container, "RECOUNT-RACE");
+  const recountLine = (await rows(config, tokenA, `stocktake_review_lines?organization_id=eq.${encodeURIComponent(org)}&stocktake_id=eq.${encodeURIComponent(recountRace.stocktakeId)}&select=*&order=line_no.asc`))[0];
+  if (!recountLine) fail("Line recount race tidak tersedia.");
+  const recountBefore = snapshot(container, org, recountRace);
+  const [recountCancel, recountRequest] = await Promise.all([
+    cancel(config, tokenA, org, recountRace, `${PREFIX}:RECOUNT-RACE:cancel`, "Race dengan recount."),
+    requestReviewRecount(config, tokenB, org, recountRace, recountLine, `${PREFIX}:RECOUNT-RACE:recount`),
+  ]);
+  assert(recountCancel.ok, `Cancel versus recount harus menang atau mengikuti COUNTING yang cancellable: ${code(recountCancel)}`);
+  assert(recountRequest.ok || code(recountRequest) === "STOCKTAKE_REVIEW_INVALID_STATE", `Recount race harus commit atau invalid-state: ${code(recountRequest)}`);
+  const recountAfter = snapshot(container, org, recountRace);
+  assertOneCancelled(recountAfter, "Cancel versus recount harus terminal CANCELLED.");
+  assert(recountAfter.attempts === recountBefore.attempts, "Recount request tidak boleh membuat count attempt parsial.");
+  assertNeutral(recountBefore, recountAfter, "Cancel versus recount");
+  console.log("[PASS] cancel vs recount: outcome serializable, evidence count preserved");
+
+  const reviewRace = await prepareReview(config, tokenA, org, container, "REVIEW-RACE");
+  const reviewRaceLine = (await rows(config, tokenA, `stocktake_review_lines?organization_id=eq.${encodeURIComponent(org)}&stocktake_id=eq.${encodeURIComponent(reviewRace.stocktakeId)}&select=*&order=line_no.asc`))[0];
+  if (!reviewRaceLine) fail("Line review race tidak tersedia.");
+  const reviewBefore = snapshot(container, org, reviewRace);
+  const [reviewCancel, reviewed] = await Promise.all([
+    cancel(config, tokenA, org, reviewRace, `${PREFIX}:REVIEW-RACE:cancel`, "Race dengan review."),
+    reviewLine(config, tokenB, org, reviewRace, reviewRaceLine, `${PREFIX}:REVIEW-RACE:review`),
+  ]);
+  assert(reviewCancel.ok, `Cancel versus review harus selesai canonical: ${code(reviewCancel)}`);
+  assert(reviewed.ok || code(reviewed) === "STOCKTAKE_REVIEW_INVALID_STATE", `Review race harus commit atau invalid-state: ${code(reviewed)}`);
+  const reviewAfter = snapshot(container, org, reviewRace);
+  assertOneCancelled(reviewAfter, "Cancel versus review harus terminal CANCELLED.");
+  assert(reviewAfter.attempts === reviewBefore.attempts, "Review tidak boleh menghapus count attempt.");
+  assertNeutral(reviewBefore, reviewAfter, "Cancel versus review");
+  console.log("[PASS] cancel vs review: outcome serializable dan evidence preserved");
+
+  const approvalRace = await prepareReview(config, tokenA, org, container, "APPROVAL-RACE");
+  const approvalLine = (await rows(config, tokenA, `stocktake_review_lines?organization_id=eq.${encodeURIComponent(org)}&stocktake_id=eq.${encodeURIComponent(approvalRace.stocktakeId)}&select=*&order=line_no.asc`))[0];
+  if (!approvalLine) fail("Line approval race tidak tersedia.");
+  const approvalReview = await reviewLine(config, tokenA, org, approvalRace, approvalLine, `${PREFIX}:APPROVAL-RACE:review`);
+  if (!approvalReview.ok) fail(`Prepare approval race review: ${code(approvalReview)}`);
+  const approvalDetail = (await rows(config, tokenA, `stocktake_details?organization_id=eq.${encodeURIComponent(org)}&stocktake_id=eq.${encodeURIComponent(approvalRace.stocktakeId)}&select=*&limit=1`))[0];
+  const approvalBefore = snapshot(container, org, approvalRace);
+  const [approvalCancel, approved] = await Promise.all([
+    cancel(config, tokenA, org, approvalRace, `${PREFIX}:APPROVAL-RACE:cancel`, "Race dengan approval."),
+    rpc(config, tokenB, "approve_stocktake", { p_organization_id: org, p_idempotency_key: `${PREFIX}:APPROVAL-RACE:approve:${approvalDetail.version_no}`, p_stocktake_id: approvalRace.stocktakeId, p_expected_stocktake_version: approvalDetail.version_no, p_confirmation: true, p_note: "Race approval.", p_metadata: { source: "stocktake-cancellation-parallel" } }),
+  ]);
+  const approvalAfter = snapshot(container, org, approvalRace);
+  assert((approvalCancel.ok && !approved.ok && code(approved) === "STOCKTAKE_REVIEW_INVALID_STATE" && approvalAfter.status === "CANCELLED" && approvalAfter.cancellations === 1) || (!approvalCancel.ok && code(approvalCancel) === "STOCKTAKE_CANCEL_INVALID_STATE" && approved.ok && approvalAfter.status === "APPROVED" && approvalAfter.cancellations === 0), `Cancel versus approval harus satu outcome serializable: ${code(approvalCancel)} / ${code(approved)}`);
+  assert(approvalAfter.attempts === approvalBefore.attempts, "Approval race tidak boleh menghapus count attempt.");
+  assertNeutral(approvalBefore, approvalAfter, "Cancel versus approval");
+  console.log("[PASS] cancel vs approval: satu winner state-machine dan tidak ada partial state");
+
   const postGuard = await prepareApproved(config, tokenA, org, container, "POST-GUARD");
-  const blocked = await cancel(config, tokenA, org, postGuard, `${PREFIX}:POST-GUARD:cancel-before-post`, "Tidak boleh cancel approved.");
-  assert(!blocked.ok && code(blocked) === "STOCKTAKE_CANCEL_INVALID_STATE", `APPROVED harus menolak cancel: ${code(blocked)}`);
-  const posted = await rpc(config, tokenA, "post_stocktake_adjustment", { p_organization_id: org, p_idempotency_key: `stocktake:${postGuard.stocktakeId}:post:${postGuard.approvalVersion}`, p_stocktake_id: postGuard.stocktakeId, p_approval_version: postGuard.approvalVersion, p_confirmation: true, p_note: "Post guard concurrency fixture.", p_metadata: { source: "stocktake-cancellation-parallel" } });
+  const [postCancel, posted] = await Promise.all([
+    cancel(config, tokenA, org, postGuard, `${PREFIX}:POST-GUARD:cancel-parallel`, "Tidak boleh cancel approved."),
+    rpc(config, tokenB, "post_stocktake_adjustment", { p_organization_id: org, p_idempotency_key: `stocktake:${postGuard.stocktakeId}:post:${postGuard.approvalVersion}`, p_stocktake_id: postGuard.stocktakeId, p_approval_version: postGuard.approvalVersion, p_confirmation: true, p_note: "Post guard concurrency fixture.", p_metadata: { source: "stocktake-cancellation-parallel" } }),
+  ]);
+  assert(!postCancel.ok && code(postCancel) === "STOCKTAKE_CANCEL_INVALID_STATE", `APPROVED cancel parallel harus ditolak: ${code(postCancel)}`);
   assert(posted.ok, `Posting approved fixture gagal: ${code(posted)}`);
-  const afterPostCancel = await cancel(config, tokenB, org, postGuard, `${PREFIX}:POST-GUARD:cancel-after-post`, "Tidak boleh cancel posted.");
+  const afterPostCancel = await cancel(config, tokenA, org, postGuard, `${PREFIX}:POST-GUARD:cancel-after-post`, "Tidak boleh cancel posted.");
   assert(!afterPostCancel.ok && code(afterPostCancel) === "STOCKTAKE_CANCEL_INVALID_STATE", `POSTED harus menolak cancel: ${code(afterPostCancel)}`);
-  const postGuardAfter = snapshot(container, org, postGuard); assert(postGuardAfter.status === "POSTED" && postGuardAfter.cancellations === 0 && postGuardAfter.postings === 1 && postGuardAfter.transactions === 1 && postGuardAfter.ledger > 0, "CANCELLED tidak boleh muncul sebelum/selepas POSTED."); console.log("[PASS] post guard: APPROVED/POSTED menolak cancel, CANCELLED tidak dapat kemudian POSTED");
+  const postGuardAfter = snapshot(container, org, postGuard); assert(postGuardAfter.status === "POSTED" && postGuardAfter.cancellations === 0 && postGuardAfter.postings === 1 && postGuardAfter.transactions === 1 && postGuardAfter.ledger > 0, "CANCELLED tidak boleh muncul sebelum/selepas POSTED."); console.log("[PASS] cancel vs post: two-session parallel post wins from APPROVED and CANCELLED cannot follow");
 }
 
 main().then(() => console.log("Stocktake cancellation parallel harness PASS")).catch((error) => { console.error(error instanceof Error ? error.stack : error); process.exitCode = 1; });

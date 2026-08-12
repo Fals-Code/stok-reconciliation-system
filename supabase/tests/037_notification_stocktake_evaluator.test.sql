@@ -2,7 +2,7 @@ begin;
 
 create extension if not exists pgtap with schema extensions;
 
-select plan(111);
+select plan(118);
 
 -- Function contract and trusted execution.
 select has_function(
@@ -1265,12 +1265,63 @@ select is(
   'recount recurrence starts from refreshed line state'
 );
 
-update operations.stocktakes
-set
-  status_code = 'CANCELLED',
-  version_no = version_no + 1
-where id =
-  'e8200000-0000-4000-8000-000000000001'::uuid;
+create temporary table recount_cancel_command as
+select api.cancel_stocktake(
+  '00000000-0000-4000-8000-000000000001'::uuid,
+  'PGTAP-NOTIFICATION-STOCKTAKE-CANCEL-001',
+  'e8200000-0000-4000-8000-000000000001'::uuid,
+  'Fixture recount dihentikan untuk audit.',
+  true,
+  '{"fixture":"notification-stocktake-cancellation"}'::jsonb
+) as result;
+
+select is(
+  (select result ->> 'status' from recount_cancel_command),
+  'CANCELLED',
+  'trusted cancellation transitions the open recount source to cancelled'
+);
+select is(
+  (
+    select count(*)
+    from operations.stocktake_cancellations
+    where stocktake_id = 'e8200000-0000-4000-8000-000000000001'::uuid
+  ),
+  1::bigint,
+  'trusted cancellation stores one append-only audit effect'
+);
+create temporary table recount_cancel_replay as
+select api.cancel_stocktake(
+  '00000000-0000-4000-8000-000000000001'::uuid,
+  'PGTAP-NOTIFICATION-STOCKTAKE-CANCEL-001',
+  'e8200000-0000-4000-8000-000000000001'::uuid,
+  'Fixture recount dihentikan untuk audit.',
+  true,
+  '{"fixture":"notification-stocktake-cancellation"}'::jsonb
+) as result;
+select is(
+  (select result from recount_cancel_replay),
+  (select result from recount_cancel_command),
+  'cancellation replay returns the canonical stored response'
+);
+select is(
+  (
+    select count(*)
+    from operations.stocktake_cancellations
+    where stocktake_id = 'e8200000-0000-4000-8000-000000000001'::uuid
+  ),
+  1::bigint,
+  'cancellation replay creates no second audit effect'
+);
+select is(
+  (
+    select count(*)
+    from inventory.stock_transactions
+    where source_type_code = 'STOCKTAKE'
+      and source_id = 'e8200000-0000-4000-8000-000000000001'::uuid
+  ),
+  0::bigint,
+  'notification cancellation fixture remains stock-neutral'
+);
 
 insert into stocktake_evaluator_clock (code, observed_at)
 select
@@ -1322,6 +1373,36 @@ select is(
   ),
   'SESSION_CANCELLED',
   'recount cancellation resolution is explicit'
+);
+
+create temporary table recount_cancelled_evaluation_replay as
+select notification.evaluate_stocktake_recounts(
+  '00000000-0000-4000-8000-000000000001'::uuid,
+  'stocktake-recount:cancelled',
+  (
+    select observed_at
+    from stocktake_evaluator_clock
+    where code = 'RECOUNT_CANCELLED'
+  ),
+  'SCHEDULED',
+  'e9600000-0000-4000-8000-000000000004'::uuid,
+  'pgtap.stocktake_recount_evaluator'
+) as result;
+
+select is(
+  (select result ->> 'action' from recount_cancelled_evaluation_replay),
+  'REPLAYED',
+  'cancelled evaluator replay returns its canonical response'
+);
+select is(
+  (
+    select count(*)
+    from notification.notifications
+    where rule_code_snapshot = 'STOCKTAKE_RECOUNT_REQUIRED'
+      and entity_id = 'e8200000-0000-4000-8000-000000000001'::uuid
+  ),
+  2::bigint,
+  'cancelled evaluator replay creates no notification episode'
 );
 
 -- Initial post failure evaluation finds EXCEPTION and stale POSTING.
