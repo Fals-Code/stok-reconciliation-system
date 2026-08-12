@@ -3,6 +3,8 @@ import {
   devices,
 } from "@playwright/test";
 
+const isolatedPort = process.env.PLAYWRIGHT_ISOLATED_PORT;
+
 const baseURL = (
   process.env.PLAYWRIGHT_BASE_URL ??
   "http://localhost:3000"
@@ -46,9 +48,9 @@ export default defineConfig({
   webServer: useExternalServer
     ? undefined
     : {
-        command: "npm run dev",
+        command: isolatedPort ? `npm run dev -- --port ${isolatedPort}` : "npm run dev",
         url: `${baseURL}/login`,
-        reuseExistingServer: true,
+        reuseExistingServer: !isolatedPort,
         timeout: 120_000,
         stdout: "pipe",
         stderr: "pipe",
