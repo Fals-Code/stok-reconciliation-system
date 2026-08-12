@@ -31,6 +31,7 @@
     "test:manual-outbound-parallel": "node scripts/test-manual-outbound-parallel.mjs",
     "test:inventory-mutations-parallel": "node scripts/test-inventory-mutations-parallel.mjs",
     "test:stocktake-opening-balance-parallel": "node scripts/test-stocktake-opening-balance-parallel.mjs",
+    "test:stocktake-cancellation-ui": "node scripts/test-stocktake-cancellation-ui.mjs",
     "test:stocktake-cancellation-parallel": "node scripts/test-stocktake-cancellation-parallel.mjs",
     "test:marketplace-lifecycle-parallel": "node scripts/test-marketplace-lifecycle-parallel.mjs",
     "test:marketplace-external-event-parallel": "node scripts/test-marketplace-external-event-parallel.mjs",
