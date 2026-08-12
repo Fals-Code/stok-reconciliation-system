@@ -46,6 +46,8 @@ export function getActiveNavHref(pathname: string): string | null {
     pathname.startsWith("/stocktakes/") ||
     pathname === "/stock-issues" ||
     pathname.startsWith("/stock-issues/") ||
+    pathname === "/reconciliation" ||
+    pathname.startsWith("/reconciliation/") ||
     pathname === "/ledger" ||
     pathname.startsWith("/ledger/") ||
     pathname === "/entry-corrections" ||
@@ -77,9 +79,4 @@ export function getActiveNavHref(pathname: string): string | null {
 
 export function isNavItemActive(itemHref: string, pathname: string): boolean {
   return getActiveNavHref(pathname) === itemHref;
-}
-
-// Temporary bridge function for isolated worktree typechecks on legacy pages
-export function getBreadcrumbItems(pathname: string, options?: unknown): unknown[] {
-  return [];
 }

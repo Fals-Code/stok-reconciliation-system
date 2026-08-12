@@ -57,6 +57,7 @@ assert.equal(getActiveNavHref("/stock-disposals"), "/products");
 assert.equal(getActiveNavHref("/stocktakes"), "/products");
 assert.equal(getActiveNavHref("/stocktakes/new"), "/products");
 assert.equal(getActiveNavHref("/stock-issues"), "/products");
+assert.equal(getActiveNavHref("/reconciliation"), "/products");
 assert.equal(getActiveNavHref("/ledger"), "/products");
 assert.equal(getActiveNavHref("/ledger/tx-123"), "/products");
 assert.equal(getActiveNavHref("/entry-corrections"), "/products");

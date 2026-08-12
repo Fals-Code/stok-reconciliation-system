@@ -185,7 +185,7 @@ function resultRedirect(
   }
 
   if (destination === "reconciliation") {
-    redirect(`/reconciliation?${params.toString()}#manual-run`);
+    redirect(`/stock-issues?${params.toString()}`);
   }
   redirect(`/?${params.toString()}#actions`);
 }
@@ -796,6 +796,7 @@ export async function runReconciliationAction(formData: FormData) {
       `Boundary ledger ${result.ledgerSeqFrom}-${result.ledgerSeqTo}, ` +
       `${result.issueCount} issue dari ${result.checkCount} check.`;
 
+    revalidatePath("/stock-issues");
     revalidatePath("/reconciliation");
   } catch (error) {
     kind = "error";
