@@ -262,14 +262,24 @@ export function ProductBatches({
       {product.is_active ? (
         <details className="rounded-[var(--ui-radius-lg)] border border-ui-border bg-ui-surface p-4 sm:p-5">
           <summary className="cursor-pointer text-sm font-semibold text-ui-text">
-            Tambah Batch
+            Buat Batch Baru
           </summary>
-
-          <p className="mt-3 text-sm leading-6 text-ui-text-muted">
-            Batch baru dibuat sebagai
-            STANDARD dan tidak menambah stok.
-          </p>
-
+          <div className="mt-3 space-y-2 text-sm leading-6 text-ui-text-muted">
+            <p>
+              Gunakan ini jika kode batch belum terdaftar. Membuat batch hanya
+              mendaftarkan identitas batch dan tidak menambah jumlah stok.
+            </p>
+            <p>
+              Untuk mencatat barang yang benar-benar diterima gudang, gunakan{" "}
+              <Link
+                className="font-semibold text-ui-primary hover:underline"
+                href="/receipts/new"
+              >
+                Barang Masuk
+              </Link>
+              .
+            </p>
+          </div>
           <form
             action={
               createProductBatchAction
@@ -333,7 +343,7 @@ export function ProductBatches({
                 className="min-h-[var(--ui-control-height)] rounded-[var(--ui-radius-md)] border border-ui-primary bg-ui-primary px-4 text-sm font-semibold text-ui-text-on-primary"
                 type="submit"
               >
-                Tambah Batch STANDARD
+                Buat Batch
               </button>
             </div>
           </form>

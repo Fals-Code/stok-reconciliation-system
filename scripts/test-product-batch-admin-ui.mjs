@@ -142,7 +142,7 @@ async function main() {
   const batchCode = `SMOKE BATCH ${suffix}`;
   const batchExpiry = "2099-12-31";
   const activeDetail = await page(`/products/${product.productId}?tab=batches`);
-  pass("Admin membuka detail Produk dan melihat form Tambah Batch", activeDetail.response.ok && activeDetail.html.includes("Tambah Batch STANDARD") && activeDetail.html.includes("Kode Batch"), "", "Batch");
+  pass("Admin membuka detail Produk dan melihat panel Buat Batch Baru yang stock-neutral", activeDetail.response.ok && activeDetail.html.includes("Buat Batch Baru") && activeDetail.html.includes("tidak menambah jumlah stok") && activeDetail.html.includes('href="/receipts/new"') && activeDetail.html.includes("Barang Masuk") && activeDetail.html.includes("Kode Batch") && />\s*Buat Batch\s*<\/button>/i.test(activeDetail.html) && !activeDetail.html.includes("Tambah Batch STANDARD") && !activeDetail.html.includes("Buat Batch Baru STANDARD") && !/<details[^>]*\sopen(?:\s|=|>)/i.test(activeDetail.html), "", "Batch");
   const batchCreated = await rpc("create_product_batch", { p_organization_id: org, p_idempotency_key: `product-batch-admin-smoke:create:${randomUUID()}`, p_product_id: product.productId, p_batch_code: `  ${batchCode}  `, p_expiry_date: batchExpiry, p_manufactured_date: "2099-01-01", p_received_first_at: "2099-01-02T00:00:00+07:00", p_batch_kind_code: "STANDARD", p_note: "Focused batch smoke." }, false);
   const batch = batchCreated.json;
   pass("Create Batch STANDARD sukses dan stock-neutral", batchCreated.response.ok && batch.status === "CREATED" && batch.batchKindCode === "STANDARD" && batch.stockEffect === "NONE", batchCreated.raw, "Batch");
