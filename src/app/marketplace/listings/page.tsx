@@ -1,6 +1,7 @@
 import { randomUUID } from "node:crypto";
 import Link from "next/link";
 
+import { AppShell } from "@/app/app-shell/app-shell";
 import MarketplaceListingDraftForm from "@/app/marketplace/listings/components/listing-draft-form";
 import {
   activateMarketplaceListingVersionAction,
@@ -14,6 +15,7 @@ import {
   type MarketplaceListingCatalogRow,
   type MarketplaceListingVersionRow,
 } from "@/lib/supabase-rest";
+import { requireAdminSession } from "@/lib/auth";
 
 export const dynamic = "force-dynamic";
 
@@ -98,7 +100,7 @@ function versionTone(version: MarketplaceListingVersionRow): PillTone {
 
 function ConfigurationError({ message }: { message: string }) {
   return (
-    <main className="min-h-screen px-5 py-12 text-slate-100">
+    <div className="min-h-screen bg-slate-950 px-5 py-12 text-slate-100">
       <section className="mx-auto max-w-3xl rounded-3xl border border-amber-400/20 bg-amber-400/[0.06] p-8">
         <p className="section-kicker text-amber-300">
           Admin listing marketplace tidak tersedia
@@ -107,11 +109,11 @@ function ConfigurationError({ message }: { message: string }) {
           Data listing gagal dimuat.
         </h1>
         <p className="mt-4 leading-7 text-slate-300">{message}</p>
-        <Link className="nav-link mt-6 inline-flex" href="/marketplace">
-          Kembali ke Marketplace
+        <Link className="nav-link mt-6 inline-flex" href="/settings">
+          Kembali ke Pengaturan
         </Link>
       </section>
-    </main>
+    </div>
   );
 }
 
@@ -132,18 +134,23 @@ export default async function MarketplaceListingsPage({
 }: {
   searchParams: Promise<SearchParams>;
 }) {
-  const params = await searchParams;
+  const [params, session] = await Promise.all([
+    searchParams,
+    requireAdminSession(),
+  ]);
   let data;
 
   try {
     data = await getMarketplaceListingAdminData();
   } catch (error) {
     return (
-      <ConfigurationError
-        message={
-          error instanceof Error ? error.message : "Konfigurasi tidak valid."
-        }
-      />
+      <AppShell profile={session.profile}>
+        <ConfigurationError
+          message={
+            error instanceof Error ? error.message : "Konfigurasi tidak valid."
+          }
+        />
+      </AppShell>
     );
   }
 
@@ -306,7 +313,8 @@ export default async function MarketplaceListingsPage({
   ).length;
 
   return (
-    <main className="min-h-screen text-slate-100">
+    <AppShell profile={session.profile}>
+      <div className="min-h-screen bg-slate-950 text-slate-100">
       <div className="mx-auto max-w-[1500px] px-5 py-8 lg:px-8">
         <section>
           <p className="section-kicker">Marketplace listing registry</p>
@@ -1019,6 +1027,7 @@ export default async function MarketplaceListingsPage({
           </section>
         ) : null}
       </div>
-    </main>
+      </div>
+    </AppShell>
   );
 }

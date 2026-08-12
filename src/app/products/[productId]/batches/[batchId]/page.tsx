@@ -27,6 +27,9 @@ import {
   requireAdminSession,
 } from "@/lib/auth";
 import {
+  safeInternalRoute,
+} from "@/lib/safe-internal-route";
+import {
   getProductBatchMasterData,
   type ProductBatchMasterRow,
 } from "@/lib/supabase-rest";
@@ -52,30 +55,6 @@ function quantity(value: number) {
   return new Intl.NumberFormat(
     "id-ID",
   ).format(Number(value));
-}
-
-function safeReturnTo(
-  value: string | undefined,
-  productId: string,
-) {
-  const candidate =
-    value?.trim() ?? "";
-
-  const expectedPrefix =
-    `/products/${productId}`;
-
-  if (
-    candidate.startsWith(
-      expectedPrefix,
-    ) &&
-    !candidate.startsWith("//") &&
-    !candidate.includes("\n") &&
-    !candidate.includes("\r")
-  ) {
-    return candidate;
-  }
-
-  return `${expectedPrefix}?tab=batches`;
 }
 
 function statusLabel(
@@ -246,11 +225,12 @@ export default async function BatchDetailPage({
     notFound();
   }
 
-  const returnTo =
-    safeReturnTo(
-      first(query.returnTo),
-      productId,
-    );
+  const productPath = `/products/${encodeURIComponent(productId)}`;
+  const returnTo = safeInternalRoute(
+    first(query.returnTo),
+    `${productPath}?tab=batches`,
+    { allowedPathnames: [productPath] },
+  );
 
   const audits =
     data.audits.filter(

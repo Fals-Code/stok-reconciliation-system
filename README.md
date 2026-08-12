@@ -968,8 +968,7 @@ npm run test:product-batch-admin-ui
 # Focused TikTok return-claim and late-arrival smoke
 npm run test:tiktok-return-claim-ui
 
-# Shared notification UI/action smokes
-npm run test:notification-write-actions
+# Notification evaluator/operations smoke
 npm run test:notification-admin-operations
 
 # Focused Today Control Center smoke

@@ -405,7 +405,6 @@ npx supabase test db supabase/tests/055_tiktok_return_claim_lifecycle.test.sql
 npx supabase test db supabase/tests/056_tiktok_claim_notification_evaluator.test.sql
 npx supabase test db supabase/tests/057_return_late_arrival_workflow.test.sql
 npx supabase test db supabase/tests/058_tiktok_claim_postgrest_wrapper_contract.test.sql
-npm run test:notification-write-actions
 npm run test:notification-admin-operations
 ```
 

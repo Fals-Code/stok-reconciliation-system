@@ -12,6 +12,7 @@ import {
   type MarketplaceCancellationDraft,
 } from "@/app/marketplace/cancellations/draft";
 import { requireAdminSession } from "@/lib/auth";
+import { safeInternalRoute } from "@/lib/safe-internal-route";
 import { postMarketplaceCancellation } from "@/lib/supabase-rest";
 
 const UUID_PATTERN =
@@ -46,6 +47,7 @@ function resultDestination(
     eventId?: string;
     transactionId?: string | null;
     orderId?: string | null;
+    returnTo?: string;
   } = {},
 ) {
   const params = new URLSearchParams({ [kind]: message });
@@ -69,6 +71,10 @@ function resultDestination(
     params.set("transactionId", options.transactionId);
   }
 
+  if (options.returnTo && options.returnTo !== "/marketplace") {
+    params.set("returnTo", options.returnTo);
+  }
+
   const basePath = options.orderId
     ? `/marketplace/${encodeURIComponent(options.orderId)}`
     : "/marketplace";
@@ -83,6 +89,11 @@ export async function postMarketplaceCancellationAction(
 ) {
   const session = await requireAdminSession();
   const orderId = optionalOrderId(formData);
+  const returnTo = safeInternalRoute(
+    String(formData.get("returnTo") ?? ""),
+    "/marketplace",
+    { allowedPathnames: ["/marketplace"] },
+  );
   let draft: MarketplaceCancellationDraft | undefined;
   let destination: string;
 
@@ -153,13 +164,14 @@ export async function postMarketplaceCancellationAction(
         eventId: result.eventId,
         transactionId: result.singleReversalTransactionId,
         orderId: result.orderId ?? orderId,
+        returnTo,
       },
     );
   } catch (error) {
     destination = resultDestination(
       "error",
       marketplaceCancellationErrorMessage(error),
-      { draft, orderId },
+      { draft, orderId, returnTo },
     );
   }
 

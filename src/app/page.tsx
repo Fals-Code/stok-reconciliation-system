@@ -15,6 +15,9 @@ import {
   requireAdminSession,
 } from "@/lib/auth";
 import {
+  isSafeInternalRoute,
+} from "@/lib/safe-internal-route";
+import {
   getDashboardData,
   getTodayControlCenterWorkItems,
   type BatchInventory,
@@ -158,19 +161,6 @@ function isOperationalWorkItem(
   work_type_code: OperationalWorkType;
 } {
   return !nonOperationalWorkTypes.has(item.work_type_code);
-}
-
-function isSafeInternalRoute(value: string | null) {
-  if (!value) return false;
-  if (!value.startsWith("/") || value.startsWith("//")) return false;
-  if (value.includes("\\") || /[\u0000-\u001F\u007F]/.test(value)) return false;
-
-  try {
-    const parsed = new URL(value, "http://internal.local");
-    return parsed.origin === "http://internal.local";
-  } catch {
-    return false;
-  }
 }
 
 function getWorkHref(

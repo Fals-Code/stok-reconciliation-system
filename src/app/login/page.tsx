@@ -19,6 +19,9 @@ import {
 import {
   getAdminSession,
 } from "@/lib/auth";
+import {
+  safeInternalRoute,
+} from "@/lib/safe-internal-route";
 
 export const dynamic =
   "force-dynamic";
@@ -28,6 +31,9 @@ type LoginSearchParams = {
     | string
     | string[];
   message?:
+    | string
+    | string[];
+  returnTo?:
     | string
     | string[];
 };
@@ -49,15 +55,20 @@ export default async function LoginPage({
   searchParams:
     Promise<LoginSearchParams>;
 }) {
+  const params =
+    await searchParams;
+
+  const returnTo = safeInternalRoute(
+    firstValue(params.returnTo),
+    "/",
+  );
+
   const session =
     await getAdminSession();
 
   if (session) {
-    redirect("/");
+    redirect(returnTo);
   }
-
-  const params =
-    await searchParams;
 
   const errorCode =
     firstValue(
@@ -239,6 +250,10 @@ export default async function LoginPage({
             aria-label="Masuk ke Sistem Rekonsiliasi Stok"
             className="mt-6 grid gap-[18px]"
           >
+            {returnTo !== "/" ? (
+              <input name="returnTo" type="hidden" value={returnTo} />
+            ) : null}
+
             <Field
               error={emailError}
               id="login-email"

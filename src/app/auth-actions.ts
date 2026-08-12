@@ -8,6 +8,9 @@ import {
   logoutSession,
   signInWithPassword,
 } from "@/lib/auth";
+import {
+  safeInternalRoute,
+} from "@/lib/safe-internal-route";
 
 type LoginErrorCode =
   | "EMAIL_REQUIRED"
@@ -65,15 +68,25 @@ function isValidEmailShape(
 
 function loginFailure(
   code: LoginErrorCode,
+  returnTo: string,
 ): never {
-  redirect(
-    `/login?error=${code}`,
-  );
+  const params = new URLSearchParams({ error: code });
+
+  if (returnTo !== "/") {
+    params.set("returnTo", returnTo);
+  }
+
+  redirect(`/login?${params.toString()}`);
 }
 
 export async function loginAction(
   formData: FormData,
 ) {
+  const returnTo = safeInternalRoute(
+    fieldValue(formData, "returnTo"),
+    "/",
+  );
+
   const email =
     fieldValue(
       formData,
@@ -92,6 +105,7 @@ export async function loginAction(
   if (!email) {
     loginFailure(
       "EMAIL_REQUIRED",
+      returnTo,
     );
   }
 
@@ -100,12 +114,14 @@ export async function loginAction(
   ) {
     loginFailure(
       "EMAIL_FORMAT",
+      returnTo,
     );
   }
 
   if (!password) {
     loginFailure(
       "PASSWORD_REQUIRED",
+      returnTo,
     );
   }
 
@@ -150,10 +166,10 @@ export async function loginAction(
   }
 
   if (failure) {
-    loginFailure(failure);
+    loginFailure(failure, returnTo);
   }
 
-  redirect("/");
+  redirect(returnTo);
 }
 
 export async function logoutAction() {

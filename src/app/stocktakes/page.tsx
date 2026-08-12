@@ -80,7 +80,13 @@ function progress(stocktake: StocktakeListItem) {
   );
 }
 
-function StocktakeCard({ stocktake }: { stocktake: StocktakeListItem }) {
+function StocktakeCard({
+  returnTo,
+  stocktake,
+}: {
+  returnTo: string;
+  stocktake: StocktakeListItem;
+}) {
   const countingProgress = progress(stocktake);
   const showProgress = stocktake.status_code === "COUNTING";
 
@@ -137,7 +143,7 @@ function StocktakeCard({ stocktake }: { stocktake: StocktakeListItem }) {
 
         <Link
           className="inline-flex min-h-[var(--ui-control-height)] shrink-0 items-center font-semibold text-ui-primary hover:underline"
-          href={`/stocktakes/${encodeURIComponent(stocktake.stocktake_id)}`}
+          href={`/stocktakes/${encodeURIComponent(stocktake.stocktake_id)}?returnTo=${encodeURIComponent(returnTo)}`}
         >
           {nextAction(stocktake)}
         </Link>
@@ -181,6 +187,14 @@ export default async function StocktakesPage({
 
   const status = first(params, "status");
   const type = first(params, "type");
+  const listContext = new URLSearchParams();
+
+  if (status) listContext.set("status", status);
+  if (type) listContext.set("type", type);
+
+  const returnTo = `/stocktakes${
+    listContext.size ? `?${listContext.toString()}` : ""
+  }`;
 
   const filtered = stocktakes.filter(
     (item) =>
@@ -322,6 +336,7 @@ export default async function StocktakesPage({
               {activeStocktakes.map((stocktake) => (
                 <StocktakeCard
                   key={stocktake.stocktake_id}
+                  returnTo={returnTo}
                   stocktake={stocktake}
                 />
               ))}
@@ -350,6 +365,7 @@ export default async function StocktakesPage({
               {historyStocktakes.map((stocktake) => (
                 <StocktakeCard
                   key={stocktake.stocktake_id}
+                  returnTo={returnTo}
                   stocktake={stocktake}
                 />
               ))}

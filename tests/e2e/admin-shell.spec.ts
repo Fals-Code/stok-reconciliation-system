@@ -55,6 +55,24 @@ async function loginAsAdmin(page: Page) {
   ).toBeAttached();
 }
 
+async function expectNoRootOverflow(page: Page) {
+  const overflow = await page.evaluate(() => ({
+    scrollWidth: document.documentElement.scrollWidth,
+    viewportWidth: document.documentElement.clientWidth,
+  }));
+
+  expect(overflow.scrollWidth).toBeLessThanOrEqual(
+    overflow.viewportWidth + 1,
+  );
+}
+
+function visiblePrimaryNavLink(page: Page, name: string) {
+  return page
+    .locator("nav[aria-label='Navigasi utama']")
+    .getByRole("link", { name, exact: true })
+    .filter({ visible: true });
+}
+
 test(
   "shell desktop memiliki navigasi utama dan active state yang benar",
   async ({ page, isMobile }) => {
@@ -217,11 +235,16 @@ test(
       ["Setup Stok Awal", "/opening-balances"],
       ["Mapping Produk Marketplace", "/marketplace/listings"],
       ["Import / Simulator Pesanan", "/marketplace/import"],
+      ["Status & Diagnostik Sistem", "/notifications/operations"],
     ] as const;
 
     for (const [label, pathname] of administrativeFlows) {
       await page.getByRole("link", { name: new RegExp(`^${label}`) }).click();
       await page.waitForURL((url) => url.pathname === pathname);
+
+      await expect(
+        visiblePrimaryNavLink(page, "Pengaturan"),
+      ).toHaveAttribute("aria-current", "page");
 
       const overflowState = await page.evaluate(() => {
         const viewportWidth = document.documentElement.clientWidth;
@@ -263,6 +286,211 @@ test(
 
     expect(runtimeErrors).toEqual([]);
     expect(serverFailures).toEqual([]);
+  },
+);
+
+test(
+  "login mempertahankan route dan query internal setelah autentikasi",
+  async ({ page }) => {
+    const target = "/marketplace?status=OPEN";
+
+    await page.goto(target, { waitUntil: "domcontentloaded" });
+    await page.waitForURL((url) => url.pathname === "/login");
+
+    const loginUrl = new URL(page.url());
+    expect(loginUrl.searchParams.get("returnTo")).toBe(target);
+
+    await page.getByLabel("Email", { exact: true }).fill(ADMIN_EMAIL);
+    await page
+      .getByLabel("Password", { exact: true })
+      .fill(getAdminPassword());
+    await page.getByRole("button", { name: "Masuk", exact: true }).click();
+    await page.waitForURL((url) => (
+      url.pathname === "/marketplace" &&
+      url.searchParams.get("status") === "OPEN"
+    ));
+
+    await page.reload({ waitUntil: "domcontentloaded" });
+    expect(new URL(page.url()).searchParams.get("status")).toBe("OPEN");
+    await expect(
+      visiblePrimaryNavLink(page, "Pesanan"),
+    ).toHaveAttribute("aria-current", "page");
+  },
+);
+
+test(
+  "route kerja utama dan administratif tetap reachable di desktop dan mobile",
+  async ({ page }) => {
+    const runtimeErrors: string[] = [];
+    const serverFailures: string[] = [];
+
+    page.on("pageerror", (error) => runtimeErrors.push(error.message));
+    page.on("response", (response) => {
+      if (response.status() >= 500) {
+        serverFailures.push(`${response.status()} ${response.url()}`);
+      }
+    });
+
+    await loginAsAdmin(page);
+
+    for (const [pathname, navName] of [
+      ["/", "Beranda"],
+      ["/products", "Stok"],
+      ["/ledger", "Stok"],
+      ["/stock-issues", "Stok"],
+      ["/stocktakes", "Stok"],
+      ["/marketplace", "Pesanan"],
+      ["/returns", "Pesanan"],
+      ["/settings", "Pengaturan"],
+      ["/opening-balances", "Pengaturan"],
+      ["/marketplace/listings", "Pengaturan"],
+      ["/marketplace/import", "Pengaturan"],
+      ["/notifications/operations", "Pengaturan"],
+    ] as const) {
+      const response = await page.goto(pathname, {
+        waitUntil: "domcontentloaded",
+      });
+
+      expect(response?.status(), pathname).toBeLessThan(500);
+      await expect(
+        visiblePrimaryNavLink(page, navName),
+      ).toHaveAttribute("aria-current", "page");
+      await expectNoRootOverflow(page);
+    }
+
+    expect(runtimeErrors).toEqual([]);
+    expect(serverFailures).toEqual([]);
+  },
+);
+
+test(
+  "compatibility route tetap mengarah ke workspace final",
+  async ({ page }) => {
+    await loginAsAdmin(page);
+
+    await page.goto("/today", { waitUntil: "domcontentloaded" });
+    await page.waitForURL((url) => url.pathname === "/");
+
+    await page.goto("/notifications", { waitUntil: "domcontentloaded" });
+    await page.waitForURL((url) => url.pathname === "/");
+
+    await page.goto("/reconciliation?status=MISMATCH", {
+      waitUntil: "domcontentloaded",
+    });
+    await page.waitForURL((url) => (
+      url.pathname === "/stock-issues" &&
+      url.searchParams.get("status") === "MISMATCH"
+    ));
+    await expect(
+      visiblePrimaryNavLink(page, "Stok"),
+    ).toHaveAttribute("aria-current", "page");
+  },
+);
+
+test(
+  "detail import dan Retur dibuka bila fixture read-only tersedia",
+  async ({ page }, testInfo) => {
+    await loginAsAdmin(page);
+
+    for (const flow of [
+      {
+        list: "/marketplace/import",
+        selector: "main a[href^='/marketplace/import/']:not([href='/marketplace/import/template'])",
+        backName: /Kembali ke Import CSV$/,
+        kind: "job Import",
+      },
+      {
+        list: "/returns",
+        selector: "main a[href^='/returns/']",
+        backName: /Kembali ke Retur & Klaim$/,
+        kind: "Retur",
+      },
+    ] as const) {
+      await page.goto(flow.list, { waitUntil: "domcontentloaded" });
+      const detailLink = page.locator(flow.selector).filter({ visible: true }).first();
+
+      if (await detailLink.count() === 0) {
+        testInfo.annotations.push({
+          type: "fixture",
+          description: `${flow.kind} tidak tersedia; tidak membuat mutation untuk smoke.`,
+        });
+        continue;
+      }
+
+      await detailLink.click();
+      await page.reload({ waitUntil: "domcontentloaded" });
+      await expect(page.getByRole("link", { name: flow.backName })).toBeVisible();
+      await expectNoRootOverflow(page);
+      await page.getByRole("link", { name: flow.backName }).click();
+      await page.waitForURL((url) => url.pathname === flow.list);
+    }
+  },
+);
+
+test(
+  "detail kontekstual mempertahankan list state saat reload dan kembali",
+  async ({ page }) => {
+    await loginAsAdmin(page);
+
+    const flows = [
+      {
+        list: "/products?q=SER",
+        selector: "main a[href^='/products/']",
+        detail: /^\/products\/[^/]+$/,
+        backName: "Kembali ke Stok",
+      },
+      {
+        list: "/ledger?page=1",
+        selector: "main a[href^='/ledger/']",
+        detail: /^\/ledger\/[^/]+$/,
+        backName: "Kembali ke Riwayat Stok",
+      },
+      {
+        list: "/stocktakes",
+        selector: "main a[href^='/stocktakes/']:not([href='/stocktakes/new'])",
+        detail: /^\/stocktakes\/[^/]+$/,
+        backName: "Kembali ke Hitung Stok",
+      },
+      {
+        list: "/marketplace?channel=SHOPEE",
+        selector: "main a[href^='/marketplace/']",
+        detail: /^\/marketplace\/[^/]+$/,
+        backName: "Kembali ke daftar",
+      },
+    ] as const;
+
+    for (const flow of flows) {
+      await page.goto(flow.list, { waitUntil: "domcontentloaded" });
+      const detailLink = page.locator(flow.selector).filter({ visible: true }).first();
+      await expect(detailLink, flow.list).toBeVisible();
+      await detailLink.click();
+      await page.waitForURL((url) => flow.detail.test(url.pathname));
+
+      await page.reload({ waitUntil: "domcontentloaded" });
+      const backLink = page.getByRole("link", {
+        name: new RegExp(`${flow.backName}$`),
+      });
+      await expect(backLink).toHaveAttribute("href", flow.list);
+      await expectNoRootOverflow(page);
+      await backLink.click();
+      await page.waitForURL((url) => `${url.pathname}${url.search}` === flow.list);
+    }
+
+    await page.goto("/products?q=SER", { waitUntil: "domcontentloaded" });
+    await page.locator("main a[href^='/products/']").filter({ visible: true }).first().click();
+    await page.waitForURL((url) => /^\/products\/[^/]+$/.test(url.pathname));
+    const productUrl = new URL(page.url());
+    productUrl.searchParams.set("tab", "batches");
+    await page.goto(productUrl.toString(), { waitUntil: "domcontentloaded" });
+    const batchLink = page.locator("main a[href*='/batches/']").filter({ visible: true }).first();
+    await expect(batchLink).toBeVisible();
+    await batchLink.click();
+    await page.waitForURL((url) => /\/products\/[^/]+\/batches\/[^/]+$/.test(url.pathname));
+    await page.reload({ waitUntil: "domcontentloaded" });
+    await expect(
+      page.getByRole("link", { name: "Kembali ke Produk", exact: true }),
+    ).toHaveAttribute("href", new RegExp("^/products/[^?]+\\?"));
+    await expectNoRootOverflow(page);
   },
 );
 

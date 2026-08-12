@@ -2,6 +2,8 @@ import { randomUUID } from "node:crypto";
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { commitMarketplaceCsvImportAction } from "../actions";
+import { AppShell } from "@/app/app-shell/app-shell";
+import { requireAdminSession } from "@/lib/auth";
 import { getMarketplaceCsvImportEventResults, getMarketplaceCsvImportJob, getMarketplaceCsvImportRows } from "@/lib/csv-import/server";
 import { safeMarketplaceCsvCommitErrorCode } from "@/lib/csv-import/safe-errors";
 
@@ -31,16 +33,64 @@ function previewText(value: Record<string, unknown> | null) {
 }
 
 export default async function CsvImportDetailPage({ params, searchParams }: { params: Promise<{ jobId: string }>; searchParams: Promise<{ status?: string; commit?: string; commitError?: string; rowStatus?: string; cursor?: string }> }) {
-  const [{ jobId }, query] = await Promise.all([params, searchParams]);
-  const job = await getMarketplaceCsvImportJob(jobId);
+  const [{ jobId }, query, session] = await Promise.all([
+    params,
+    searchParams,
+    requireAdminSession(),
+  ]);
+  let job: Awaited<ReturnType<typeof getMarketplaceCsvImportJob>>;
+
+  try {
+    job = await getMarketplaceCsvImportJob(jobId);
+  } catch {
+    return (
+      <AppShell profile={session.profile}>
+        <div className="min-h-screen bg-slate-950 px-5 py-10 text-slate-100">
+        <section className="mx-auto max-w-3xl rounded-3xl border border-rose-400/20 bg-rose-400/[0.06] p-7">
+          <h1 className="text-2xl font-semibold">Detail import belum dapat dimuat</h1>
+          <p className="mt-3 text-sm leading-6 text-rose-100/80">
+            Tidak ada event atau stok yang diubah. Muat ulang halaman untuk mencoba lagi.
+          </p>
+          <Link className="nav-link mt-6 inline-flex" href="/marketplace/import">
+            Kembali ke Import CSV
+          </Link>
+        </section>
+        </div>
+      </AppShell>
+    );
+  }
+
   if (!job) notFound();
-  const rows = await getMarketplaceCsvImportRows(jobId, 50, query.cursor ? Number(query.cursor) : null, query.rowStatus ?? null);
-  const events = job.status_code === "COMPLETED" ? await getMarketplaceCsvImportEventResults(jobId, 100) : { rows: [], nextCursor: null, hasMore: false };
+  let rows: Awaited<ReturnType<typeof getMarketplaceCsvImportRows>>;
+  let events: Awaited<ReturnType<typeof getMarketplaceCsvImportEventResults>>;
+
+  try {
+    rows = await getMarketplaceCsvImportRows(jobId, 50, query.cursor ? Number(query.cursor) : null, query.rowStatus ?? null);
+    events = job.status_code === "COMPLETED" ? await getMarketplaceCsvImportEventResults(jobId, 100) : { rows: [], nextCursor: null, hasMore: false };
+  } catch {
+    return (
+      <AppShell profile={session.profile}>
+        <div className="min-h-screen bg-slate-950 px-5 py-10 text-slate-100">
+        <section className="mx-auto max-w-3xl rounded-3xl border border-rose-400/20 bg-rose-400/[0.06] p-7">
+          <h1 className="text-2xl font-semibold">Preview import belum dapat dimuat</h1>
+          <p className="mt-3 text-sm leading-6 text-rose-100/80">
+            Job tetap tersimpan dan belum diposting ulang. Muat ulang halaman untuk mencoba lagi.
+          </p>
+          <Link className="nav-link mt-6 inline-flex" href="/marketplace/import">
+            Kembali ke Import CSV
+          </Link>
+        </section>
+        </div>
+      </AppShell>
+    );
+  }
+
   const commitKey = `csv-ui:${jobId}:${randomUUID()}`;
   const canCommit = job.status_code === "READY" || job.status_code === "COMMIT_FAILED";
   const commitErrorCode = query.commitError ? safeMarketplaceCsvCommitErrorCode(query.commitError) : null;
   return (
-    <main className="min-h-screen bg-slate-950 text-slate-100"><div className="mx-auto w-full max-w-[1500px] px-5 py-8 lg:px-8">
+    <AppShell profile={session.profile}>
+      <div className="min-h-screen bg-slate-950 text-slate-100"><div className="mx-auto w-full max-w-[1500px] px-5 py-8 lg:px-8">
       <Link className="nav-link inline-flex" href="/marketplace/import">← Kembali ke Import CSV</Link>
       <header className="mt-6 flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between"><div><p className="section-kicker">CSV Import / Detail Job</p><h1 className="mt-3 text-3xl font-semibold">{job.original_file_name}</h1><p className="mt-2 font-mono text-xs text-slate-500">{job.id} · {job.template_version}</p></div><span className="status-pill status-success">{statusLabel[job.status_code] ?? job.status_code}</span></header>
       {query.commit ? <div className="mt-6 rounded-2xl border border-emerald-400/20 bg-emerald-400/10 p-4 text-sm text-emerald-100">Permintaan commit: {query.commit}</div> : null}
@@ -50,6 +100,7 @@ export default async function CsvImportDetailPage({ params, searchParams }: { pa
       {canCommit ? <section className="panel-card mt-6 border-amber-400/20"><p className="section-kicker">Step 2</p><h2 className="section-title">Konfirmasi posting atomic</h2><p className="mt-3 text-sm leading-6 text-slate-400">Semua grouped event akan diproses dalam satu transaksi. Jika satu event gagal, seluruh batch rollback. Reservasi tetap stock-neutral; tidak ada direct write ke ledger.</p><form action={commitMarketplaceCsvImportAction} className="mt-5"><input type="hidden" name="jobId" value={job.id} /><input type="hidden" name="commitKey" value={commitKey} /><label className="flex items-start gap-3 text-sm text-slate-200"><input name="confirmation" type="checkbox" required /> Saya sudah memeriksa preview dan memahami bahwa commit akan membuat reservasi marketplace canonical.</label><button className="primary-button mt-5" type="submit">Konfirmasi dan proses semua event</button></form></section> : null}
       {job.status_code === "COMPLETED" ? <section className="panel-card mt-6"><p className="section-kicker">Commit result</p><h2 className="section-title">Referensi hasil canonical</h2><div className="mt-5 space-y-3">{events.rows.map((event) => <div key={event.id} className="rounded-xl border border-white/10 p-4 text-sm"><p className="font-mono text-emerald-300">{event.external_event_ref} · {event.status_code}</p><p className="mt-2 text-slate-300">Event {event.canonical_event_id} · Order {event.marketplace_order_id} · Normalisasi {event.normalization_event_id}</p></div>)}</div></section> : null}
       <p className="mt-6 text-xs text-slate-500">Uploaded: {formatDate(job.uploaded_at)} · Validated: {formatDate(job.validated_at)} · Committed: {formatDate(job.committed_at)}</p>
-    </div></main>
+      </div></div>
+    </AppShell>
   );
 }

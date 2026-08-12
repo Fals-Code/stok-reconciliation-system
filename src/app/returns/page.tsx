@@ -131,6 +131,26 @@ function nextReturnAction(status: string) {
   }
 }
 
+function returnDetailHref({
+  claimId,
+  returnId,
+  returnTo,
+}: {
+  claimId?: string;
+  returnId: string;
+  returnTo: string;
+}) {
+  const params = new URLSearchParams();
+
+  if (claimId) params.set("claimId", claimId);
+  if (returnTo !== "/returns") params.set("returnTo", returnTo);
+
+  const query = params.toString();
+  return `/returns/${encodeURIComponent(returnId)}${
+    query ? `?${query}` : ""
+  }${claimId ? "#claim-detail" : ""}`;
+}
+
 export default async function ReturnsPage({
   searchParams,
 }: {
@@ -146,14 +166,15 @@ export default async function ReturnsPage({
   let legacyClaimNotFound = false;
 
   if (legacyReturnId && isUuid(legacyReturnId)) {
-    const claimQuery =
-      legacyClaimId && isUuid(legacyClaimId)
-        ? `?claimId=${encodeURIComponent(legacyClaimId)}`
-        : "";
-    const hash = claimQuery ? "#claim-detail" : "";
-
     redirect(
-      `/returns/${encodeURIComponent(legacyReturnId)}${claimQuery}${hash}`,
+      returnDetailHref({
+        claimId:
+          legacyClaimId && isUuid(legacyClaimId)
+            ? legacyClaimId
+            : undefined,
+        returnId: legacyReturnId,
+        returnTo: legacyClaimId ? "/returns?section=claims" : "/returns",
+      }),
     );
   }
 
@@ -169,7 +190,11 @@ export default async function ReturnsPage({
 
       if (selectedClaim) {
         redirect(
-          `/returns/${encodeURIComponent(selectedClaim.return_id)}?claimId=${encodeURIComponent(selectedClaim.id)}#claim-detail`,
+          returnDetailHref({
+            claimId: selectedClaim.id,
+            returnId: selectedClaim.return_id,
+            returnTo: "/returns?section=claims",
+          }),
         );
       }
     }
@@ -430,7 +455,10 @@ export default async function ReturnsPage({
 
                           <Link
                             className="text-sm font-semibold text-ui-primary hover:underline"
-                            href={`/returns/${encodeURIComponent(item.return_id)}`}
+                            href={returnDetailHref({
+                              returnId: item.return_id,
+                              returnTo: "/returns",
+                            })}
                           >
                             Buka
                           </Link>
@@ -489,7 +517,11 @@ export default async function ReturnsPage({
 
                         <Link
                           className="text-sm font-semibold text-ui-primary hover:underline"
-                          href={`/returns/${encodeURIComponent(claim.return_id)}?claimId=${encodeURIComponent(claim.id)}#claim-detail`}
+                          href={returnDetailHref({
+                            claimId: claim.id,
+                            returnId: claim.return_id,
+                            returnTo: "/returns?section=claims",
+                          })}
                         >
                           Buka
                         </Link>

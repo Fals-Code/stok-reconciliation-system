@@ -35,6 +35,9 @@ import {
   requireAdminSession,
 } from "@/lib/auth";
 import {
+  safeInternalRoute,
+} from "@/lib/safe-internal-route";
+import {
   getMarketplaceShipAllocationContext,
   getReturnClaimData,
   getReturnData,
@@ -161,6 +164,18 @@ function localDateTimeValue() {
   return `${values.year}-${values.month}-${values.day}T${values.hour}:${values.minute}`;
 }
 
+function claimDetailHref(
+  returnId: string,
+  claimId: string,
+  returnTo: string,
+) {
+  const params = new URLSearchParams({ claimId });
+
+  if (returnTo !== "/returns") params.set("returnTo", returnTo);
+
+  return `/returns/${encodeURIComponent(returnId)}?${params.toString()}#claim-detail`;
+}
+
 export default async function ReturnDetailPage({
   params,
   searchParams,
@@ -177,6 +192,12 @@ export default async function ReturnDetailPage({
   const queryClaimId = Array.isArray(query.claimId)
     ? query.claimId[0]
     : query.claimId;
+
+  const returnTo = safeInternalRoute(
+    Array.isArray(query.returnTo) ? query.returnTo[0] : query.returnTo,
+    "/returns",
+    { allowedPathnames: ["/returns"] },
+  );
 
   const [data, claimData] = await Promise.all([
     getReturnData(
@@ -353,7 +374,7 @@ export default async function ReturnDetailPage({
 
         <div className="mt-4 flex items-center gap-3">
           <Link
-            href="/returns"
+            href={returnTo}
             className="text-sm font-semibold text-ui-primary hover:underline"
           >
             Kembali ke Retur & Klaim
@@ -542,6 +563,7 @@ export default async function ReturnDetailPage({
                 action={confirmReturnReceiptAction}
                 className="mt-4 space-y-4"
                 kind="receipt"
+                returnTo={returnTo}
                 submitLabel="Simpan Kedatangan"
               >
                 <input type="hidden" name="returnId" value={item.return_id} />
@@ -672,6 +694,7 @@ export default async function ReturnDetailPage({
                 action={inspectReturnAction}
                 className="mt-4 space-y-4"
                 kind="inspection"
+                returnTo={returnTo}
                 submitLabel="Simpan Pemeriksaan"
               >
                 <input type="hidden" name="returnId" value={item.return_id} />
@@ -788,6 +811,7 @@ export default async function ReturnDetailPage({
                 action={markReturnLostAction}
                 className="mt-4 space-y-4"
                 kind="lost"
+                returnTo={returnTo}
                 submitLabel="Tandai Hilang"
               >
                 <input type="hidden" name="returnId" value={item.return_id} />
@@ -883,7 +907,11 @@ export default async function ReturnDetailPage({
                   {claims.map((claim) => (
                     <Link
                       key={claim.id}
-                      href={`/returns/${encodeURIComponent(item.return_id)}?claimId=${encodeURIComponent(claim.id)}#claim-detail`}
+                      href={claimDetailHref(
+                        item.return_id,
+                        claim.id,
+                        returnTo,
+                      )}
                       className="flex flex-col gap-2 px-4 py-4 hover:bg-ui-surface-subtle sm:flex-row sm:items-center sm:justify-between"
                     >
                       <div>
@@ -1132,6 +1160,7 @@ export default async function ReturnDetailPage({
                         timeZone: "Asia/Jakarta",
                       }).format(new Date(selectedClaim.deadline_at))}
                       kind="submit"
+                      returnTo={returnTo}
                       submitLabel="Periksa Klaim"
                     >
                       <input type="hidden" name="returnId" value={item.return_id} />
@@ -1161,6 +1190,7 @@ export default async function ReturnDetailPage({
                       action={resolveTikTokReturnClaimAction}
                       className="mt-5 space-y-4"
                       kind="resolve"
+                      returnTo={returnTo}
                       submitLabel="Periksa Penyelesaian Klaim"
                     >
                       <input type="hidden" name="returnId" value={item.return_id} />
@@ -1208,6 +1238,7 @@ export default async function ReturnDetailPage({
                         action={cancelTikTokReturnClaimAction}
                         className="mt-4 space-y-4"
                         kind="cancel"
+                        returnTo={returnTo}
                         submitLabel="Batalkan Klaim"
                         submitVariant="danger"
                       >
@@ -1237,6 +1268,7 @@ export default async function ReturnDetailPage({
                   action={createTikTokReturnClaimAction}
                   className="mt-4 space-y-4 rounded-[var(--ui-radius-md)] border border-ui-border p-4"
                   kind="create"
+                  returnTo={returnTo}
                   submitLabel="Buat Klaim"
                 >
                   <input type="hidden" name="returnId" value={item.return_id} />
@@ -1311,6 +1343,7 @@ export default async function ReturnDetailPage({
                     action={confirmLateReturnArrivalAction}
                     className="mt-4 space-y-4"
                     kind="late-arrival"
+                    returnTo={returnTo}
                     submitLabel="Catat Kedatangan Terlambat"
                   >
                     <p className="text-sm text-ui-text-muted">

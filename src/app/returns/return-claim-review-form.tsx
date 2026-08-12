@@ -232,6 +232,7 @@ export function ReturnClaimReviewForm({
   className,
   deadlineLabel,
   kind,
+  returnTo,
   submitLabel,
   submitVariant = "primary",
 }: {
@@ -240,6 +241,7 @@ export function ReturnClaimReviewForm({
   className?: string;
   deadlineLabel?: string;
   kind: ClaimReviewKind;
+  returnTo: string;
   submitLabel: string;
   submitVariant?: "primary" | "secondary" | "danger";
 }) {
@@ -280,6 +282,7 @@ export function ReturnClaimReviewForm({
       onChange={changed}
       onSubmit={submit}
     >
+      <input name="returnTo" type="hidden" value={returnTo} />
       {children}
 
       {review ? (

@@ -79,11 +79,13 @@ function CompleteSubmitButton({
 
 export function CountingPanel({
   lines,
+  returnTo,
   stocktakeId,
   stocktakeVersion,
   visibility,
 }: {
   lines: StocktakeCountingLine[];
+  returnTo: string;
   stocktakeId: string;
   stocktakeVersion: number;
   visibility: StocktakeVisibility;
@@ -232,6 +234,7 @@ export function CountingPanel({
                   action={submitStocktakeCountAction}
                   className="mt-4 grid gap-3 border-t border-ui-border pt-4 sm:grid-cols-[minmax(0,200px)_1fr_auto]"
                 >
+                  <input name="returnTo" type="hidden" value={returnTo} />
                   <input
                     name="stocktakeId"
                     type="hidden"
@@ -315,6 +318,7 @@ export function CountingPanel({
                       action={requestStocktakeRecountAction}
                       className="grid gap-3 sm:grid-cols-[1fr_auto] sm:items-end"
                     >
+                      <input name="returnTo" type="hidden" value={returnTo} />
                       <input
                         name="stocktakeId"
                         type="hidden"
@@ -374,6 +378,7 @@ export function CountingPanel({
         action={completeStocktakeCountingAction}
         className="mt-6 flex flex-col gap-3 border-t border-ui-border pt-5 sm:flex-row sm:items-center sm:justify-between"
       >
+        <input name="returnTo" type="hidden" value={returnTo} />
         <input name="stocktakeId" type="hidden" value={stocktakeId} />
         <input
           name="stocktakeVersion"

@@ -204,6 +204,17 @@ export default async function MarketplacePage({
     first(query.status) ??
     "ALL";
 
+  const listContext = new URLSearchParams();
+  const rawQuery = first(query.q)?.trim() ?? "";
+
+  if (rawQuery) listContext.set("q", rawQuery);
+  if (channel !== "ALL") listContext.set("channel", channel);
+  if (status !== "ALL") listContext.set("status", status);
+
+  const returnTo = `/marketplace${
+    listContext.size ? `?${listContext.toString()}` : ""
+  }`;
+
   const filteredOrders =
     orders.filter(
       (order) => {
@@ -413,7 +424,7 @@ export default async function MarketplacePage({
                       return (
                         <Link
                           className="group grid gap-3 px-5 py-4 hover:bg-ui-surface-subtle md:grid-cols-[minmax(0,1fr)_auto] md:items-center md:gap-6"
-                          href={`/marketplace/${encodeURIComponent(order.order_id)}`}
+                          href={`/marketplace/${encodeURIComponent(order.order_id)}?returnTo=${encodeURIComponent(returnTo)}`}
                           key={order.order_id}
                         >
                           <div className="min-w-0">

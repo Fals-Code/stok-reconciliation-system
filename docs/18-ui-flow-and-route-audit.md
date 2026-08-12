@@ -796,32 +796,90 @@ Dan sebelum menambah halaman baru, selalu tanyakan:
 
 ---
 
-## 25. Status Aktual Setelah Reachability Pengaturan
+## 25. Status Final Flow dan Route Frontend
 
-Audit source lokal setelah rebuild operator-first mengunci kondisi berikut:
+Status ini berasal dari inventory aktual `src/app/**/page.tsx`, route handler aktual, consumer Server Action, focused tests, production build Next.js 16.3.0, browser smoke desktop/mobile, dan seluruh pgTAP. Audit tidak mengubah schema, migration, ledger/projection, FEFO, reservation, return effect, marketplace shipment, cancellation, atau stocktake posting.
 
-| Area / Route | Status aktual | Tindak lanjut |
-| --- | --- | --- |
-| `/` | DONE / KEEP utama | Beranda menjadi pusat pekerjaan dan deep-link operasional |
-| `/today` | COMPATIBILITY DONE | Redirect ke `/` |
-| `/products` | DONE / KEEP utama | Workspace Stok |
-| `/stock-issues` | DONE / KEEP sub-flow | Masalah Stok |
-| `/reconciliation` | COMPATIBILITY DONE | Redirect ke `/stock-issues` |
-| `/ledger` dan detail transaksi | DONE / KEEP contextual | Riwayat dan bukti stok |
-| `/entry-corrections` | DONE / KEEP contextual-only | Dibuka dari transaksi yang salah |
-| `/stocktakes/*` | COMPLETE WITH GAP | Flow utama tersedia; cancel session end-to-end belum ada |
-| `/marketplace` dan detail pesanan | DONE / KEEP utama-contextual | Partial cancellation tersedia; reserve/ship tetap event/adapter-driven |
-| `/returns` dan detail retur | KEEP sub-flow/contextual | Retur & Klaim tetap di bawah Pesanan |
-| `/notifications` | COMPATIBILITY DONE | Bookmark lama redirect ke Beranda; work item Retur/Klaim memakai direct object route yang mempertahankan returnId/claimId; diagnostics tetap terpisah |
-| `/notifications/operations` | KEEP admin-contextual / TECHNICAL-ONLY | Admin troubleshooting tersedia dari Pengaturan; bukan menu utama |
-| `/settings` | DONE / KEEP utama | Pintu Setup Stok Awal, Marketplace, import/simulator, dan diagnostics administratif |
-| `/opening-balances` | KEEP contextual / ADMIN-REACHABLE | Setup Stok Awal tersedia dari Pengaturan |
-| `/marketplace/listings` | KEEP contextual / ADMIN-REACHABLE | Mapping Produk Marketplace tersedia dari Pengaturan |
-| `/marketplace/import` | KEEP admin-contextual / ADAPTER | Import / Simulator Pesanan tersedia dari Pengaturan; bukan pekerjaan harian operator |
+### 25.1 Inventory route aktual
 
-### Gap tersisa sebelum Information Architecture dianggap selesai
+| Route | Fungsi | Kelompok | Entry/context | Back | Success / failure | Refresh | Status |
+| --- | --- | --- | --- | --- | --- | --- | --- |
+| `/` | Pusat pekerjaan dan deep-link operasional | Beranda | Primary nav | — | Read/retry pada workspace | Query/object link stabil | KEEP MAIN |
+| `/login` | Autentikasi Admin | Sistem | Proxy/session | `returnTo` internal tervalidasi | Success ke `returnTo`; failure tetap di login dan mempertahankan `returnTo` | Aman; POST tidak direplay | TECHNICAL-ONLY |
+| `/today` | Bookmark pusat kendali lama | Beranda | Direct/bookmark lama | — | Redirect ke `/` | Stabil | COMPATIBILITY |
+| `/products` | Workspace posisi stok dan master produk | Stok | Primary nav/Beranda | — | Mutation produk memberi feedback pada workspace/detail | Filter `q/status` di URL | KEEP MAIN |
+| `/products/[productId]` | Detail produk, batch, dan riwayat | Stok | Kartu/tabel Stok | `returnTo` tepat ke `/products` beserta query | Mutation kembali ke detail dengan feedback | Tab dan `returnTo` di URL | KEEP CONTEXTUAL |
+| `/products/[productId]/batches/[batchId]` | Detail dan administrasi batch | Stok | Tab batch produk | `returnTo` hanya ke detail produk yang sama | Mutation kembali ke detail batch dengan feedback | Konteks produk/tab di URL | KEEP CONTEXTUAL |
+| `/receipts/new` | Barang Masuk | Stok | Aksi workspace Stok | `/products` | Success menampilkan hasil/link transaksi; failure memulihkan draft | Draft/error recovery tersedia | KEEP CONTEXTUAL |
+| `/manual-outbounds` | Barang Keluar manual dengan preview FEFO | Stok | Aksi workspace Stok | `/products` | Preview lalu post; failure tetap dapat diperbaiki | Draft/preview aman | KEEP CONTEXTUAL |
+| `/stock-disposals` | Pemusnahan stok dengan preview | Stok | Aksi workspace Stok | `/products` | Preview lalu post; failure tetap dapat diperbaiki | Draft/preview aman | KEEP CONTEXTUAL |
+| `/stocktakes` | Daftar pekerjaan Hitung Stok | Stok | Workspace Stok | `/products` | Read/retry; membuka sesi existing | Filter `status/type` di URL | KEEP CONTEXTUAL |
+| `/stocktakes/new` | Membuat sesi Hitung Stok | Stok | Daftar Hitung Stok | `/stocktakes` | Success ke detail; failure memulihkan isian | Notice aman, command identity baru | KEEP CONTEXTUAL |
+| `/stocktakes/[stocktakeId]` | Counting, review, approval, posting existing | Stok | Daftar Hitung Stok/deep-link | `returnTo` tepat ke `/stocktakes` beserta filter | Semua action kembali ke detail dengan feedback dan `returnTo` | Context tetap setelah refresh | KEEP CONTEXTUAL / GAP CANCEL |
+| `/stock-issues` | Masalah Stok dan rekonsiliasi harian | Stok | Workspace Stok/deep-link | `/products` | Evaluasi memberi feedback pada halaman | Query stabil | KEEP CONTEXTUAL |
+| `/reconciliation` | Bookmark nama teknis lama | Stok | Direct/bookmark lama | — | Redirect ke `/stock-issues`, query dipertahankan | Stabil | COMPATIBILITY |
+| `/ledger` | Riwayat Stok authoritative | Stok | Workspace Stok, produk, batch, hasil transaksi | `/products` | Read/retry; membuka detail transaksi | Filter/page di URL | KEEP CONTEXTUAL |
+| `/ledger/[transactionId]` | Bukti transaksi dan linkage reversal | Stok | Riwayat/deep-link hasil mutation | Filter Riwayat Stok direkonstruksi | Link correction hanya bila eligible; read failure kembali ke riwayat | Context tetap setelah refresh | KEEP CONTEXTUAL |
+| `/entry-corrections` | Preview dan reversal Koreksi Entri | Stok | Detail transaksi eligible | Riwayat/detail asal | Success ke bukti transaksi; failure tetap pada preview/recovery | Transaction context di URL | KEEP CONTEXTUAL |
+| `/marketplace` | Daftar Pesanan marketplace | Pesanan | Primary nav/Beranda | — | Read/retry; membuka exact order | Filter `q/channel/status` di URL | KEEP MAIN |
+| `/marketplace/[orderId]` | Detail order dan partial cancellation existing | Pesanan | Daftar Pesanan/deep-link | `returnTo` tepat ke `/marketplace` beserta filter | Cancellation success/failure kembali ke detail dan mempertahankan context | Aman setelah refresh | KEEP CONTEXTUAL |
+| `/returns` | Daftar Retur dan Klaim | Pesanan | Pesanan/Beranda/deep-link legacy | `/marketplace` | Read/retry; membuka exact return/claim | Section dan object identity di URL | KEEP CONTEXTUAL |
+| `/returns/[returnId]` | Kedatangan, inspeksi, lost, klaim, late arrival | Pesanan | Daftar Retur/Klaim/work item | `returnTo` tepat ke `/returns` atau tab Klaim | Semua action kembali ke exact return/claim dengan feedback | `returnId`, `claimId`, anchor, `returnTo` stabil | KEEP CONTEXTUAL |
+| `/settings` | Hub capability administratif | Pengaturan | Primary nav | — | Link capability jelas; logout aktif | Stabil | KEEP MAIN |
+| `/opening-balances` | Setup Stok Awal | Pengaturan | Hub Pengaturan | `/settings` | Draft/review/post/reversal memberi feedback dan recovery | State authoritative dibaca ulang | KEEP ADMIN |
+| `/marketplace/listings` | Mapping Produk Marketplace | Pengaturan | Hub Pengaturan | `/settings` | Mutation memberi feedback; read failure kembali ke Pengaturan | Query/form state stabil | KEEP ADMIN |
+| `/marketplace/import` | Upload/preview import adapter | Pengaturan | Hub Pengaturan | `/settings` | Success ke job detail; read/upload failure punya recovery aman | Job tersimpan authoritative | KEEP ADMIN |
+| `/marketplace/import/[jobId]` | Preview dan commit atomic job import | Pengaturan | Riwayat job/deep-link | `/marketplace/import` | Commit success/failure tetap pada job; read failure kembali ke import | Job/filter row stabil | KEEP ADMIN |
+| `/notifications` | Bookmark Notification Center lama | Beranda | Direct/bookmark lama | — | Redirect ke `/` | Stabil | COMPATIBILITY |
+| `/notifications/operations` | Diagnostics/evaluator/outbox Admin | Pengaturan | Hub Pengaturan | `/settings` | Evaluate/retry memberi feedback; read failure kembali ke Pengaturan | Query status stabil | TECHNICAL-ONLY |
 
-1. Tutup flow cancel Hitung Stok secara end-to-end, auditable, idempotent, dan tanpa perubahan stok sebelum posting.
+Route handler teknis yang tidak memiliki `page.tsx`:
 
-2. Audit final seluruh back/returnTo, success recovery, failure recovery, dead action, dan route orphan.
-3. Pertahankan reserve/shipment sebagai event/adapter-driven flow kecuali source prioritas lebih tinggi secara eksplisit meminta mutation manual dari UI.
+- `/marketplace/import/template`: download template privat dari halaman Import;
+- `/marketplace/import/[jobId]/errors`: download error report privat dari detail job.
+
+### 25.2 Klasifikasi final
+
+- MAIN: `/`, `/products`, `/marketplace`, `/settings`.
+- CONTEXTUAL: detail produk/batch, Barang Masuk, Barang Keluar, Pemusnahan, Hitung Stok, Masalah Stok, Riwayat/detail transaksi, Koreksi Entri, detail order, Retur/detail retur.
+- ADMIN: `/opening-balances`, `/marketplace/listings`, `/marketplace/import`, dan detail job import.
+- COMPATIBILITY: `/today` ke `/`, `/notifications` ke `/`, `/reconciliation` ke `/stock-issues` dengan query.
+- TECHNICAL: `/login`, `/notifications/operations`, template CSV, dan error report job.
+
+Tidak ada route user/Admin penting yang orphan. Diagnostics dan import tetap reachable dari Pengaturan tanpa bocor menjadi primary navigation. Detail object memiliki entry list/deep-link dan back destination yang jelas.
+
+### 25.3 Hasil audit navigation dan recovery
+
+- Primary navigation tetap empat item. Route marketplace listing/import aktif sebagai Pengaturan; detail order dan Retur aktif sebagai Pesanan; semua route stok aktif sebagai Stok pada desktop dan mobile.
+- Validator `safeInternalRoute` dipakai bersama untuk `returnTo`. Ia menolak URL eksternal, protocol-relative, `javascript:`, backslash, dan control character; contextual route juga memakai allowlist pathname parent yang tepat.
+- Proxy menyimpan pathname dan query hanya untuk GET/HEAD unauthenticated. Login success/failure mempertahankan internal `returnTo`; POST mutation tidak direplay setelah login.
+- Product, batch, marketplace order, return/claim, dan stocktake mempertahankan context list saat detail direfresh dan saat mutation success/failure kembali ke detail.
+- Failure read pada listing, import list/detail, dan diagnostics tidak menjadi HTTP 5xx/dead end dan menyediakan link kembali yang benar.
+- Compatibility route tetap ada untuk bookmark lama. Tidak ada caller user-facing aktif yang menuju `/notifications`; work item Retur/Klaim menuju exact object route.
+
+### 25.4 Dead legacy yang dihapus
+
+- `src/app/notifications/actions.ts` dihapus karena tiga write action Notification Center tidak memiliki import, form, caller, atau route UI aktif. Notification evaluator, read model, database contract, dan operations diagnostics tetap dipertahankan dan seluruh pgTAP notification PASS.
+- `scripts/test-notification-write-actions.mjs` dan script package terkait dihapus karena hanya menguji UI write Notification Center yang sudah tidak ada serta memakai cleanup database langsung yang tidak sesuai audit frontend ini.
+- Tujuh root Server Action legacy pada `src/app/actions.ts` dihapus karena tidak memiliki consumer; replacement route-scoped untuk receipt, marketplace, dan return tetap aktif. `runReconciliationAction` tetap dipakai oleh `/stock-issues`.
+- Scan UI tidak menemukan `href="#"`, href kosong, TODO/FIXME, button `console.log`, atau disabled permanen palsu. Form tanpa Server Action yang tersisa adalah filter GET yang disengaja.
+
+### 25.5 `playwright.config.ts`
+
+Perubahan pada commit `b113912` dipertahankan. `PLAYWRIGHT_EXTERNAL_SERVER=true` hanya mencegah Playwright menyalakan server kedua ketika runner TikTok Return sudah memiliki server sendiri. Perubahan tidak mengubah timeout, retry, worker, project desktop/mobile, coverage test, console/page error checks, HTTP failure checks, credential, atau semantics CI default.
+
+### 25.6 Bukti validasi audit final
+
+- Focused: navigation contract, login UI, stock workspace, UI primitives, stocktake presentation + pgTAP 023–028, CSV parser, dan CSV error boundary PASS.
+- Browser: 19 PASS dan 5 expected skip pada desktop/mobile; tidak ada unexpected page error, HTTP 5xx, atau root horizontal overflow. Route utama/admin, compatibility redirect, active nav, login returnTo, refresh, dan back flow existing terverifikasi. Exact claim-notification smoke tidak dijalankan karena fixture aktif tidak tersedia dan audit tidak membuat mutation hanya untuk smoke.
+- `npm run lint`: PASS dengan 0 error; empat warning unused-variable sudah ada pada source baseline.
+- `npm run typecheck`: PASS.
+- `npm run build`: PASS; build menginventarisasi seluruh page dan handler di atas.
+- `npx supabase test db`: PASS, 68 file dan 3.751 test.
+- `git diff --check`: PASS.
+
+### 25.7 Gap yang masih tersisa
+
+Satu-satunya gap besar yang ditemukan oleh source dan test aktual adalah **Cancel Hitung Stok**. Audit ini hanya mencatatnya; tidak membuat RPC, migration, tombol, atau perubahan state machine.
+
+Reserve/shipment tetap event/adapter-driven. Tidak ada kebutuhan backend/domain baru lain yang ditemukan dalam scope final frontend flow/reachability ini.

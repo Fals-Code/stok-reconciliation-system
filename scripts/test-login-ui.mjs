@@ -21,6 +21,7 @@ const [
   login,
   passwordInput,
   authActions,
+  proxy,
 ] = await Promise.all([
   read("package.json"),
   read("src/app/login/page.tsx"),
@@ -28,6 +29,7 @@ const [
     "src/app/login/password-input.tsx",
   ),
   read("src/app/auth-actions.ts"),
+  read("src/proxy.ts"),
 ]);
 
 const packageJson =
@@ -71,9 +73,9 @@ assert.ok(
       "await getAdminSession()",
     ) &&
     login.includes(
-      'redirect("/")',
+      "redirect(returnTo)",
     ),
-  "Login mempertahankan session dan redirect contract",
+  "Login mempertahankan session dan safe return route contract",
 );
 
 assert.ok(
@@ -125,10 +127,30 @@ assert.ok(
   authActions.includes(
     "signInWithPassword",
   ) &&
-    authActions.includes(
-      'redirect("/")',
-    ),
-  "Auth mutation contract tetap dipertahankan",
+    authActions.includes("safeInternalRoute") &&
+    authActions.includes("redirect(returnTo)"),
+  "Auth mutation memulihkan safe internal GET route",
+);
+
+assert.ok(
+  login.includes('name="returnTo"') &&
+    login.includes("safeInternalRoute"),
+  "Form login mempertahankan returnTo yang sudah divalidasi",
+);
+
+assert.ok(
+  proxy.includes('request.method === "GET"') &&
+    proxy.includes('request.method === "HEAD"') &&
+    proxy.includes("loginUrl.searchParams.set(") &&
+    proxy.includes('"returnTo"'),
+  "Proxy hanya menyimpan route GET/HEAD dan tidak menyiapkan auto-replay mutation",
+);
+
+assert.ok(
+  authActions.includes('params.set("returnTo", returnTo)') &&
+    authActions.includes("loginFailure(") &&
+    authActions.includes("returnTo,"),
+  "Login failure tetap menyimpan safe returnTo untuk percobaan berikutnya",
 );
 
 assert.ok(

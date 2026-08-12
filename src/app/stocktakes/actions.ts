@@ -4,6 +4,7 @@ import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 
 import { requireAdminSession } from "@/lib/auth";
+import { safeInternalRoute } from "@/lib/safe-internal-route";
 import { callRpc } from "@/lib/supabase-rest";
 import {
   StocktakeValidationError,
@@ -207,8 +208,17 @@ function detailDestination(
   stocktakeId: string,
   kind: "success" | "error",
   message: string,
+  formData: FormData,
 ) {
   const params = new URLSearchParams({ [kind]: message });
+  const returnTo = safeInternalRoute(
+    String(formData.get("returnTo") ?? ""),
+    "/stocktakes",
+    { allowedPathnames: ["/stocktakes"] },
+  );
+
+  if (returnTo !== "/stocktakes") params.set("returnTo", returnTo);
+
   return `/stocktakes/${encodeURIComponent(stocktakeId)}?${params.toString()}`;
 }
 
@@ -281,6 +291,7 @@ export async function createStocktakeAction(formData: FormData) {
       result.stocktakeId,
       "success",
       `${result.stocktakeNo} berhasil dibuat sebagai Draft.`,
+      formData,
     );
   } catch (error) {
     const errorParams = new URLSearchParams({
@@ -318,12 +329,14 @@ export async function prepareStocktakeAction(formData: FormData) {
       stocktakeId,
       "success",
       `${result.stocktakeNo} siap dimulai. ${result.scopeLineCount} line scope tervalidasi pada ledger sequence ${result.validationLedgerSeq}.`,
+      formData,
     );
   } catch (error) {
     destination = detailDestination(
       stocktakeId,
       "error",
       stocktakeErrorMessage(error),
+      formData,
     );
   }
 
@@ -355,12 +368,14 @@ export async function startStocktakeAction(formData: FormData) {
       stocktakeId,
       "success",
       `${result.stocktakeNo} mulai dihitung. ${result.lineCount} line dibuat dari ledger sequence ${result.snapshotLedgerSeq}.`,
+      formData,
     );
   } catch (error) {
     destination = detailDestination(
       stocktakeId,
       "error",
       stocktakeErrorMessage(error),
+      formData,
     );
   }
 
@@ -411,12 +426,14 @@ export async function submitStocktakeCountAction(formData: FormData) {
       stocktakeId,
       "success",
       `Line berhasil disimpan sebagai attempt ${result.attemptNo}.`,
+      formData,
     );
   } catch (error) {
     destination = detailDestination(
       stocktakeId,
       "error",
       stocktakeErrorMessage(error),
+      formData,
     );
   }
 
@@ -461,12 +478,14 @@ export async function requestStocktakeRecountAction(formData: FormData) {
       stocktakeId,
       "success",
       `Line ditandai untuk hitung ulang setelah attempt ${result.currentAttemptNo}.`,
+      formData,
     );
   } catch (error) {
     destination = detailDestination(
       stocktakeId,
       "error",
       stocktakeErrorMessage(error),
+      formData,
     );
   }
 
@@ -505,12 +524,14 @@ export async function completeStocktakeCountingAction(formData: FormData) {
       stocktakeId,
       "success",
       `${result.stocktakeNo} masuk ke Review dengan ${result.varianceLineCount} line variance.`,
+      formData,
     );
   } catch (error) {
     destination = detailDestination(
       stocktakeId,
       "error",
       stocktakeErrorMessage(error),
+      formData,
     );
   }
 
@@ -576,12 +597,14 @@ export async function reviewStocktakeLineAction(formData: FormData) {
       stocktakeId,
       "success",
       `Line ${result.stocktakeLineId.slice(0, 8)} direview sebagai ${result.decisionCode}.`,
+      formData,
     );
   } catch (error) {
     destination = detailDestination(
       stocktakeId,
       "error",
       stocktakeErrorMessage(error),
+      formData,
     );
   }
 
@@ -639,12 +662,14 @@ export async function requestStocktakeReviewRecountAction(
       stocktakeId,
       "success",
       `Line dikembalikan ke Counting untuk attempt setelah ${result.currentAttemptNo}.`,
+      formData,
     );
   } catch (error) {
     destination = detailDestination(
       stocktakeId,
       "error",
       stocktakeErrorMessage(error),
+      formData,
     );
   }
 
@@ -688,12 +713,14 @@ export async function approveStocktakeAction(formData: FormData) {
       stocktakeId,
       "success",
       `Stocktake disetujui sebagai approval version ${result.approvalVersion}.`,
+      formData,
     );
   } catch (error) {
     destination = detailDestination(
       stocktakeId,
       "error",
       stocktakeErrorMessage(error),
+      formData,
     );
   }
 
@@ -760,12 +787,14 @@ export async function postStocktakeAdjustmentAction(
       stocktakeId,
       "success",
       `Adjustment ${result.transactionNo} berhasil diposting. Reconciliation ${result.reconciliationIntegrityStatus}.`,
+      formData,
     );
   } catch (error) {
     destination = detailDestination(
       stocktakeId,
       "error",
       stocktakeErrorMessage(error),
+      formData,
     );
   }
 

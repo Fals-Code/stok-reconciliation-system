@@ -402,12 +402,14 @@ export function ReturnMutationReviewForm({
   children,
   className,
   kind,
+  returnTo,
   submitLabel,
 }: {
   action: (formData: FormData) => void | Promise<void>;
   children: ReactNode;
   className?: string;
   kind: ReviewKind;
+  returnTo: string;
   submitLabel: string;
 }) {
   const [review, setReview] =
@@ -451,6 +453,7 @@ export function ReturnMutationReviewForm({
       onChange={changed}
       onSubmit={submit}
     >
+      <input name="returnTo" type="hidden" value={returnTo} />
       {children}
 
       {review ? (

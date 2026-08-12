@@ -100,6 +100,7 @@ export function PostingPanel({
   posting,
   postingLines,
   reviewLines,
+  returnTo,
   status,
   stocktakeId,
 }: {
@@ -108,6 +109,7 @@ export function PostingPanel({
   posting: StocktakePosting | null;
   postingLines: StocktakePostingLine[];
   reviewLines: StocktakeReviewLine[];
+  returnTo: string;
   status: StocktakeStatus;
   stocktakeId: string;
 }) {
@@ -431,6 +433,7 @@ export function PostingPanel({
           action={postStocktakeAdjustmentAction}
           className="mt-4 grid gap-3"
         >
+          <input name="returnTo" type="hidden" value={returnTo} />
           <input
             name="stocktakeId"
             type="hidden"

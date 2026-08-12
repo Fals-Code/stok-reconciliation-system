@@ -21,6 +21,9 @@ import {
   requireAdminSession,
 } from "@/lib/auth";
 import {
+  safeInternalRoute,
+} from "@/lib/safe-internal-route";
+import {
   getMarketplaceData,
   previewMarketplaceCancellation,
   type MarketplaceCancellationPreview,
@@ -267,6 +270,12 @@ export default async function MarketplaceOrderDetailPage({
   const status =
     orderStatus(order);
 
+  const returnTo = safeInternalRoute(
+    Array.isArray(query.returnTo) ? query.returnTo[0] : query.returnTo,
+    "/marketplace",
+    { allowedPathnames: ["/marketplace"] },
+  );
+
   const hasCancelable =
     candidates.some(
       (row) =>
@@ -441,7 +450,7 @@ export default async function MarketplaceOrderDetailPage({
         <div className="mt-5 flex flex-wrap items-center justify-between gap-3">
           <Link
             className="text-sm font-semibold text-ui-primary hover:underline"
-            href="/marketplace"
+            href={returnTo}
           >
             {"\u2190"} Kembali ke daftar
           </Link>
@@ -741,6 +750,8 @@ export default async function MarketplaceOrderDetailPage({
                 className="grid gap-3 rounded-[var(--ui-radius-lg)] border border-ui-border bg-ui-surface p-4 sm:grid-cols-2"
                 method="get"
               >
+                <input name="returnTo" type="hidden" value={returnTo} />
+
                 <label className="text-sm font-medium text-ui-text sm:col-span-2">
                   Barang yang dibatalkan
                   <select
@@ -962,6 +973,7 @@ export default async function MarketplaceOrderDetailPage({
                         type="hidden"
                         value={order.order_id}
                       />
+                      <input name="returnTo" type="hidden" value={returnTo} />
                       <input
                         name="draft"
                         type="hidden"

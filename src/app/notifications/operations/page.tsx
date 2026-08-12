@@ -2,6 +2,7 @@ import { randomUUID } from "node:crypto";
 
 import Link from "next/link";
 
+import { AppShell } from "@/app/app-shell/app-shell";
 import PageSectionNav from "@/app/app-shell/page-section-nav";
 import {
   retryNotificationOutboxEventAction,
@@ -14,6 +15,7 @@ import {
   type NotificationOperationsSummary,
   type NotificationOutboxActionableItem,
 } from "@/lib/supabase-rest";
+import { requireAdminSession } from "@/lib/auth";
 
 export const dynamic = "force-dynamic";
 
@@ -186,7 +188,7 @@ function MetricCard({
 
 function ConfigurationError({ message }: { message: string }) {
   return (
-    <main className="min-h-screen bg-slate-950 px-5 py-10 text-slate-100 lg:px-8">
+    <div className="min-h-screen bg-slate-950 px-5 py-10 text-slate-100 lg:px-8">
       <div className="mx-auto max-w-4xl rounded-3xl border border-rose-400/20 bg-rose-400/[0.06] p-7">
         <p className="font-mono text-xs uppercase tracking-[0.2em] text-rose-300">
           Notification operations
@@ -199,12 +201,12 @@ function ConfigurationError({ message }: { message: string }) {
         </p>
         <Link
           className="mt-6 inline-flex rounded-xl border border-white/10 px-4 py-2 text-sm text-slate-200 hover:bg-white/[0.05]"
-          href="/"
+          href="/settings"
         >
-          Kembali ke Beranda
+          Kembali ke Pengaturan
         </Link>
       </div>
-    </main>
+    </div>
   );
 }
 
@@ -670,7 +672,10 @@ export default async function NotificationOperationsPage({
 }: {
   searchParams: Promise<SearchParams>;
 }) {
-  const params = await searchParams;
+  const [params, session] = await Promise.all([
+    searchParams,
+    requireAdminSession(),
+  ]);
   const status = normalizeStatus(params.status);
   const feedbackError =
     params.error?.trim().slice(0, 500) || null;
@@ -691,13 +696,15 @@ export default async function NotificationOperationsPage({
     ]);
   } catch (error) {
     return (
-      <ConfigurationError
-        message={
-          error instanceof Error
-            ? error.message
-            : "Konfigurasi Notification Operations tidak valid."
-        }
-      />
+      <AppShell profile={session.profile}>
+        <ConfigurationError
+          message={
+            error instanceof Error
+              ? error.message
+              : "Konfigurasi Notification Operations tidak valid."
+          }
+        />
+      </AppShell>
     );
   }
 
@@ -713,7 +720,8 @@ export default async function NotificationOperationsPage({
   }`;
 
   return (
-    <main className="min-h-screen bg-slate-950 text-slate-100">
+    <AppShell profile={session.profile}>
+      <div className="min-h-screen bg-slate-950 text-slate-100">
       <PageSectionNav
         items={[
           { href: "#overview", label: "Ringkasan" },
@@ -747,6 +755,7 @@ export default async function NotificationOperationsPage({
           status={status}
         />
       </div>
-    </main>
+      </div>
+    </AppShell>
   );
 }

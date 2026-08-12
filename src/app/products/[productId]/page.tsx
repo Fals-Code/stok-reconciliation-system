@@ -33,6 +33,9 @@ import {
   requireAdminSession,
 } from "@/lib/auth";
 import {
+  safeInternalRoute,
+} from "@/lib/safe-internal-route";
+import {
   getLedgerStockStoryPage,
   getProductBatchMasterData,
   getProductMasterData,
@@ -72,26 +75,6 @@ function tabFrom(
   }
 
   return "summary";
-}
-
-function safeReturnTo(
-  value?: string,
-) {
-  const candidate =
-    value?.trim() ?? "";
-
-  if (
-    candidate.startsWith(
-      "/products",
-    ) &&
-    !candidate.startsWith("//") &&
-    !candidate.includes("\n") &&
-    !candidate.includes("\r")
-  ) {
-    return candidate;
-  }
-
-  return "/products";
 }
 
 function tabHref({
@@ -191,10 +174,11 @@ export default async function ProductDetailPage({
     notFound();
   }
 
-  const returnTo =
-    safeReturnTo(
-      first(query.returnTo),
-    );
+  const returnTo = safeInternalRoute(
+    first(query.returnTo),
+    "/products",
+    { allowedPathnames: ["/products"] },
+  );
 
   const tab =
     tabFrom(

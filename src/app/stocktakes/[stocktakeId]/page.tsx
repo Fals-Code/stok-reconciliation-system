@@ -14,6 +14,7 @@ import {
 } from "@/app/stocktakes/actions";
 import { Alert, StatusBadge } from "@/components/ui";
 import { requireAdminSession } from "@/lib/auth";
+import { safeInternalRoute } from "@/lib/safe-internal-route";
 import {
   getLatestStocktakeApproval,
   getLatestStocktakePosting,
@@ -102,13 +103,18 @@ export default async function StocktakeDetailPage({
   const rawSuccess = Boolean(first(query, "success"));
   const rawError = Boolean(first(query, "error"));
   const rawIdempotencyKey = Boolean(first(query, "idempotencyKey"));
+  const returnTo = safeInternalRoute(
+    first(query, "returnTo"),
+    "/stocktakes",
+    { allowedPathnames: ["/stocktakes"] },
+  );
 
   if (rawSuccess || rawError || rawIdempotencyKey) {
     const notice =
       rawSuccess && !rawError && !rawIdempotencyKey ? "updated" : "retry";
-    redirect(
-      `/stocktakes/${encodeURIComponent(stocktakeId)}?notice=${notice}`,
-    );
+    const params = new URLSearchParams({ notice });
+    if (returnTo !== "/stocktakes") params.set("returnTo", returnTo);
+    redirect(`/stocktakes/${encodeURIComponent(stocktakeId)}?${params}`);
   }
 
   let data;
@@ -224,7 +230,7 @@ export default async function StocktakeDetailPage({
       <div className="mx-auto w-full max-w-[1120px] px-4 py-6 sm:px-6 lg:px-8 lg:py-8">
         <Link
           className="mb-4 inline-flex min-h-[var(--ui-control-height)] items-center text-sm font-semibold text-ui-primary hover:underline"
-          href="/stocktakes"
+          href={returnTo}
         >
           &larr; Kembali ke Hitung Stok
         </Link>
@@ -338,6 +344,7 @@ export default async function StocktakeDetailPage({
                   Tahap ini belum mengubah stok.
                 </p>
                 <form action={prepareStocktakeAction} className="mt-4">
+                  <input name="returnTo" type="hidden" value={returnTo} />
                   <input
                     name="stocktakeId"
                     type="hidden"
@@ -363,6 +370,7 @@ export default async function StocktakeDetailPage({
                   akan dibuat dari cakupan sesi ini.
                 </p>
                 <form action={startStocktakeAction} className="mt-4">
+                  <input name="returnTo" type="hidden" value={returnTo} />
                   <input
                     name="stocktakeId"
                     type="hidden"
@@ -382,6 +390,7 @@ export default async function StocktakeDetailPage({
             {details.status_code === "COUNTING" && countingLines ? (
               <CountingPanel
                 lines={countingLines}
+                returnTo={returnTo}
                 stocktakeId={stocktakeId}
                 stocktakeVersion={details.version_no}
                 visibility={details.visibility_code}
@@ -393,10 +402,12 @@ export default async function StocktakeDetailPage({
                 <ReviewPanel
                   attempts={countAttempts}
                   lines={reviewLines}
+                  returnTo={returnTo}
                   stocktakeId={stocktakeId}
                 />
                 <ApprovalPanel
                   lines={reviewLines}
+                  returnTo={returnTo}
                   stocktakeId={stocktakeId}
                   stocktakeVersion={details.version_no}
                 />
@@ -412,6 +423,7 @@ export default async function StocktakeDetailPage({
                 posting={posting}
                 postingLines={postingLines}
                 reviewLines={reviewLines}
+                returnTo={returnTo}
                 status={details.status_code}
                 stocktakeId={stocktakeId}
               />

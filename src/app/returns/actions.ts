@@ -4,6 +4,7 @@ import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 
 import { requireAdminSession } from "@/lib/auth";
+import { safeInternalRoute } from "@/lib/safe-internal-route";
 import {
   cancelTikTokReturnClaim,
   confirmLateReturnArrival,
@@ -83,9 +84,18 @@ function destination(form: FormData, kind: "success" | "error", text: string) {
   const params = new URLSearchParams();
   const returnId = String(form.get("returnId") ?? "").trim();
   const claimId = String(form.get("claimId") ?? "").trim();
+  const returnTo = safeInternalRoute(
+    String(form.get("returnTo") ?? ""),
+    "/returns",
+    { allowedPathnames: ["/returns"] },
+  );
 
   if (claimId && UUID.test(claimId)) {
     params.set("claimId", claimId);
+  }
+
+  if (returnTo !== "/returns") {
+    params.set("returnTo", returnTo);
   }
 
   params.set(kind, text);

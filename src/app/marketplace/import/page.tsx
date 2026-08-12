@@ -1,5 +1,7 @@
 import Link from "next/link";
 import { stageMarketplaceCsvAction } from "./actions";
+import { AppShell } from "@/app/app-shell/app-shell";
+import { requireAdminSession } from "@/lib/auth";
 import { getMarketplaceCsvImportJobs } from "@/lib/csv-import/server";
 
 export const dynamic = "force-dynamic";
@@ -46,11 +48,36 @@ const statusLabel: Record<string, string> = {
 };
 
 export default async function CsvImportPage({ searchParams }: { searchParams: Promise<{ errorCode?: string }> }) {
-  const query = await searchParams;
-  const data = await getMarketplaceCsvImportJobs();
+  const [query, session] = await Promise.all([
+    searchParams,
+    requireAdminSession(),
+  ]);
+  let data: Awaited<ReturnType<typeof getMarketplaceCsvImportJobs>>;
+
+  try {
+    data = await getMarketplaceCsvImportJobs();
+  } catch {
+    return (
+      <AppShell profile={session.profile}>
+        <div className="min-h-screen bg-slate-950 px-5 py-10 text-slate-100">
+        <section className="mx-auto max-w-3xl rounded-3xl border border-rose-400/20 bg-rose-400/[0.06] p-7">
+          <h1 className="text-2xl font-semibold">Riwayat import belum dapat dimuat</h1>
+          <p className="mt-3 text-sm leading-6 text-rose-100/80">
+            Tidak ada data atau stok yang diubah. Muat ulang halaman untuk mencoba lagi.
+          </p>
+          <Link className="nav-link mt-6 inline-flex" href="/settings">
+            Kembali ke Pengaturan
+          </Link>
+        </section>
+        </div>
+      </AppShell>
+    );
+  }
+
   const errorMessage = query.errorCode ? uploadErrorMessage[query.errorCode] ?? uploadErrorMessage.CSV_IMPORT_UPLOAD_FAILED : null;
   return (
-      <main className="min-h-screen bg-slate-950 text-slate-100">
+    <AppShell profile={session.profile}>
+      <div className="min-h-screen bg-slate-950 text-slate-100">
       <div className="mx-auto w-full max-w-[1400px] px-5 py-8 lg:px-8">
         <header className="flex flex-col gap-5 lg:flex-row lg:items-end lg:justify-between">
           <div>
@@ -87,6 +114,7 @@ export default async function CsvImportPage({ searchParams }: { searchParams: Pr
           </div>
         </section>
       </div>
-    </main>
+      </div>
+    </AppShell>
   );
 }

@@ -130,7 +130,13 @@ async function main() {
   assert(/role="progressbar"/.test(source.detail) && /lokasi\s+selesai/.test(source.detail), "Detail Hitung Stok harus menampilkan progres lokasi sebagai anchor utama.");
   assert(!/Ãƒâ€šÃ‚Â·|ÃƒÂ¢Ã¢â‚¬Â Ã¢â‚¬â„¢/.test(source.detail + source.counting), "Detail/counting tidak boleh memuat mojibake.");
   assert(/history\.replaceState/.test(source.feedback) && /params\.delete\("notice"\)/.test(source.feedback), "Feedback harus membersihkan notice setelah hidrasi.");
-  assert(/redirect\(\s*/.test(source.detail) && source.detail.includes("`/stocktakes/${encodeURIComponent(stocktakeId)}?notice=${notice}`"), "Halaman detail harus redirect server-side dari parameter mentah ke notice aman.");
+  assert(
+    /safeInternalRoute\(/.test(source.detail) &&
+      /allowedPathnames:\s*\["\/stocktakes"\]/.test(source.detail) &&
+      /params\.set\("returnTo", returnTo\)/.test(source.detail) &&
+      source.detail.includes("`/stocktakes/${encodeURIComponent(stocktakeId)}?${params}`"),
+    "Halaman detail harus redirect server-side ke notice aman sambil mempertahankan returnTo internal yang tervalidasi.",
+  );
   assert(/notice === "updated"/.test(source.detail) && /notice === "retry"/.test(source.detail) && /StocktakePresentationFeedback/.test(source.detail), "Halaman detail harus memakai notice sekali pakai untuk feedback aman.");
   assert(/Perubahan belum dapat disimpan\. Muat ulang halaman lalu coba lagi\./.test(source.detail) && !/>\{error\}<\/Alert>/.test(source.detail), "Halaman detail tidak boleh merefleksikan error URL mentah.");
   assert(/required=\{decision === "VARIANCE_ACCEPTED"\}/.test(source.review), "Alasan harus diwajibkan saat menerima selisih.");
@@ -148,14 +154,14 @@ async function main() {
   assert(/activeStocktakes/.test(source.landing) && /historyStocktakes/.test(source.landing), "Landing harus memisahkan pekerjaan aktif dan riwayat terminal.");
   assert(!/<table/.test(combined), "Hitung Stok tidak boleh memakai tabel horizontal sebagai UI utama mobile.");
   assertNoPrimaryTechnicalCopy(combined);
-  assertFormContract(source.detail, "prepareStocktakeAction", ["stocktakeId"]);
-  assertFormContract(source.detail, "startStocktakeAction", ["stocktakeId", "confirmStart"]);
-  assertFormContract(source.counting, "submitStocktakeCountAction", ["stocktakeId", "stocktakeLineId", "attemptNo", "physicalQty"]);
-  assertFormContract(source.counting, "requestStocktakeRecountAction", ["stocktakeId", "stocktakeLineId", "attemptNo", "reason"]);
-  assertFormContract(source.review, "reviewStocktakeLineAction", ["stocktakeId", "stocktakeLineId", "lineVersion", "decisionCode", "reasonCode", "reviewNote", "exceptionCode"]);
-  assertFormContract(source.review, "requestStocktakeReviewRecountAction", ["stocktakeId", "stocktakeLineId", "lineVersion", "reason"]);
-  assertFormContract(source.approval, "approveStocktakeAction", ["stocktakeId", "stocktakeVersion", "confirmation"]);
-  assertFormContract(source.posting, "postStocktakeAdjustmentAction", ["stocktakeId", "approvalVersion", "confirmation"]);
+  assertFormContract(source.detail, "prepareStocktakeAction", ["returnTo", "stocktakeId"]);
+  assertFormContract(source.detail, "startStocktakeAction", ["returnTo", "stocktakeId", "confirmStart"]);
+  assertFormContract(source.counting, "submitStocktakeCountAction", ["returnTo", "stocktakeId", "stocktakeLineId", "attemptNo", "physicalQty"]);
+  assertFormContract(source.counting, "requestStocktakeRecountAction", ["returnTo", "stocktakeId", "stocktakeLineId", "attemptNo", "reason"]);
+  assertFormContract(source.review, "reviewStocktakeLineAction", ["returnTo", "stocktakeId", "stocktakeLineId", "lineVersion", "decisionCode", "reasonCode", "reviewNote", "exceptionCode"]);
+  assertFormContract(source.review, "requestStocktakeReviewRecountAction", ["returnTo", "stocktakeId", "stocktakeLineId", "lineVersion", "reason"]);
+  assertFormContract(source.approval, "approveStocktakeAction", ["returnTo", "stocktakeId", "stocktakeVersion", "confirmation"]);
+  assertFormContract(source.posting, "postStocktakeAdjustmentAction", ["returnTo", "stocktakeId", "approvalVersion", "confirmation"]);
 
   console.log("[PASS] kontrak presentasi Hitung Stok");
   for (const filePath of pgtapFiles) {
