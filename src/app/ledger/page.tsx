@@ -128,15 +128,15 @@ function transactionLabel(code: string) {
   if (code === "DISPOSAL_EXPIRED") return "Barang Kedaluwarsa";
   if (code.startsWith("DISPOSAL")) return "Barang Rusak / Kedaluwarsa";
   if (code === "STOCKTAKE_ADJUSTMENT") return "Penyesuaian Hasil Hitung";
-  if (code === "REVERSAL") return "Pembatalan Transaksi";
+  if (code === "REVERSAL") return "Pembatalan";
   return "Perubahan Stok";
 }
 
-function reversalLabel(state: LedgerExplorerRow["reversal_state"]) {
-  if (state === "REVERSAL") return "Transaksi pembatalan";
-  if (state === "FULLY_REVERSED") return "Sudah dibatalkan";
-  if (state === "PARTIALLY_REVERSED") return "Sebagian dibatalkan";
-  return "Belum dibatalkan";
+function reversalBadgeLabel(state: LedgerExplorerRow["reversal_state"]) {
+  if (state === "REVERSAL") return "Pembatalan";
+  if (state === "FULLY_REVERSED") return "Dibatalkan";
+  if (state === "PARTIALLY_REVERSED") return "Dibatalkan sebagian";
+  return null;
 }
 
 function codeLabel(value: string) {
@@ -183,14 +183,191 @@ function detailHref(row: LedgerExplorerRow, params: SearchParams) {
   return `/ledger/${row.transaction_id}${context.search}`;
 }
 
-function LedgerCards({ rows, params }: { rows: LedgerExplorerRow[]; params: SearchParams }) {
-  return <div className="grid gap-3 md:hidden">{rows.map((row) => <article className="rounded-[var(--ui-radius-lg)] border border-ui-border bg-ui-surface p-4" key={row.ledger_entry_id}><div className="flex items-start justify-between gap-3"><div><p className="text-sm font-semibold text-ui-text">{transactionLabel(row.transaction_type_code)}</p><p className="mt-1 text-xs text-ui-text-muted">{row.product_sku_snapshot} · {row.batch_code_snapshot}</p></div><p className={row.quantity_delta >= 0 ? "ui-number text-sm font-semibold text-ui-primary" : "ui-number text-sm font-semibold text-ui-danger"}>{signedQuantity(row.quantity_delta)}</p></div><div className="mt-3 flex flex-wrap items-center gap-2"><StatusBadge tone={row.reversal_state === "NOT_REVERSED" ? "neutral" : "warning"}>{reversalLabel(row.reversal_state)}</StatusBadge><span className="text-xs text-ui-text-muted">{formatDate(row.occurred_at)}</span></div><Link className="mt-4 inline-flex min-h-[var(--ui-control-height)] items-center text-sm font-semibold text-ui-primary hover:underline" href={detailHref(row, params)}>Lihat Detail</Link></article>)}</div>;
-}
+function LedgerCards({
+  rows,
+  params,
+}: {
+  rows: LedgerExplorerRow[];
+  params: SearchParams;
+}) {
+  return (
+    <div className="grid gap-3 md:hidden">
+      {rows.map((row) => {
+        const reversalBadge = reversalBadgeLabel(
+          row.reversal_state,
+        );
 
-function LedgerTable({ rows, params }: { rows: LedgerExplorerRow[]; params: SearchParams }) {
-  return <div className="hidden overflow-hidden md:block" data-testid="ledger-table"><table className="w-full text-left text-sm"><thead className="border-b border-ui-border bg-ui-surface-subtle text-xs font-semibold text-ui-text-muted"><tr><th className="px-4 py-3">Perubahan</th><th className="px-4 py-3">Produk / SKU</th><th className="px-4 py-3">Kode Batch</th><th className="px-4 py-3 text-right">Jumlah</th><th className="px-4 py-3">Waktu kejadian</th><th className="px-4 py-3">Waktu dicatat</th><th className="px-4 py-3">Status</th><th className="px-4 py-3"></th></tr></thead><tbody>{rows.map((row) => <tr className="border-b border-ui-border last:border-0" key={row.ledger_entry_id}><td className="px-4 py-4"><p className="font-semibold text-ui-text">{transactionLabel(row.transaction_type_code)}</p><p className="mt-1 text-xs text-ui-text-muted">{codeLabel(row.reason_code_snapshot)} · {codeLabel(row.channel_code_snapshot)}</p></td><td className="px-4 py-4 font-medium text-ui-text">{row.product_sku_snapshot}</td><td className="px-4 py-4 text-ui-text">{row.batch_code_snapshot}</td><td className={row.quantity_delta >= 0 ? "ui-number px-4 py-4 text-right font-semibold text-ui-primary" : "ui-number px-4 py-4 text-right font-semibold text-ui-danger"}>{signedQuantity(row.quantity_delta)}</td><td className="whitespace-nowrap px-4 py-4 text-ui-text-muted">{formatDate(row.occurred_at)}</td><td className="whitespace-nowrap px-4 py-4 text-ui-text-muted">{formatDate(row.recorded_at)}</td><td className="px-4 py-4"><StatusBadge tone={row.reversal_state === "NOT_REVERSED" ? "neutral" : "warning"}>{reversalLabel(row.reversal_state)}</StatusBadge></td><td className="px-4 py-4"><Link className="inline-flex min-h-[var(--ui-control-height)] items-center text-sm font-semibold text-ui-primary hover:underline" href={detailHref(row, params)}>Lihat Detail</Link></td></tr>)}</tbody></table></div>;
-}
+        return (
+          <article
+            className="rounded-[var(--ui-radius-lg)] border border-ui-border bg-ui-surface p-4"
+            key={row.ledger_entry_id}
+          >
+            <div className="flex items-start justify-between gap-3">
+              <div className="min-w-0">
+                <div className="flex flex-wrap items-center gap-2">
+                  <p className="font-semibold text-ui-text">
+                    {transactionLabel(row.transaction_type_code)}
+                  </p>
+                  {reversalBadge ? (
+                    <StatusBadge tone="warning">
+                      {reversalBadge}
+                    </StatusBadge>
+                  ) : null}
+                </div>
 
+                <p className="mt-1 text-sm text-ui-text">
+                  {row.product_sku_snapshot}
+                </p>
+                <p
+                  className="mt-0.5 truncate text-xs text-ui-text-muted"
+                  title={row.batch_code_snapshot}
+                >
+                  Batch {row.batch_code_snapshot}
+                </p>
+              </div>
+
+              <p
+                className={
+                  row.quantity_delta >= 0
+                    ? "ui-number shrink-0 text-sm font-semibold text-ui-primary"
+                    : "ui-number shrink-0 text-sm font-semibold text-ui-danger"
+                }
+              >
+                {signedQuantity(row.quantity_delta)}
+              </p>
+            </div>
+
+            <dl className="mt-3 grid gap-2 text-xs">
+              <div>
+                <dt className="text-ui-text-muted">Referensi</dt>
+                <dd className="mt-0.5 break-words font-medium text-ui-text">
+                  {row.source_ref_snapshot}
+                </dd>
+              </div>
+
+              <div className="flex flex-wrap items-center gap-x-2 gap-y-1 text-ui-text-muted">
+                <span>{formatDate(row.occurred_at)}</span>
+                <span aria-hidden="true">·</span>
+                <span>No. transaksi {row.transaction_no}</span>
+              </div>
+            </dl>
+
+            <Link
+              className="mt-4 inline-flex min-h-[var(--ui-control-height)] items-center text-sm font-semibold text-ui-primary hover:underline"
+              href={detailHref(row, params)}
+            >
+              Detail
+            </Link>
+          </article>
+        );
+      })}
+    </div>
+  );
+}
+function LedgerTable({
+  rows,
+  params,
+}: {
+  rows: LedgerExplorerRow[];
+  params: SearchParams;
+}) {
+  return (
+    <div
+      className="hidden overflow-x-auto md:block"
+      data-testid="ledger-table"
+    >
+      <table className="w-full min-w-[960px] text-left text-sm">
+        <thead className="border-b border-ui-border bg-ui-surface-subtle text-xs font-semibold text-ui-text-muted">
+          <tr>
+            <th className="px-4 py-3">Waktu</th>
+            <th className="px-4 py-3">Perubahan</th>
+            <th className="px-4 py-3">Produk / Batch</th>
+            <th className="px-4 py-3 text-right">Jumlah</th>
+            <th className="px-4 py-3">Referensi</th>
+            <th className="px-4 py-3">
+              <span className="sr-only">Aksi</span>
+            </th>
+          </tr>
+        </thead>
+
+        <tbody>
+          {rows.map((row) => {
+            const reversalBadge = reversalBadgeLabel(
+              row.reversal_state,
+            );
+
+            return (
+              <tr
+                className="border-b border-ui-border last:border-0"
+                key={row.ledger_entry_id}
+              >
+                <td className="whitespace-nowrap px-4 py-4 align-top text-ui-text-muted">
+                  {formatDate(row.occurred_at)}
+                </td>
+
+                <td className="px-4 py-4 align-top">
+                  <div className="flex flex-wrap items-center gap-2">
+                    <p className="font-semibold text-ui-text">
+                      {transactionLabel(row.transaction_type_code)}
+                    </p>
+                    {reversalBadge ? (
+                      <StatusBadge tone="warning">
+                        {reversalBadge}
+                      </StatusBadge>
+                    ) : null}
+                  </div>
+                  <p className="mt-1 text-xs text-ui-text-muted">
+                    Alasan: {codeLabel(row.reason_code_snapshot)}
+                  </p>
+                </td>
+
+                <td className="max-w-[20rem] px-4 py-4 align-top">
+                  <p className="font-medium text-ui-text">
+                    {row.product_sku_snapshot}
+                  </p>
+                  <p
+                    className="mt-1 truncate text-xs text-ui-text-muted"
+                    title={row.batch_code_snapshot}
+                  >
+                    Batch {row.batch_code_snapshot}
+                  </p>
+                </td>
+
+                <td
+                  className={
+                    row.quantity_delta >= 0
+                      ? "ui-number whitespace-nowrap px-4 py-4 text-right align-top font-semibold text-ui-primary"
+                      : "ui-number whitespace-nowrap px-4 py-4 text-right align-top font-semibold text-ui-danger"
+                  }
+                >
+                  {signedQuantity(row.quantity_delta)}
+                </td>
+
+                <td className="max-w-[20rem] px-4 py-4 align-top">
+                  <p className="break-words font-medium text-ui-text">
+                    {row.source_ref_snapshot}
+                  </p>
+                  <p className="mt-1 text-xs text-ui-text-muted">
+                    No. transaksi {row.transaction_no}
+                  </p>
+                </td>
+
+                <td className="px-4 py-4 align-top">
+                  <Link
+                    className="inline-flex min-h-[var(--ui-control-height)] items-center text-sm font-semibold text-ui-primary hover:underline"
+                    href={detailHref(row, params)}
+                  >
+                    Detail
+                  </Link>
+                </td>
+              </tr>
+            );
+          })}
+        </tbody>
+      </table>
+    </div>
+  );
+}
 function Pagination({ result, params, page }: { result: LedgerExplorerPage; params: SearchParams; page: number }) {
   const previousPage = Math.max(1, page - 1);
   const nextPage = page + 1;
@@ -332,5 +509,5 @@ function LedgerLoading() {
 
 export default async function LedgerPage({ searchParams }: { searchParams: Promise<SearchParams> }) {
   const [session, params] = await Promise.all([requireAdminSession(), searchParams]);
-  return <AppShell profile={session.profile}><div className="mx-auto w-full max-w-[1440px] px-4 py-6 sm:px-6 lg:px-8 lg:py-8"><PageHeader description="Telusuri perubahan barang tanpa mengubah riwayat yang sudah tercatat." title="Riwayat Stok" /><p className="mt-4 text-sm text-ui-text-muted">Transaksi yang sudah dicatat tidak dapat diubah atau dihapus. Pembatalan transaksi berbeda dari Penyesuaian Hasil Hitung Stok.</p><LedgerFilterControls /><Suspense fallback={<LedgerLoading />}><LedgerResults params={params} /></Suspense></div></AppShell>;
+  return <AppShell profile={session.profile}><div className="mx-auto w-full max-w-[1440px] px-4 py-6 sm:px-6 lg:px-8 lg:py-8"><PageHeader description="Lihat kronologi perubahan stok dan telusuri bukti setiap transaksi." title="Riwayat Stok" /><p className="mt-4 text-sm text-ui-text-muted">Setiap baris menunjukkan perubahan stok yang sudah tercatat. Gunakan Detail untuk melihat waktu pencatatan, pelaksana, sumber, dan hubungan pembatalan. Transaksi yang sudah dicatat tidak dapat diubah atau dihapus.</p><LedgerFilterControls /><Suspense fallback={<LedgerLoading />}><LedgerResults params={params} /></Suspense></div></AppShell>;
 }

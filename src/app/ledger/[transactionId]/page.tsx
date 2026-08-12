@@ -45,7 +45,7 @@ function typeLabel(code: string) {
   if (code === "DISPOSAL_EXPIRED") return "Barang Kedaluwarsa";
   if (code.startsWith("DISPOSAL")) return "Barang Rusak / Kedaluwarsa";
   if (code === "STOCKTAKE_ADJUSTMENT") return "Penyesuaian Hasil Hitung";
-  if (code === "REVERSAL") return "Pembatalan Transaksi";
+  if (code === "REVERSAL") return "Pembatalan";
   return "Perubahan Stok";
 }
 
@@ -55,11 +55,11 @@ function bucketLabel(code: LedgerExplorerRow["bucket_code"]) {
   return "Rusak";
 }
 
-function reversalLabel(state: LedgerExplorerRow["reversal_state"]) {
-  if (state === "REVERSAL") return "Transaksi pembatalan";
-  if (state === "FULLY_REVERSED") return "Sudah dibatalkan";
-  if (state === "PARTIALLY_REVERSED") return "Sebagian dibatalkan";
-  return "Belum dibatalkan";
+function reversalBadgeLabel(state: LedgerExplorerRow["reversal_state"]) {
+  if (state === "REVERSAL") return "Pembatalan";
+  if (state === "FULLY_REVERSED") return "Dibatalkan";
+  if (state === "PARTIALLY_REVERSED") return "Dibatalkan sebagian";
+  return null;
 }
 
 function codeLabel(value: string) {
@@ -152,7 +152,7 @@ function uniqueRelationships(
 
 function Linkage({ links, transactionId, ledgerReturnTo }: { links: LedgerReversalLink[]; transactionId: string; ledgerReturnTo: string }) {
   const relationships = uniqueRelationships(links, transactionId);
-  if (!relationships.length) return <p className="text-sm text-ui-text-muted">Belum ada pembatalan yang tertaut pada transaksi ini.</p>;
+  if (!relationships.length) return <p className="text-sm text-ui-text-muted">Tidak ada transaksi pembatalan yang tertaut.</p>;
 
   return (
     <div className="grid gap-3">
@@ -227,6 +227,7 @@ export default async function LedgerTransactionPage({
   const firstRow = detail.rows[0];
   const preview = await previewStockTransactionReversal(detail.transactionId).catch(() => null);
   const returnTo = ledgerReturnTo(query);
+  const reversalBadge = reversalBadgeLabel(firstRow.reversal_state);
 
   return (
     <AppShell profile={session.profile}>
@@ -248,15 +249,19 @@ export default async function LedgerTransactionPage({
               <p className="text-lg font-semibold text-ui-text">{firstRow.transaction_no}</p>
               <p className="mt-1 text-sm text-ui-text-muted">{firstRow.note || "Tidak ada catatan tambahan pada transaksi ini."}</p>
             </div>
-            <StatusBadge tone={firstRow.reversal_state === "NOT_REVERSED" ? "neutral" : "warning"}>{reversalLabel(firstRow.reversal_state)}</StatusBadge>
+            {reversalBadge ? (
+              <StatusBadge tone="warning">
+                {reversalBadge}
+              </StatusBadge>
+            ) : null}
           </div>
           <dl className="mt-5 grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
             <div><dt className="text-xs font-semibold text-ui-text-muted">Waktu kejadian</dt><dd className="mt-1 text-sm text-ui-text">{formatDate(firstRow.occurred_at)}</dd></div>
-            <div><dt className="text-xs font-semibold text-ui-text-muted">Waktu dicatat</dt><dd className="mt-1 text-sm text-ui-text">{formatDate(firstRow.recorded_at)}</dd></div>
             <div><dt className="text-xs font-semibold text-ui-text-muted">Alasan</dt><dd className="mt-1 text-sm text-ui-text">{codeLabel(firstRow.reason_code_snapshot)}</dd></div>
-            <div><dt className="text-xs font-semibold text-ui-text-muted">Kanal / Sumber</dt><dd className="mt-1 text-sm text-ui-text">{codeLabel(firstRow.channel_code_snapshot)}</dd></div>
-            <div><dt className="text-xs font-semibold text-ui-text-muted">Referensi sumber</dt><dd className="mt-1 text-sm text-ui-text">{firstRow.source_ref_snapshot}</dd></div>
+            <div><dt className="text-xs font-semibold text-ui-text-muted">Referensi</dt><dd className="mt-1 break-words text-sm text-ui-text">{firstRow.source_ref_snapshot}</dd></div>
+            <div><dt className="text-xs font-semibold text-ui-text-muted">Kanal</dt><dd className="mt-1 text-sm text-ui-text">{codeLabel(firstRow.channel_code_snapshot)}</dd></div>
             <div><dt className="text-xs font-semibold text-ui-text-muted">Dilakukan oleh</dt><dd className="mt-1 text-sm text-ui-text">{firstRow.process_name ? "Proses otomatis" : "Akun Admin"}</dd></div>
+            <div><dt className="text-xs font-semibold text-ui-text-muted">Waktu dicatat</dt><dd className="mt-1 text-sm text-ui-text">{formatDate(firstRow.recorded_at)}</dd></div>
           </dl>
         </section>
 
@@ -264,22 +269,33 @@ export default async function LedgerTransactionPage({
           <div className="border-b border-ui-border px-5 py-4"><h2 className="font-semibold text-ui-text">Dampak stok</h2><p className="mt-1 text-sm text-ui-text-muted">Jumlah per produk, batch, dan kondisi stok pada transaksi ini.</p></div>
           <div className="divide-y divide-ui-border" data-testid="ledger-detail-entries">
             {detail.rows.map((row) => (
-              <div className="grid gap-3 px-5 py-4 sm:grid-cols-[minmax(0,1fr)_auto_auto]" key={row.ledger_entry_id}>
-                <div><p className="font-semibold text-ui-text">{row.product_sku_snapshot}</p><p className="mt-1 text-sm text-ui-text-muted">Kode Batch {row.batch_code_snapshot} · {bucketLabel(row.bucket_code)}</p></div>
-                <p className={row.quantity_delta >= 0 ? "ui-number font-semibold text-ui-primary" : "ui-number font-semibold text-ui-danger"}>{signed(row.quantity_delta)}</p>
-                <StatusBadge tone={row.reversal_state === "NOT_REVERSED" ? "neutral" : "warning"}>{reversalLabel(row.reversal_state)}</StatusBadge>
+              <div className="flex flex-wrap items-start justify-between gap-3 px-5 py-4" key={row.ledger_entry_id}>
+                <div className="min-w-0">
+                  <p className="font-semibold text-ui-text">{row.product_sku_snapshot}</p>
+                  <p className="mt-1 text-sm text-ui-text-muted">
+                    Batch {row.batch_code_snapshot} · {bucketLabel(row.bucket_code)}
+                  </p>
+                </div>
+                <p className={row.quantity_delta >= 0 ? "ui-number shrink-0 font-semibold text-ui-primary" : "ui-number shrink-0 font-semibold text-ui-danger"}>{signed(row.quantity_delta)}</p>
               </div>
             ))}
           </div>
         </section>
 
-        <section className="mt-6 rounded-[var(--ui-radius-lg)] border border-ui-border bg-ui-surface p-5 shadow-[var(--ui-shadow-sm)]">
-          <h2 className="font-semibold text-ui-text">Status pembatalan</h2>
-          <div className="mt-4"><Linkage ledgerReturnTo={returnTo} links={detail.reversalLinks} transactionId={detail.transactionId} /></div>
+        <details
+          className="mt-6 rounded-[var(--ui-radius-lg)] border border-ui-border bg-ui-surface p-5 shadow-[var(--ui-shadow-sm)]"
+          open={Boolean(reversalBadge)}
+        >
+          <summary className="cursor-pointer font-semibold text-ui-text">
+            Pembatalan dan koreksi
+          </summary>
+          <div className="mt-4">
+            <Linkage ledgerReturnTo={returnTo} links={detail.reversalLinks} transactionId={detail.transactionId} />
+          </div>
           {!preview ? (
             <Alert
               className="mt-4"
-              title="Status pembatalan belum dapat diperiksa"
+              title="Pemeriksaan pembatalan belum tersedia"
               tone="warning"
             >
               <p>
@@ -290,7 +306,7 @@ export default async function LedgerTransactionPage({
           ) : !preview.eligible ? (
             <Alert
               className="mt-4"
-              title="Tidak dapat dibatalkan"
+              title="Transaksi tidak dapat dibatalkan"
               tone="warning"
             >
               <p>
@@ -303,11 +319,11 @@ export default async function LedgerTransactionPage({
                   )
                   .filter(Boolean)
                   .join(" ") ||
-                  "Transaksi ini belum memenuhi syarat untuk dibatalkan."}
+                  "Transaksi ini tidak memenuhi syarat untuk dibatalkan."}
               </p>
             </Alert>
           ) : null}
-        </section>
+        </details>
 
         <details className="mt-6 rounded-[var(--ui-radius-lg)] border border-ui-border bg-ui-surface p-5">
           <summary className="cursor-pointer font-semibold text-ui-text">Detail Teknis</summary>

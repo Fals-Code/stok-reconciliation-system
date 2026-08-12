@@ -173,6 +173,12 @@ function pagination(html) {
   return html.match(/<nav[^>]*data-testid="ledger-pagination"[^>]*>[\s\S]*?<\/nav>/)?.[0] ?? "";
 }
 
+function ledgerTable(html) {
+  return html.match(
+    /<div[^>]*data-testid="ledger-table"[^>]*>[\s\S]*?<\/table>\s*<\/div>/,
+  )?.[0] ?? "";
+}
+
 function hrefForAriaLabel(html, label) {
   const tag = html.match(new RegExp(`<a\\b[^>]*aria-label="${label}"[^>]*>`, "g"))?.[0] ?? "";
   return tag.match(/href="([^"]*)"/)?.[1]?.replaceAll("&amp;", "&") ?? "";
@@ -292,7 +298,20 @@ async function main() {
   const ledgerUrl = `${baseUrl}/ledger`;
   const first = await page(ledgerUrl);
   check("Riwayat Stok renders", first.status === 200 && contains(first.html, "Riwayat Stok"));
-  check("Desktop list renders operational movement fields", first.html.includes('data-testid="ledger-table"') && contains(first.html, "Waktu kejadian") && contains(first.html, "Waktu dicatat"));
+  const firstTable = ledgerTable(first.html);
+  check(
+    "Desktop list prioritizes stock history evidence",
+    first.html.includes('data-testid="ledger-table"') &&
+      contains(firstTable, "Waktu") &&
+      contains(firstTable, "Perubahan") &&
+      contains(firstTable, "Produk / Batch") &&
+      contains(firstTable, "Jumlah") &&
+      contains(firstTable, "Referensi") &&
+      contains(firstTable, "No. transaksi") &&
+      !contains(firstTable, "Waktu dicatat") &&
+      !contains(firstTable, "Status") &&
+      !contains(firstTable, "Belum dibatalkan"),
+  );
   check("Riwayat Stok is read-only", !/<form[^>]*data-testid="ledger-filter-form"[^>]*action=/.test(first.html) && contains(first.html, "tidak dapat diubah atau dihapus"));
   check(
     "Ledger filters render as automatic URL controls",
@@ -376,7 +395,7 @@ async function main() {
       contains(contextual.html, "Barang Rusak / Kedaluwarsa") &&
       !contextual.html.includes('value="DISPOSAL_DAMAGED"') &&
       !contextual.html.includes('value="DISPOSAL_EXPIRED"') &&
-      contains(contextual.html, "Sumber transaksi") &&
+      contains(contextual.html, "Asal transaksi") &&
       contextual.html.includes('name="sourceType"') &&
       contextual.html.includes('value="OPENING_BALANCE_CUTOVER"') &&
       contains(contextual.html, "Saldo Awal") &&
@@ -387,10 +406,42 @@ async function main() {
       contains(contextual.html, "Penerimaan Retur"),
   );
 
+  check(
+    "Ledger filters use operator-first stock and reversal wording",
+    contains(contextual.html, "SKU Produk") &&
+      contains(contextual.html, "Referensi") &&
+      contains(contextual.html, "Arah Stok") &&
+      contains(contextual.html, "Stok bertambah") &&
+      contains(contextual.html, "Stok berkurang") &&
+      contains(contextual.html, "Pembatalan") &&
+      contains(contextual.html, "Tanpa pembatalan") &&
+      contains(contextual.html, "Dibatalkan sebagian") &&
+      contains(contextual.html, "Dibatalkan penuh") &&
+      contains(contextual.html, "Baris pembatalan") &&
+      !contains(contextual.html, "Arah Jumlah") &&
+      !contains(contextual.html, "Status Pembatalan"),
+  );
+
   const detail = await page(`${baseUrl}/ledger/${multi.transaction_id}?productSku=${encodeURIComponent(sku)}`);
   check("Exact transaction detail opens", contains(detail.html, "Detail Transaksi") && contains(detail.html, "Dampak stok"));
   check("Multi-entry detail renders all rows", (detail.html.match(/data-testid=\"ledger-detail-entries\"/g) ?? []).length === 1 && contains(detail.html, String(multi.transaction_no)));
-  check("Detail renders expected transaction evidence", contains(detail.html, "Waktu kejadian") && contains(detail.html, "Waktu dicatat") && contains(detail.html, "Alasan") && contains(detail.html, "Kanal / Sumber") && contains(detail.html, "Referensi sumber") && contains(detail.html, "Dilakukan oleh") && contains(detail.html, String(multi.product_sku_snapshot)) && contains(detail.html, String(multi.batch_code_snapshot)));
+  check(
+    "Detail renders expected transaction evidence",
+    contains(detail.html, "Waktu kejadian") &&
+      contains(detail.html, "Waktu dicatat") &&
+      contains(detail.html, "Alasan") &&
+      contains(detail.html, "Kanal") &&
+      contains(detail.html, "Referensi") &&
+      contains(detail.html, "Dilakukan oleh") &&
+      contains(detail.html, String(multi.product_sku_snapshot)) &&
+      contains(detail.html, String(multi.batch_code_snapshot)),
+  );
+  check(
+    "Detail keeps cancellation state secondary",
+    contains(detail.html, "Pembatalan dan koreksi") &&
+      !contains(detail.html, "Belum dibatalkan") &&
+      !contains(detail.html, "Status pembatalan"),
+  );
 
   const contextualDetail = await page(`${baseUrl}/ledger/${multi.transaction_id}?productId=${encodeURIComponent(multi.product_id)}&batchId=${encodeURIComponent(multi.batch_id)}&sourceType=RECEIPT`);
   check("Detail and back link retain exact filter context", contextualDetail.html.includes(`productId=${multi.product_id}`) && contextualDetail.html.includes(`batchId=${multi.batch_id}`) && contextualDetail.html.includes("sourceType=RECEIPT"));
