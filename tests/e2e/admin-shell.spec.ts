@@ -158,6 +158,113 @@ test(
 );
 
 test(
+  "Pengaturan membuka capability administratif tanpa menambah primary navigation",
+  async ({ page }) => {
+    const runtimeErrors: string[] = [];
+    const serverFailures: string[] = [];
+
+    page.on("console", (message) => {
+      if (message.type() === "error") {
+        runtimeErrors.push(`${new URL(page.url()).pathname}: ${message.text()}`);
+      }
+    });
+    page.on("pageerror", (error) => {
+      runtimeErrors.push(error.message);
+    });
+    page.on("response", (response) => {
+      if (response.status() >= 500) {
+        serverFailures.push(`${response.status()} ${response.url()}`);
+      }
+    });
+
+    await loginAsAdmin(page);
+    await page.goto("/settings", {
+      waitUntil: "domcontentloaded",
+    });
+
+    const settingsLink = page
+      .locator("nav[aria-label='Navigasi utama']")
+      .getByRole("link", { name: "Pengaturan", exact: true })
+      .filter({ visible: true });
+
+    await expect(settingsLink).toHaveAttribute("aria-current", "page");
+
+    for (const [label, href] of [
+      ["Setup Stok Awal", "/opening-balances"],
+      ["Mapping Produk Marketplace", "/marketplace/listings"],
+      ["Import / Simulator Pesanan", "/marketplace/import"],
+      ["Status & Diagnostik Sistem", "/notifications/operations"],
+    ] as const) {
+      await expect(
+        page.getByRole("link", { name: new RegExp(`^${label}`) }),
+      ).toHaveAttribute("href", href);
+    }
+
+    for (const href of [
+      "/opening-balances",
+      "/marketplace/listings",
+      "/marketplace/import",
+      "/notifications/operations",
+    ]) {
+      await expect(
+        page.locator(`nav[aria-label='Navigasi utama'] a[href='${href}']`),
+      ).toHaveCount(0);
+    }
+
+    const administrativeFlows = [
+      ["Setup Stok Awal", "/opening-balances"],
+      ["Mapping Produk Marketplace", "/marketplace/listings"],
+      ["Import / Simulator Pesanan", "/marketplace/import"],
+    ] as const;
+
+    for (const [label, pathname] of administrativeFlows) {
+      await page.getByRole("link", { name: new RegExp(`^${label}`) }).click();
+      await page.waitForURL((url) => url.pathname === pathname);
+
+      const overflowState = await page.evaluate(() => {
+        const viewportWidth = document.documentElement.clientWidth;
+        const candidates = Array.from(
+          document.querySelectorAll<HTMLElement>("body *"),
+        )
+          .filter(
+            (element) =>
+              element.getBoundingClientRect().right > viewportWidth + 1,
+          )
+          .slice(0, 10)
+          .map((element) => ({
+            className: element.className,
+            tagName: element.tagName,
+            text: element.textContent?.trim().slice(0, 80) ?? "",
+          }));
+
+        return {
+          candidates,
+          rootScrollWidth: document.documentElement.scrollWidth,
+          viewportWidth,
+        };
+      });
+
+      expect(
+        overflowState.rootScrollWidth,
+        JSON.stringify(overflowState.candidates),
+      ).toBeLessThanOrEqual(overflowState.viewportWidth + 1);
+
+      await page.reload({ waitUntil: "domcontentloaded" });
+      await expect(
+        page.getByRole("link", { name: "Kembali ke Pengaturan", exact: true }),
+      ).toBeVisible();
+      await page
+        .getByRole("link", { name: "Kembali ke Pengaturan", exact: true })
+        .click();
+      await page.waitForURL((url) => url.pathname === "/settings");
+    }
+
+    expect(runtimeErrors).toEqual([]);
+    expect(serverFailures).toEqual([]);
+  },
+);
+
+test(
   "route contextual mengaktifkan parent menu yang benar secara visual",
   async ({ page, isMobile }) => {
     test.skip(

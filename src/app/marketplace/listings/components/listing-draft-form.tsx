@@ -237,9 +237,10 @@ export default function MarketplaceListingDraftForm({
         </label>
 
         {listingType === "SINGLE" ? (
-          <label className="field-label">
+          <label className="field-label min-w-0">
             Produk satuan
             <select
+              className="min-w-0 w-full"
               defaultValue={initial.productId}
               name="productId"
               required

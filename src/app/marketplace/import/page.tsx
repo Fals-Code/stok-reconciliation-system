@@ -59,6 +59,7 @@ export default async function CsvImportPage({ searchParams }: { searchParams: Pr
             <p className="mt-3 max-w-3xl text-sm leading-6 text-slate-400">CSV v1 hanya menjadi adapter ORDER/RESERVE. Preview tidak mengubah stok; posting selalu membutuhkan konfirmasi eksplisit dan memakai boundary canonical yang sama dengan simulator.</p>
           </div>
           <div className="flex flex-wrap gap-2">
+            <Link className="nav-link" href="/settings">Kembali ke Pengaturan</Link>
             <Link className="nav-link" href="/marketplace/import/template">Unduh template CSV v1</Link>
             <span className="status-pill status-success">Read-only sampai konfirmasi</span>
           </div>
@@ -69,7 +70,7 @@ export default async function CsvImportPage({ searchParams }: { searchParams: Pr
         <section className="panel-card mt-8" aria-labelledby="upload-title">
           <p className="section-kicker">Step 1</p>
           <h2 id="upload-title" className="section-title">Unggah dan validasi</h2>
-          <form action={stageMarketplaceCsvAction} encType="multipart/form-data" className="mt-5 flex flex-col gap-4 sm:flex-row sm:items-end">
+          <form action={stageMarketplaceCsvAction} className="mt-5 flex flex-col gap-4 sm:flex-row sm:items-end">
             <label className="field-label flex-1">File CSV v1<input name="file" type="file" accept=".csv,text/csv" required /></label>
             <button className="primary-button" type="submit">Unggah untuk preview</button>
           </form>

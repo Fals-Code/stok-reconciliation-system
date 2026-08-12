@@ -320,6 +320,9 @@ export default async function MarketplaceListingsPage({
           </p>
 
           <div className="mt-6 flex flex-wrap gap-3">
+            <Link className="nav-link inline-flex" href="/settings">
+              Kembali ke Pengaturan
+            </Link>
             <Link className="primary-button inline-flex" href="#listing-draft">
               Buat draft mapping
             </Link>

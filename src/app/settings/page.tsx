@@ -1,3 +1,5 @@
+import Link from "next/link";
+
 import {
   AppShell,
 } from "@/app/app-shell/app-shell";
@@ -108,6 +110,102 @@ export default async function SettingsPage() {
               </dd>
             </div>
           </dl>
+        </section>
+
+        <section
+          aria-labelledby="administrative-settings-heading"
+          className="mt-6 overflow-hidden rounded-[var(--ui-radius-lg)] border border-ui-border bg-ui-surface shadow-[var(--ui-shadow-sm)]"
+        >
+          <div className="border-b border-ui-border px-5 py-4">
+            <h2
+              className="text-base font-semibold text-ui-text"
+              id="administrative-settings-heading"
+            >
+              Kebutuhan Administratif
+            </h2>
+            <p className="mt-1 text-sm leading-6 text-ui-text-muted">
+              Setup dan pengelolaan khusus Admin yang tidak termasuk pekerjaan gudang harian.
+            </p>
+          </div>
+
+          <div className="divide-y divide-ui-border">
+            <div className="px-5 py-4">
+              <p className="text-xs font-semibold uppercase tracking-wide text-ui-text-muted">
+                Stok awal
+              </p>
+              <Link
+                className="mt-3 flex min-h-[var(--ui-control-height)] items-center justify-between gap-4 rounded-[var(--ui-radius-md)] p-3 hover:bg-ui-surface-subtle"
+                href="/opening-balances"
+              >
+                <span>
+                  <span className="block text-sm font-semibold text-ui-text">
+                    Setup Stok Awal
+                  </span>
+                  <span className="mt-1 block text-sm leading-6 text-ui-text-muted">
+                    Siapkan basis stok pertama sebelum kegiatan gudang berjalan.
+                  </span>
+                </span>
+                <span aria-hidden="true" className="text-ui-primary">→</span>
+              </Link>
+            </div>
+
+            <div className="px-5 py-4">
+              <p className="text-xs font-semibold uppercase tracking-wide text-ui-text-muted">
+                Marketplace
+              </p>
+              <div className="mt-3 grid gap-2">
+                <Link
+                  className="flex min-h-[var(--ui-control-height)] items-center justify-between gap-4 rounded-[var(--ui-radius-md)] p-3 hover:bg-ui-surface-subtle"
+                  href="/marketplace/listings"
+                >
+                  <span>
+                    <span className="block text-sm font-semibold text-ui-text">
+                      Mapping Produk Marketplace
+                    </span>
+                    <span className="mt-1 block text-sm leading-6 text-ui-text-muted">
+                      Hubungkan produk marketplace dengan produk dan isi paket yang benar.
+                    </span>
+                  </span>
+                  <span aria-hidden="true" className="text-ui-primary">→</span>
+                </Link>
+
+                <Link
+                  className="flex min-h-[var(--ui-control-height)] items-center justify-between gap-4 rounded-[var(--ui-radius-md)] p-3 hover:bg-ui-surface-subtle"
+                  href="/marketplace/import"
+                >
+                  <span>
+                    <span className="block text-sm font-semibold text-ui-text">
+                      Import / Simulator Pesanan
+                    </span>
+                    <span className="mt-1 block text-sm leading-6 text-ui-text-muted">
+                      Uji dan masukkan file pesanan melalui alur khusus Admin.
+                    </span>
+                  </span>
+                  <span aria-hidden="true" className="text-ui-primary">→</span>
+                </Link>
+              </div>
+            </div>
+
+            <div className="px-5 py-4">
+              <p className="text-xs font-semibold uppercase tracking-wide text-ui-text-muted">
+                Status sistem
+              </p>
+              <Link
+                className="mt-3 flex min-h-[var(--ui-control-height)] items-center justify-between gap-4 rounded-[var(--ui-radius-md)] p-3 hover:bg-ui-surface-subtle"
+                href="/notifications/operations"
+              >
+                <span>
+                  <span className="block text-sm font-semibold text-ui-text">
+                    Status &amp; Diagnostik Sistem
+                  </span>
+                  <span className="mt-1 block text-sm leading-6 text-ui-text-muted">
+                    Periksa pengiriman notifikasi dan tangani kegagalan yang memerlukan Admin.
+                  </span>
+                </span>
+                <span aria-hidden="true" className="text-ui-primary">→</span>
+              </Link>
+            </div>
+          </div>
         </section>
 
         <section className="mt-6 rounded-[var(--ui-radius-lg)] border border-ui-border bg-ui-surface p-5 shadow-[var(--ui-shadow-sm)]">

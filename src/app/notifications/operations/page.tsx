@@ -723,6 +723,9 @@ export default async function NotificationOperationsPage({
       />
 
       <div className="mx-auto max-w-[1500px] px-5 py-8 lg:px-8">
+        <Link className="nav-link mb-6 inline-flex" href="/settings">
+          Kembali ke Pengaturan
+        </Link>
         <SummarySection summary={summary} />
 
         {feedbackSuccess ? (

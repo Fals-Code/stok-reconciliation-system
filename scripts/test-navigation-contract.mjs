@@ -64,11 +64,15 @@ assert.equal(getActiveNavHref("/entry-corrections"), "/products");
 
 assert.equal(getActiveNavHref("/marketplace"), "/marketplace");
 assert.equal(getActiveNavHref("/marketplace/order-123"), "/marketplace");
+assert.equal(getActiveNavHref("/marketplace/listings"), "/settings");
+assert.equal(getActiveNavHref("/marketplace/import"), "/settings");
+assert.equal(getActiveNavHref("/marketplace/import/job-123"), "/settings");
 assert.equal(getActiveNavHref("/returns"), "/marketplace");
 assert.equal(getActiveNavHref("/returns/return-123"), "/marketplace");
 
 assert.equal(getActiveNavHref("/settings"), "/settings");
 assert.equal(getActiveNavHref("/opening-balances"), "/settings");
+assert.equal(getActiveNavHref("/notifications/operations"), "/settings");
 
 assert.equal(getActiveNavHref("/route-tidak-dikenal"), null);
 
@@ -77,9 +81,61 @@ assert.equal(isNavItemActive("/", "/"), true);
 assert.equal(isNavItemActive("/products", "/receipts/new"), true);
 assert.equal(isNavItemActive("/marketplace", "/returns/return-123"), true);
 assert.equal(isNavItemActive("/settings", "/opening-balances"), true);
+assert.equal(isNavItemActive("/settings", "/marketplace/listings"), true);
+assert.equal(isNavItemActive("/settings", "/marketplace/import/job-123"), true);
+assert.equal(isNavItemActive("/marketplace", "/marketplace/order-123"), true);
 assert.equal(isNavItemActive("/", "/products"), false);
 
-// 4. Metadata Identity & content restriction assertions (dari Commit 01)
+// 4. Pengaturan menjadi pintu capability administratif, bukan menu utama baru
+const settingsSource = await readFile(
+  new URL("../src/app/settings/page.tsx", import.meta.url),
+  "utf8",
+);
+
+for (const [label, href] of [
+  ["Setup Stok Awal", "/opening-balances"],
+  ["Mapping Produk Marketplace", "/marketplace/listings"],
+  ["Import / Simulator Pesanan", "/marketplace/import"],
+  ["Status &amp; Diagnostik Sistem", "/notifications/operations"],
+]) {
+  assert.ok(
+    settingsSource.includes(label),
+    `Settings harus menampilkan ${label}`,
+  );
+  assert.ok(
+    settingsSource.includes(`href="${href}"`),
+    `Settings harus menautkan ${label} ke ${href}`,
+  );
+}
+
+for (const item of [...primaryNavigation, settingsNavigation]) {
+  assert.equal(
+    [
+      "/opening-balances",
+      "/marketplace/listings",
+      "/marketplace/import",
+      "/notifications/operations",
+    ].includes(item.href),
+    false,
+    `${item.href} tidak boleh menjadi item primary navigation`,
+  );
+}
+
+const capabilitySources = await Promise.all([
+  readFile(new URL("../src/app/opening-balances/page.tsx", import.meta.url), "utf8"),
+  readFile(new URL("../src/app/marketplace/listings/page.tsx", import.meta.url), "utf8"),
+  readFile(new URL("../src/app/marketplace/import/page.tsx", import.meta.url), "utf8"),
+  readFile(new URL("../src/app/marketplace/import/[jobId]/page.tsx", import.meta.url), "utf8"),
+  readFile(new URL("../src/app/notifications/operations/page.tsx", import.meta.url), "utf8"),
+]);
+
+assert.ok(capabilitySources[0].includes('href="/settings"'));
+assert.ok(capabilitySources[1].includes('href="/settings"'));
+assert.ok(capabilitySources[2].includes('href="/settings"'));
+assert.ok(capabilitySources[3].includes('href="/marketplace/import"'));
+assert.ok(capabilitySources[4].includes('href="/settings"'));
+
+// 5. Metadata Identity & content restriction assertions (dari Commit 01)
 const layoutSource = await readFile(
   new URL("../src/app/layout.tsx", import.meta.url),
   "utf8",

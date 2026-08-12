@@ -57,6 +57,17 @@ export function getActiveNavHref(pathname: string): string | null {
   }
 
   if (
+    pathname === "/marketplace/listings" ||
+    pathname.startsWith("/marketplace/listings/") ||
+    pathname === "/marketplace/import" ||
+    pathname.startsWith("/marketplace/import/") ||
+    pathname === "/notifications/operations" ||
+    pathname.startsWith("/notifications/operations/")
+  ) {
+    return "/settings";
+  }
+
+  if (
     pathname === "/marketplace" ||
     pathname.startsWith("/marketplace/") ||
     pathname === "/returns" ||
