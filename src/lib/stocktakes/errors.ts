@@ -125,6 +125,14 @@ const STOCKTAKE_ERROR_MESSAGES: Record<string, string> = {
     "Stocktake tidak berada pada status APPROVED yang dapat diposting.",
   STOCKTAKE_ALREADY_POSTED:
     "Stocktake ini sudah memiliki transaksi adjustment.",
+  STOCKTAKE_CANCEL_INVALID_STATE:
+    "Hitung Stok pada status ini tidak dapat dibatalkan. Muat ulang halaman.",
+  STOCKTAKE_CANCEL_REASON_REQUIRED:
+    "Alasan pembatalan wajib diisi.",
+  STOCKTAKE_CANCEL_REASON_TOO_LONG:
+    "Alasan pembatalan maksimal 2.000 karakter.",
+  STOCKTAKE_CANCEL_CONFIRMATION_REQUIRED:
+    "Konfirmasi pembatalan wajib dicentang.",
   STOCKTAKE_PROJECTION_DRIFT:
     "Projection stok berbeda dari ledger. Posting diblokir sampai drift diperbaiki.",
   STOCKTAKE_RESERVED_CONFLICT:
