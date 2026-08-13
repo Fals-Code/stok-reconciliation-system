@@ -655,6 +655,30 @@ test(
 
     await loginAsAdmin(page);
 
+    const fixtureSuffix = Date.now().toString(36).toUpperCase();
+    const activeFixtureCode = `E2E_ACTIVE_${fixtureSuffix}`;
+    const inactiveFixtureCode = `E2E_INACTIVE_${fixtureSuffix}`;
+
+    async function createPromoFixture(code: string, name: string) {
+      await page.goto("/settings/promos", { waitUntil: "domcontentloaded" });
+      const createPromo = page.locator("#promo-create-form");
+      await createPromo.locator("summary").click();
+      await createPromo.getByLabel("Kode Promo", { exact: true }).fill(code);
+      await createPromo.getByLabel("Nama Promo", { exact: true }).fill(name);
+      await createPromo.getByRole("button", { name: "Tambah Promo", exact: true }).click();
+      await expect(page.getByText(code, { exact: true })).toBeVisible();
+    }
+
+    await createPromoFixture(activeFixtureCode, `E2E Active ${fixtureSuffix}`);
+    await createPromoFixture(inactiveFixtureCode, `E2E Inactive ${fixtureSuffix}`);
+
+    const inactiveRow = page.locator("div.group.grid").filter({ hasText: inactiveFixtureCode });
+    await inactiveRow.locator("summary", { hasText: "Nonaktifkan" }).click();
+    await inactiveRow.getByLabel("Alasan Penonaktifan", { exact: true }).fill("Fixture browser inactive");
+    await inactiveRow.getByRole("checkbox").check();
+    await inactiveRow.getByRole("button", { name: "Nonaktifkan", exact: true }).click();
+    await expect(inactiveRow.getByText("Tidak Aktif", { exact: true })).toBeVisible();
+
     await page.goto("/settings/promos", { waitUntil: "domcontentloaded" });
     const promoRows = page.locator("div.group.grid");
     const activePromoCodes = await promoRows
@@ -666,7 +690,7 @@ test(
       .locator("p.ui-code")
       .allTextContents();
 
-    expect(activePromoCodes.length).toBeGreaterThan(0);
+    expect(activePromoCodes).toContain(activeFixtureCode);
 
     await page.goto("/manual-outbounds", { waitUntil: "domcontentloaded" });
     const reason = page.locator("#outbound-reason");
@@ -688,6 +712,7 @@ test(
       }),
     );
     expect(selectablePromoCodes.sort()).toEqual([...activePromoCodes].sort());
+    expect(selectablePromoCodes).not.toContain(inactiveFixtureCode);
     expect(selectablePromoCodes).not.toEqual(expect.arrayContaining(inactivePromoCodes));
 
     await promoSelector.selectOption(activePromoCodes[0]);

@@ -295,9 +295,9 @@ async function main() {
   const promoRowVersion = createdPromo.json.rowVersion;
 
   // 2. Cari batch aktif yang memiliki sellable stock >= 1
-  const batches = await view("product_batch_master?lifecycle_status_code=eq.ACTIVE&sellable_qty=gte.1&limit=1");
-  pass("Batch dengan stok tersedia untuk pengujian", batches && batches.length > 0);
-  const testBatch = batches[0];
+  const batches = await view("product_batch_master?lifecycle_status_code=eq.ACTIVE&sellable_qty=gte.1&order=product_id.asc,expiry_date.asc,batch_code.asc&limit=100");
+  const testBatch = (batches ?? []).find((batch) => Number(batch.sellable_qty) >= 1);
+  pass("Batch deterministik dengan stok tersedia untuk pengujian", Boolean(testBatch));
 
   // Ambil data produk terkait
   const products = await view(`product_master?product_id=eq.${testBatch.product_id}&limit=1`);
@@ -388,11 +388,12 @@ async function main() {
 
   // Halaman manual-outbounds detail/riwayat harus tetap menampilkan detail promo dari snapshot lama
   // (Catatan: history list mungkin menggunakan kode promo dari metadata snapshot)
-  const historyPage = page; // halaman terakhir sudah adalah success page yang menampilkan outbound tersebut
+  const historyPage = await getPage(`${baseUrl}/manual-outbounds?selected=${encodeURIComponent(outboundData.outbound_id)}#history`);
   pass(
-    "Detail promo tetap terbaca dari riwayat transaksi historis meskipun promo sudah tidak aktif",
-    // Cukup verifikasi bahwa halaman masih dapat diakses setelah archive — snapshot isolasi diverifikasi via DB (snapshot.code)
-    historyPage.statusCode === 200
+    "Detail promo tetap terbaca dari halaman history setelah archive",
+    historyPage.statusCode === 200 &&
+      containsText(historyPage.html, promoCode) &&
+      containsText(historyPage.html, promoName)
   );
 
   // 8. Bersihkan data uji setelah selesai (reversal manual outbound, opsional)

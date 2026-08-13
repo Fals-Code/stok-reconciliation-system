@@ -1,6 +1,6 @@
 begin;
 create extension if not exists pgtap with schema extensions;
-select plan(52);
+select plan(57);
 
 -- 1. Schema and security tests.
 select has_table('catalog', 'promo_references', 'promo_references table exists');
@@ -69,6 +69,11 @@ select is(
   0::bigint,
   'PUBLIC has no EXECUTE privilege on promo RPC commands'
 );
+-- Internal helper is not directly callable by any external role.
+select is((select count(*) from pg_proc p join pg_namespace n on n.oid = p.pronamespace cross join lateral aclexplode(coalesce(p.proacl, acldefault('f', p.proowner))) a where n.nspname = 'catalog' and p.proname = 'change_promo_reference_active_state' and a.grantee = 0 and a.privilege_type = 'EXECUTE'), 0::bigint, 'PUBLIC has no EXECUTE on internal Promo active-state helper');
+select is((select count(*) from pg_proc p join pg_namespace n on n.oid = p.pronamespace cross join lateral aclexplode(coalesce(p.proacl, acldefault('f', p.proowner))) a where n.nspname = 'catalog' and p.proname = 'change_promo_reference_active_state' and a.grantee = 'anon'::regrole and a.privilege_type = 'EXECUTE'), 0::bigint, 'anon has no EXECUTE on internal Promo active-state helper');
+select is((select count(*) from pg_proc p join pg_namespace n on n.oid = p.pronamespace cross join lateral aclexplode(coalesce(p.proacl, acldefault('f', p.proowner))) a where n.nspname = 'catalog' and p.proname = 'change_promo_reference_active_state' and a.grantee = 'authenticated'::regrole and a.privilege_type = 'EXECUTE'), 0::bigint, 'authenticated has no EXECUTE on internal Promo active-state helper');
+select is((select count(*) from pg_proc p join pg_namespace n on n.oid = p.pronamespace cross join lateral aclexplode(coalesce(p.proacl, acldefault('f', p.proowner))) a where n.nspname = 'catalog' and p.proname = 'change_promo_reference_active_state' and a.grantee = 'service_role'::regrole and a.privilege_type = 'EXECUTE'), 0::bigint, 'service_role has no EXECUTE on internal Promo active-state helper');
 
 -- 2. Seed Data
 insert into app.organizations (id, code, name, timezone, is_active, created_at) values
@@ -94,14 +99,19 @@ insert into stock_baseline values (
   'ZERO',
   jsonb_build_object(
     'tx', (select count(*) from inventory.stock_transactions where organization_id = '00000000-0000-4000-8000-000000000070'),
-    'ledger', (select count(*) from inventory.stock_ledger_entries where organization_id = '00000000-0000-4000-8000-000000000070'),
-    'positions', (select count(*) from inventory.stock_product_positions where organization_id = '00000000-0000-4000-8000-000000000070'),
-    'balances', (select count(*) from inventory.stock_batch_balances where organization_id = '00000000-0000-4000-8000-000000000070'),
-    'reservations', (select count(*) from inventory.stock_reservations where organization_id = '00000000-0000-4000-8000-000000000070'),
-    'manual_outbounds', (select count(*) from operations.manual_outbounds where organization_id = '00000000-0000-4000-8000-000000000070')
+    'transactions', coalesce((select jsonb_agg(to_jsonb(t) order by t.id) from inventory.stock_transactions t where t.organization_id = '00000000-0000-4000-8000-000000000070'), '[]'::jsonb),
+    'ledger_count', (select count(*) from inventory.stock_ledger_entries where organization_id = '00000000-0000-4000-8000-000000000070'),
+    'ledger', coalesce((select jsonb_agg(to_jsonb(e) order by e.ledger_seq) from inventory.stock_ledger_entries e where e.organization_id = '00000000-0000-4000-8000-000000000070'), '[]'::jsonb),
+    'positions_count', (select count(*) from inventory.stock_product_positions where organization_id = '00000000-0000-4000-8000-000000000070'),
+    'positions', coalesce((select jsonb_agg(to_jsonb(p) order by p.product_id) from inventory.stock_product_positions p where p.organization_id = '00000000-0000-4000-8000-000000000070'), '[]'::jsonb),
+    'balances_count', (select count(*) from inventory.stock_batch_balances where organization_id = '00000000-0000-4000-8000-000000000070'),
+    'balances', coalesce((select jsonb_agg(to_jsonb(b) order by b.batch_id) from inventory.stock_batch_balances b where b.organization_id = '00000000-0000-4000-8000-000000000070'), '[]'::jsonb),
+    'reservations_count', (select count(*) from inventory.stock_reservations where organization_id = '00000000-0000-4000-8000-000000000070'),
+    'reservations', coalesce((select jsonb_agg(to_jsonb(r) order by r.id) from inventory.stock_reservations r where r.organization_id = '00000000-0000-4000-8000-000000000070'), '[]'::jsonb),
+    'manual_outbounds_count', (select count(*) from operations.manual_outbounds where organization_id = '00000000-0000-4000-8000-000000000070'),
+    'manual_outbounds', coalesce((select jsonb_agg(to_jsonb(o) order by o.id) from operations.manual_outbounds o where o.organization_id = '00000000-0000-4000-8000-000000000070'), '[]'::jsonb)
   )
 );
-
 -- Set JWT and local role for Admin 70
 select set_config('request.jwt.claim.sub', '97000000-0000-4000-8000-000000000001', true);
 select set_config('request.jwt.claim.role', 'authenticated', true);
@@ -403,6 +413,25 @@ select set_config('request.jwt.claims', jsonb_build_object('sub', '97000000-0000
 set local role authenticated;
 
 
+-- Deep stock state must remain byte-for-byte identical across all Promo master mutations.
+select is(
+  jsonb_build_object(
+    'tx', (select count(*) from inventory.stock_transactions where organization_id = '00000000-0000-4000-8000-000000000070'),
+    'transactions', coalesce((select jsonb_agg(to_jsonb(t) order by t.id) from inventory.stock_transactions t where t.organization_id = '00000000-0000-4000-8000-000000000070'), '[]'::jsonb),
+    'ledger_count', (select count(*) from inventory.stock_ledger_entries where organization_id = '00000000-0000-4000-8000-000000000070'),
+    'ledger', coalesce((select jsonb_agg(to_jsonb(e) order by e.ledger_seq) from inventory.stock_ledger_entries e where e.organization_id = '00000000-0000-4000-8000-000000000070'), '[]'::jsonb),
+    'positions_count', (select count(*) from inventory.stock_product_positions where organization_id = '00000000-0000-4000-8000-000000000070'),
+    'positions', coalesce((select jsonb_agg(to_jsonb(p) order by p.product_id) from inventory.stock_product_positions p where p.organization_id = '00000000-0000-4000-8000-000000000070'), '[]'::jsonb),
+    'balances_count', (select count(*) from inventory.stock_batch_balances where organization_id = '00000000-0000-4000-8000-000000000070'),
+    'balances', coalesce((select jsonb_agg(to_jsonb(b) order by b.batch_id) from inventory.stock_batch_balances b where b.organization_id = '00000000-0000-4000-8000-000000000070'), '[]'::jsonb),
+    'reservations_count', (select count(*) from inventory.stock_reservations where organization_id = '00000000-0000-4000-8000-000000000070'),
+    'reservations', coalesce((select jsonb_agg(to_jsonb(r) order by r.id) from inventory.stock_reservations r where r.organization_id = '00000000-0000-4000-8000-000000000070'), '[]'::jsonb),
+    'manual_outbounds_count', (select count(*) from operations.manual_outbounds where organization_id = '00000000-0000-4000-8000-000000000070'),
+    'manual_outbounds', coalesce((select jsonb_agg(to_jsonb(o) order by o.id) from operations.manual_outbounds o where o.organization_id = '00000000-0000-4000-8000-000000000070'), '[]'::jsonb)
+  ),
+  (select snapshot from stock_baseline where phase = 'ZERO'),
+  'Promo create/update/deactivate/reactivate preserve deep stock state'
+);
 -- Test: Stock-neutrality proof
 select is(
   (
@@ -425,7 +454,7 @@ select is(
     where organization_id = '00000000-0000-4000-8000-000000000070'
   ),
   (
-    select (snapshot->>'ledger')::bigint
+    select (snapshot->>'ledger_count')::bigint
     from stock_baseline
     where phase = 'ZERO'
   ),
@@ -439,7 +468,7 @@ select is(
     where organization_id = '00000000-0000-4000-8000-000000000070'
   ),
   (
-    select (snapshot->>'positions')::bigint
+    select (snapshot->>'positions_count')::bigint
     from stock_baseline
     where phase = 'ZERO'
   ),
@@ -453,7 +482,7 @@ select is(
     where organization_id = '00000000-0000-4000-8000-000000000070'
   ),
   (
-    select (snapshot->>'balances')::bigint
+    select (snapshot->>'balances_count')::bigint
     from stock_baseline
     where phase = 'ZERO'
   ),
@@ -467,7 +496,7 @@ select is(
     where organization_id = '00000000-0000-4000-8000-000000000070'
   ),
   (
-    select (snapshot->>'reservations')::bigint
+    select (snapshot->>'reservations_count')::bigint
     from stock_baseline
     where phase = 'ZERO'
   ),
@@ -481,7 +510,7 @@ select is(
     where organization_id = '00000000-0000-4000-8000-000000000070'
   ),
   (
-    select (snapshot->>'manual_outbounds')::bigint
+    select (snapshot->>'manual_outbounds_count')::bigint
     from stock_baseline
     where phase = 'ZERO'
   ),

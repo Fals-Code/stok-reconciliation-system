@@ -123,23 +123,20 @@ async function main() {
   }
 
   async function stockSnapshot() {
-    async function countRows(entity) {
-      const res = await fetch(`${supabaseUrl}/rest/v1/${entity}?limit=0`, {
-        method: "GET",
-        headers: { ...headers, "Prefer": "count=exact" }
-      });
-      const range = res.headers.get("content-range");
-      if (!range) return 0;
-      const parts = range.split("/");
-      return parseInt(parts[parts.length - 1], 10) || 0;
+    async function readRows(entity) {
+      const rows = await view(`${entity}?organization_id=eq.${encodeURIComponent(org)}&select=*`);
+      return (Array.isArray(rows) ? rows : []).sort((left, right) =>
+        JSON.stringify(left).localeCompare(JSON.stringify(right))
+      );
     }
+
     return {
-      ledger_transactions: await countRows("ledger_transaction_detail"),
-      ledger_entries: await countRows("ledger_explorer"),
-      product_positions: await countRows("product_master"),
-      batch_balances: await countRows("product_batch_master"),
-      reservations: await countRows("marketplace_reservations"),
-      manual_outbounds: await countRows("manual_outbounds"),
+      ledger_transactions: await readRows("ledger_transaction_detail"),
+      ledger_entries: await readRows("ledger_explorer"),
+      product_positions: await readRows("product_master"),
+      batch_balances: await readRows("product_batch_master"),
+      reservations: await readRows("marketplace_reservations"),
+      manual_outbounds: await readRows("manual_outbounds"),
     };
   }
 
