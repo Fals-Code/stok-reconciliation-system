@@ -96,6 +96,7 @@ assert.equal(getActiveNavHref("/marketplace/order-123"), "/marketplace");
 assert.equal(getActiveNavHref("/marketplace/listings"), "/settings");
 assert.equal(getActiveNavHref("/marketplace/import"), "/settings");
 assert.equal(getActiveNavHref("/marketplace/import/job-123"), "/settings");
+assert.equal(getActiveNavHref("/marketplace/simulator"), "/settings");
 assert.equal(getActiveNavHref("/returns"), "/marketplace");
 assert.equal(getActiveNavHref("/returns/return-123"), "/marketplace");
 
@@ -112,6 +113,7 @@ assert.equal(isNavItemActive("/marketplace", "/returns/return-123"), true);
 assert.equal(isNavItemActive("/settings", "/opening-balances"), true);
 assert.equal(isNavItemActive("/settings", "/marketplace/listings"), true);
 assert.equal(isNavItemActive("/settings", "/marketplace/import/job-123"), true);
+assert.equal(isNavItemActive("/settings", "/marketplace/simulator"), true);
 assert.equal(isNavItemActive("/marketplace", "/marketplace/order-123"), true);
 assert.equal(isNavItemActive("/", "/products"), false);
 
@@ -124,7 +126,8 @@ const settingsSource = await readFile(
 for (const [label, href] of [
   ["Setup Stok Awal", "/opening-balances"],
   ["Mapping Produk Marketplace", "/marketplace/listings"],
-  ["Import / Simulator Pesanan", "/marketplace/import"],
+  ["Import Pesanan", "/marketplace/import"],
+  ["Simulator Pesanan", "/marketplace/simulator"],
   ["Status &amp; Diagnostik Sistem", "/notifications/operations"],
 ]) {
   assert.ok(
@@ -143,6 +146,7 @@ for (const item of [...primaryNavigation, settingsNavigation]) {
       "/opening-balances",
       "/marketplace/listings",
       "/marketplace/import",
+      "/marketplace/simulator",
       "/notifications/operations",
     ].includes(item.href),
     false,
@@ -214,6 +218,7 @@ const expectedPages = [
   "src/app/marketplace/listings/page.tsx",
   "src/app/marketplace/import/page.tsx",
   "src/app/marketplace/import/[jobId]/page.tsx",
+  "src/app/marketplace/simulator/page.tsx",
   "src/app/notifications/page.tsx",
   "src/app/notifications/operations/page.tsx",
 ];
@@ -393,7 +398,7 @@ const importDetailSource = await source(
 );
 
 assert.ok(
-  listingAdminSource.includes("Data listing gagal dimuat.") &&
+  listingAdminSource.includes("Data mapping belum dapat dimuat") &&
     listingAdminSource.includes('href="/settings"'),
   "Failure mapping marketplace harus kembali ke Pengaturan",
 );

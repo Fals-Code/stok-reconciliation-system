@@ -2,7 +2,15 @@ import { randomUUID } from "node:crypto";
 import Link from "next/link";
 
 import { AppShell } from "@/app/app-shell/app-shell";
+import { PageHeader } from "@/app/app-shell/page-header";
 import MarketplaceListingDraftForm from "@/app/marketplace/listings/components/listing-draft-form";
+import {
+  Alert,
+  Input,
+  Select,
+  StatusBadge,
+  type StatusBadgeTone,
+} from "@/components/ui";
 import {
   activateMarketplaceListingVersionAction,
   archiveMarketplaceListingAction,
@@ -34,7 +42,7 @@ type SearchParams = {
   sampleQuantity?: string;
 };
 
-type PillTone = "success" | "warning" | "danger" | "neutral" | "info";
+type PillTone = StatusBadgeTone;
 
 const numberFormatter = new Intl.NumberFormat("id-ID");
 
@@ -81,18 +89,36 @@ function Pill({
   label: string;
   tone?: PillTone;
 }) {
-  return <span className={`status-pill status-${tone}`}>{label}</span>;
+  return (
+    <StatusBadge tone={tone}>
+      {label}
+    </StatusBadge>
+  );
+}
+
+function listingReadinessLabel(value: string) {
+  if (value === "PUBLISHED") return "Siap dipakai";
+  if (value === "DRAFT_ONLY") return "Draft";
+  if (value === "MISSING") return "Belum dipetakan";
+  return value;
+}
+
+function versionStatusLabel(value: string) {
+  if (value === "ACTIVE") return "Aktif";
+  if (value === "DRAFT") return "Draft";
+  if (value === "RETIRED") return "Dihentikan";
+  return value;
 }
 
 function listingTone(listing: MarketplaceListingCatalogRow): PillTone {
   if (listing.status_code === "ARCHIVED") return "danger";
-  if (listing.mapping_readiness_code === "PUBLISHED") return "success";
+  if (listing.mapping_readiness_code === "PUBLISHED") return "selected";
   if (listing.mapping_readiness_code === "DRAFT_ONLY") return "warning";
   return "neutral";
 }
 
 function versionTone(version: MarketplaceListingVersionRow): PillTone {
-  if (version.status_code === "ACTIVE") return "success";
+  if (version.status_code === "ACTIVE") return "selected";
   if (version.status_code === "DRAFT") return "warning";
   if (version.status_code === "RETIRED") return "neutral";
   return "danger";
@@ -100,19 +126,27 @@ function versionTone(version: MarketplaceListingVersionRow): PillTone {
 
 function ConfigurationError({ message }: { message: string }) {
   return (
-    <div className="min-h-screen bg-slate-950 px-5 py-12 text-slate-100">
-      <section className="mx-auto max-w-3xl rounded-3xl border border-amber-400/20 bg-amber-400/[0.06] p-8">
-        <p className="section-kicker text-amber-300">
-          Admin listing marketplace tidak tersedia
-        </p>
-        <h1 className="mt-3 text-3xl font-semibold">
-          Data listing gagal dimuat.
-        </h1>
-        <p className="mt-4 leading-7 text-slate-300">{message}</p>
-        <Link className="nav-link mt-6 inline-flex" href="/settings">
-          Kembali ke Pengaturan
-        </Link>
-      </section>
+    <div className="mx-auto w-full max-w-[1000px] px-4 py-6 sm:px-6 lg:px-8 lg:py-8">
+      <PageHeader
+        description="Mapping produk marketplace tidak dapat dimuat saat ini."
+        eyebrow="Pengaturan"
+        title="Mapping Produk Marketplace"
+      />
+
+      <Alert
+        className="mt-6"
+        title="Data mapping belum dapat dimuat"
+        tone="danger"
+      >
+        {message}
+      </Alert>
+
+      <Link
+        className="mt-5 inline-flex min-h-9 items-center text-sm font-semibold text-ui-primary hover:underline"
+        href="/settings"
+      >
+        ← Kembali ke Pengaturan
+      </Link>
     </div>
   );
 }
@@ -314,57 +348,82 @@ export default async function MarketplaceListingsPage({
 
   return (
     <AppShell profile={session.profile}>
-      <div className="min-h-screen bg-slate-950 text-slate-100">
-      <div className="mx-auto max-w-[1500px] px-5 py-8 lg:px-8">
+      <div className="mx-auto w-full max-w-[1300px] px-4 py-6 sm:px-6 lg:px-8 lg:py-8">
         <section>
-          <p className="section-kicker">Marketplace listing registry</p>
-          <h1 className="mt-3 max-w-5xl text-3xl font-semibold tracking-tight sm:text-4xl">
-            Kelola mapping listing dan resep bundle versi demi versi.
-          </h1>
-          <p className="mt-3 max-w-4xl text-sm leading-6 text-slate-400 sm:text-base">
-            Mapping diselesaikan sebelum reservasi. Bundle tidak memiliki stok
-            sendiri, sedangkan order lama mempertahankan versi resep dan
-            snapshot komponen yang dipakai saat normalisasi.
-          </p>
+          <PageHeader
+            action={
+              <div className="flex flex-wrap justify-end gap-2">
+                <Link
+                  className="inline-flex min-h-[var(--ui-control-height)] items-center rounded-[var(--ui-radius-md)] border border-ui-border bg-ui-surface px-4 text-sm font-semibold text-ui-text hover:border-ui-border-strong hover:bg-ui-surface-subtle"
+                  href="/marketplace"
+                >
+                  Kembali ke Pesanan
+                </Link>
+                <Link
+                  className="inline-flex min-h-[var(--ui-control-height)] items-center rounded-[var(--ui-radius-md)] border border-ui-primary bg-ui-primary px-4 text-sm font-semibold text-ui-text-on-primary hover:bg-ui-primary-hover"
+                  href="#listing-draft"
+                >
+                  Buat mapping
+                </Link>
+              </div>
+            }
+            description="Hubungkan listing marketplace ke produk stok. Setiap perubahan disimpan sebagai versi sehingga pesanan lama tetap memakai mapping yang berlaku saat diproses."
+            eyebrow="Pengaturan"
+            title="Mapping Produk Marketplace"
+          />
 
-          <div className="mt-6 flex flex-wrap gap-3">
-            <Link className="nav-link inline-flex" href="/settings">
-              Kembali ke Pengaturan
-            </Link>
-            <Link className="primary-button inline-flex" href="#listing-draft">
-              Buat draft mapping
-            </Link>
-            <Link className="nav-link inline-flex" href="/marketplace">
-              Simulator dan lifecycle
+          <div className="mt-4">
+            <Link
+              className="inline-flex min-h-9 items-center text-sm font-semibold text-ui-primary hover:underline"
+              href="/settings"
+            >
+              ← Kembali ke Pengaturan
             </Link>
           </div>
 
-          <div className="mt-7 grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
+          <dl className="mt-6 grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
             {[
-              ["Listing aktif", activeCount, "Registry channel"],
-              ["Mapping published", publishedCount, "Siap dinormalisasi"],
-              ["Draft terbuka", draftCount, "Belum memengaruhi order"],
-              ["Listing archived", archivedCount, "Histori tetap tersedia"],
+              ["Listing aktif", activeCount, "Masih dapat digunakan"],
+              ["Siap dipakai", publishedCount, "Mapping aktif tersedia"],
+              ["Draft", draftCount, "Belum dipakai pesanan baru"],
+              ["Diarsipkan", archivedCount, "Histori tetap tersimpan"],
             ].map(([label, value, detail]) => (
-              <article className="metric-card" key={String(label)}>
-                <p className="metric-label">{label}</p>
-                <p className="metric-value">{formatNumber(Number(value))}</p>
-                <p className="metric-detail">{detail}</p>
-              </article>
+              <div
+                className="rounded-[var(--ui-radius-lg)] border border-ui-border bg-ui-surface p-4"
+                key={String(label)}
+              >
+                <dt className="text-xs font-medium text-ui-text-muted">
+                  {label}
+                </dt>
+                <dd className="ui-number mt-1 text-xl font-semibold text-ui-text">
+                  {formatNumber(Number(value))}
+                </dd>
+                <p className="mt-1 text-xs leading-5 text-ui-text-muted">
+                  {detail}
+                </p>
+              </div>
             ))}
-          </div>
+          </dl>
         </section>
 
         {params.success ? (
-          <section className="mt-8 rounded-2xl border border-emerald-400/20 bg-emerald-400/[0.055] p-5 text-sm leading-6 text-emerald-100">
+          <Alert
+            className="mt-8"
+            title="Perubahan tersimpan"
+            tone="success"
+          >
             {params.success}
-          </section>
+          </Alert>
         ) : null}
 
         {params.error ? (
-          <section className="mt-8 rounded-2xl border border-rose-400/20 bg-rose-400/[0.055] p-5 text-sm leading-6 text-rose-100">
+          <Alert
+            className="mt-8"
+            title="Perubahan belum tersimpan"
+            tone="danger"
+          >
             {params.error}
-          </section>
+          </Alert>
         ) : null}
 
         <section className="mt-10" id="listing-draft">
@@ -378,44 +437,60 @@ export default async function MarketplaceListingsPage({
         </section>
 
         <section className="mt-10" id="listing-catalog">
-          <div className="panel-card">
+          <div className="rounded-[var(--ui-radius-lg)] border border-ui-border bg-ui-surface p-5 sm:p-6">
             <div className="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
               <div>
-                <p className="section-kicker">Registry</p>
-                <h2 className="section-title">Cari dan buka listing.</h2>
+                <p className="text-xs font-semibold uppercase tracking-wide text-ui-text-muted">Daftar listing</p>
+                <h2 className="mt-1 text-lg font-semibold text-ui-text">Cari dan periksa listing</h2>
               </div>
 
               <form className="grid gap-3 sm:grid-cols-2 xl:grid-cols-5">
-                <input
+                <Input
+                  aria-label="Cari listing"
                   defaultValue={params.q}
                   name="q"
                   placeholder="Cari kode atau nama listing"
                 />
-                <select defaultValue={channel} name="channel">
-                  <option value="ALL">Semua channel</option>
+                <Select
+                  aria-label="Filter marketplace"
+                  defaultValue={channel}
+                  name="channel"
+                >
+                  <option value="ALL">Semua marketplace</option>
                   <option value="SHOPEE">Shopee</option>
                   <option value="TIKTOK_SHOP">TikTok Shop</option>
-                </select>
-                <select defaultValue={listingType} name="type">
+                </Select>
+                <Select
+                  aria-label="Filter jenis listing"
+                  defaultValue={listingType}
+                  name="type"
+                >
                   <option value="ALL">Semua jenis</option>
                   <option value="SINGLE">Produk tunggal</option>
                   <option value="BUNDLE">Bundle</option>
-                </select>
-                <select defaultValue={status} name="status">
+                </Select>
+                <Select
+                  aria-label="Filter status mapping"
+                  defaultValue={status}
+                  name="status"
+                >
                   <option value="ALL">Semua status</option>
-                  <option value="PUBLISHED">Published</option>
-                  <option value="DRAFT_ONLY">Draft only</option>
-                  <option value="MISSING">Belum ada mapping</option>
-                  <option value="ARCHIVED">Archived</option>
-                </select>
-                <button className="primary-button" type="submit">
+                  <option value="PUBLISHED">Siap dipakai</option>
+                  <option value="DRAFT_ONLY">Draft</option>
+                  <option value="MISSING">Belum dipetakan</option>
+                  <option value="ARCHIVED">Diarsipkan</option>
+                </Select>
+                <button
+                  className="inline-flex min-h-[var(--ui-control-height)] items-center justify-center rounded-[var(--ui-radius-md)] border border-ui-primary bg-ui-primary px-4 text-sm font-semibold text-ui-text-on-primary hover:bg-ui-primary-hover"
+                  type="submit"
+                >
                   Terapkan filter
                 </button>
               </form>
             </div>
 
-            <div className="mt-6 overflow-hidden rounded-2xl border border-white/10">
-              <div className="overflow-x-auto">
+            <div className="mt-6 overflow-hidden rounded-[var(--ui-radius-lg)] border border-ui-border">
+              <div className="overflow-x-auto [&_table]:w-full [&_table]:min-w-[760px] [&_table]:text-left [&_table]:text-sm [&_thead]:border-b [&_thead]:border-ui-border [&_thead]:bg-ui-surface-subtle [&_th]:px-4 [&_th]:py-3 [&_th]:text-xs [&_th]:font-semibold [&_th]:uppercase [&_th]:tracking-wide [&_th]:text-ui-text-muted [&_td]:px-4 [&_td]:py-4 [&_tbody]:divide-y [&_tbody]:divide-ui-border">
                 <table>
                   <thead>
                     <tr>
@@ -431,7 +506,7 @@ export default async function MarketplaceListingsPage({
                   <tbody>
                     {filteredListings.length === 0 ? (
                       <tr>
-                        <td className="text-center text-slate-500" colSpan={7}>
+                        <td className="text-center text-ui-text-muted" colSpan={7}>
                           Tidak ada listing yang cocok dengan filter.
                         </td>
                       </tr>
@@ -439,10 +514,10 @@ export default async function MarketplaceListingsPage({
                       filteredListings.map((listing) => (
                         <tr key={listing.listing_id}>
                           <td>
-                            <p className="font-medium text-white">
+                            <p className="font-medium text-ui-text">
                               {listing.display_name}
                             </p>
-                            <p className="mt-1 font-mono text-xs text-slate-500">
+                            <p className="mt-1 font-mono text-xs text-ui-text-muted">
                               {listing.channel_code} /{" "}
                               {listing.external_listing_code}
                             </p>
@@ -450,7 +525,7 @@ export default async function MarketplaceListingsPage({
                           <td>{listing.listing_type_code}</td>
                           <td>
                             <Pill
-                              label={listing.mapping_readiness_code}
+                              label={listingReadinessLabel(listing.mapping_readiness_code)}
                               tone={listingTone(listing)}
                             />
                           </td>
@@ -463,7 +538,7 @@ export default async function MarketplaceListingsPage({
                           <td>{formatDate(listing.updated_at, true)}</td>
                           <td>
                             <Link
-                              className="nav-link"
+                              className="inline-flex min-h-9 items-center text-sm font-semibold text-ui-primary hover:underline"
                               href={`/marketplace/listings?selectedListingId=${encodeURIComponent(
                                 listing.listing_id,
                               )}#version-detail`}
@@ -483,27 +558,32 @@ export default async function MarketplaceListingsPage({
 
         {selectedListing ? (
           <section className="mt-10" id="version-detail">
-            <div className="panel-card">
+            <div className="rounded-[var(--ui-radius-lg)] border border-ui-border bg-ui-surface p-5 sm:p-6">
               <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
                 <div>
-                  <p className="section-kicker">Listing detail</p>
-                  <h2 className="section-title">
+                  <p className="text-xs font-semibold uppercase tracking-wide text-ui-text-muted">Detail listing</p>
+                  <h2 className="mt-1 text-lg font-semibold text-ui-text">
                     {selectedListing.display_name}
                   </h2>
-                  <p className="mt-2 font-mono text-xs text-slate-500">
+                  <p className="mt-2 text-xs text-ui-text-muted">
                     {selectedListing.channel_code} /{" "}
                     {selectedListing.external_listing_code} /{" "}
                     {selectedListing.listing_type_code}
                   </p>
+                  {selectedListing.status_code === "ARCHIVED" ? (
+                    <p className="mt-2 text-xs font-semibold text-ui-danger">
+                      Diarsipkan · kode audit ARCHIVED
+                    </p>
+                  ) : null}
                 </div>
                 <div className="flex flex-wrap gap-2">
                   <Pill
-                    label={selectedListing.mapping_readiness_code}
+                    label={listingReadinessLabel(selectedListing.mapping_readiness_code)}
                     tone={listingTone(selectedListing)}
                   />
                   {selectedListing.status_code !== "ARCHIVED" ? (
                     <Link
-                      className="nav-link"
+                      className="inline-flex min-h-9 items-center text-sm font-semibold text-ui-primary hover:underline"
                       href={`/marketplace/listings?cloneListingId=${encodeURIComponent(
                         selectedListing.listing_id,
                       )}#listing-draft`}
@@ -514,8 +594,8 @@ export default async function MarketplaceListingsPage({
                 </div>
               </div>
 
-              <div className="mt-6 overflow-hidden rounded-2xl border border-white/10">
-                <div className="overflow-x-auto">
+              <div className="mt-6 overflow-hidden rounded-[var(--ui-radius-lg)] border border-ui-border">
+                <div className="overflow-x-auto [&_table]:w-full [&_table]:min-w-[760px] [&_table]:text-left [&_table]:text-sm [&_thead]:border-b [&_thead]:border-ui-border [&_thead]:bg-ui-surface-subtle [&_th]:px-4 [&_th]:py-3 [&_th]:text-xs [&_th]:font-semibold [&_th]:uppercase [&_th]:tracking-wide [&_th]:text-ui-text-muted [&_td]:px-4 [&_td]:py-4 [&_tbody]:divide-y [&_tbody]:divide-ui-border">
                   <table>
                     <thead>
                       <tr>
@@ -523,8 +603,8 @@ export default async function MarketplaceListingsPage({
                         <th>Status</th>
                         <th>Efektif</th>
                         <th>Komponen</th>
-                        <th>Order memakai versi</th>
-                        <th>Row version</th>
+                        <th>Pesanan memakai versi</th>
+                        <th>Versi data</th>
                         <th>Tindakan</th>
                       </tr>
                     </thead>
@@ -542,18 +622,18 @@ export default async function MarketplaceListingsPage({
 
                           return (
                             <tr key={version.version_id}>
-                              <td className="font-mono text-white">
+                              <td className="font-mono text-ui-text">
                                 v{version.version}
                               </td>
                               <td>
                                 <Pill
-                                  label={version.status_code}
+                                  label={versionStatusLabel(version.status_code)}
                                   tone={versionTone(version)}
                                 />
                               </td>
                               <td>
                                 {formatDate(version.effective_from, true)}
-                                <span className="block text-xs text-slate-500">
+                                <span className="block text-xs text-ui-text-muted">
                                   sampai{" "}
                                   {formatDate(version.effective_to, true)}
                                 </span>
@@ -564,7 +644,7 @@ export default async function MarketplaceListingsPage({
                               <td>
                                 <div className="flex flex-wrap gap-2">
                                   <Link
-                                    className="nav-link"
+                                    className="inline-flex min-h-9 items-center text-sm font-semibold text-ui-primary hover:underline"
                                     href={`/marketplace/listings?selectedListingId=${encodeURIComponent(
                                       version.listing_id,
                                     )}&selectedVersionId=${encodeURIComponent(
@@ -575,7 +655,7 @@ export default async function MarketplaceListingsPage({
                                   </Link>
                                   {version.status_code === "DRAFT" ? (
                                     <Link
-                                      className="nav-link"
+                                      className="inline-flex min-h-9 items-center text-sm font-semibold text-ui-primary hover:underline"
                                       href={`/marketplace/listings?selectedListingId=${encodeURIComponent(
                                         version.listing_id,
                                       )}&selectedVersionId=${encodeURIComponent(
@@ -603,7 +683,7 @@ export default async function MarketplaceListingsPage({
               {selectedListing.status_code !== "ARCHIVED" ? (
                 <form
                   action={archiveMarketplaceListingAction}
-                  className="mt-6 rounded-2xl border border-rose-400/20 bg-rose-400/[0.045] p-5"
+                  className="mt-6 rounded-[var(--ui-radius-lg)] border border-ui-danger bg-ui-danger-subtle p-5"
                 >
                   <input
                     name="intentId"
@@ -620,17 +700,17 @@ export default async function MarketplaceListingsPage({
                     type="hidden"
                     value={selectedListing.row_version}
                   />
-                  <p className="font-medium text-white">Arsipkan listing</p>
-                  <p className="mt-2 text-sm leading-6 text-slate-400">
-                    Listing archived menolak normalisasi baru. Order lama,
+                  <p className="font-medium text-ui-text">Arsipkan listing</p>
+                  <p className="mt-2 text-sm leading-6 text-ui-text-muted">
+                    Listing yang diarsipkan tidak dipakai untuk pesanan baru. Order lama,
                     versi, komponen, dan audit trail tidak dihapus.
                   </p>
-                  <label className="mt-4 flex items-start gap-3 text-sm text-slate-300">
+                  <label className="mt-4 flex items-start gap-3 text-sm text-ui-text">
                     <input name="confirmation" type="checkbox" />
                     Saya memahami listing ini tidak dapat dipakai untuk event
                     baru.
                   </label>
-                  <button className="danger-button mt-4" type="submit">
+                  <button className="inline-flex min-h-[var(--ui-control-height)] items-center justify-center rounded-[var(--ui-radius-md)] border border-ui-danger bg-ui-danger px-4 text-sm font-semibold text-ui-text-on-primary hover:opacity-90 mt-4" type="submit">
                     Arsipkan listing
                   </button>
                 </form>
@@ -669,35 +749,35 @@ export default async function MarketplaceListingsPage({
             ) : null}
 
             {selectedVersion ? (
-              <div className="panel-card mt-6">
+              <div className="rounded-[var(--ui-radius-lg)] border border-ui-border bg-ui-surface p-5 sm:p-6 mt-6">
                 <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
                   <div>
-                    <p className="section-kicker">Version audit</p>
+                    <p className="text-xs font-semibold uppercase tracking-wide text-ui-text-muted">Riwayat versi</p>
                     <h3 className="mt-2 text-xl font-semibold">
                       Versi {selectedVersion.version} /{" "}
                       {selectedVersion.status_code}
                     </h3>
-                    <p className="mt-2 text-sm leading-6 text-slate-400">
+                    <p className="mt-2 text-sm leading-6 text-ui-text-muted">
                       Fingerprint{" "}
-                      <span className="font-mono text-xs text-slate-300">
+                      <span className="font-mono text-xs text-ui-text">
                         {selectedVersion.mapping_fingerprint ?? "belum aktif"}
                       </span>
                     </p>
                   </div>
                   <Pill
-                    label={selectedVersion.status_code}
+                    label={versionStatusLabel(selectedVersion.status_code)}
                     tone={versionTone(selectedVersion)}
                   />
                 </div>
 
-                <div className="mt-5 overflow-hidden rounded-2xl border border-white/10">
-                  <div className="overflow-x-auto">
+                <div className="mt-5 overflow-hidden rounded-[var(--ui-radius-lg)] border border-ui-border">
+                  <div className="overflow-x-auto [&_table]:w-full [&_table]:min-w-[760px] [&_table]:text-left [&_table]:text-sm [&_thead]:border-b [&_thead]:border-ui-border [&_thead]:bg-ui-surface-subtle [&_th]:px-4 [&_th]:py-3 [&_th]:text-xs [&_th]:font-semibold [&_th]:uppercase [&_th]:tracking-wide [&_th]:text-ui-text-muted [&_td]:px-4 [&_td]:py-4 [&_tbody]:divide-y [&_tbody]:divide-ui-border">
                     <table>
                       <thead>
                         <tr>
                           <th>Urutan</th>
                           <th>Produk</th>
-                          <th>Quantity per listing</th>
+                          <th>Jumlah per listing</th>
                           <th>Status produk</th>
                         </tr>
                       </thead>
@@ -714,7 +794,7 @@ export default async function MarketplaceListingsPage({
                             </td>
                             <td>1</td>
                             <td>
-                              <Pill label="ACTIVE" tone="success" />
+                              <Pill label="Aktif" tone="selected" />
                             </td>
                           </tr>
                         ) : selectedComponents.length === 0 ? (
@@ -728,10 +808,10 @@ export default async function MarketplaceListingsPage({
                             <tr key={component.component_id}>
                               <td>{component.line_no}</td>
                               <td>
-                                <p className="font-medium text-white">
+                                <p className="font-medium text-ui-text">
                                   {component.product_sku}
                                 </p>
-                                <p className="mt-1 text-xs text-slate-500">
+                                <p className="mt-1 text-xs text-ui-text-muted">
                                   {component.product_name}
                                 </p>
                               </td>
@@ -740,12 +820,12 @@ export default async function MarketplaceListingsPage({
                                 <Pill
                                   label={
                                     component.product_is_active
-                                      ? "ACTIVE"
-                                      : "INACTIVE"
+                                      ? "Aktif"
+                                      : "Nonaktif"
                                   }
                                   tone={
                                     component.product_is_active
-                                      ? "success"
+                                      ? "selected"
                                       : "danger"
                                   }
                                 />
@@ -761,7 +841,7 @@ export default async function MarketplaceListingsPage({
                 {selectedVersion.status_code === "ACTIVE" ? (
                   <form
                     action={retireMarketplaceListingVersionAction}
-                    className="mt-6 rounded-2xl border border-amber-400/20 bg-amber-400/[0.045] p-5"
+                    className="mt-6 rounded-[var(--ui-radius-lg)] border border-ui-warning bg-ui-warning-subtle p-5"
                   >
                     <input
                       name="intentId"
@@ -783,16 +863,16 @@ export default async function MarketplaceListingsPage({
                       type="hidden"
                       value={selectedVersion.row_version}
                     />
-                    <p className="font-medium text-white">
+                    <p className="font-medium text-ui-text">
                       Hentikan versi aktif
                     </p>
-                    <p className="mt-2 text-sm leading-6 text-slate-400">
+                    <p className="mt-2 text-sm leading-6 text-ui-text-muted">
                       Event sebelum batas waktu tetap memakai versi ini.
                       Event sesudah batas membutuhkan versi lain yang efektif.
                     </p>
-                    <label className="field-label mt-4 max-w-sm">
+                    <label className="grid gap-2 text-sm font-semibold text-ui-text mt-4 max-w-sm">
                       Berhenti berlaku
-                      <input
+                      <Input
                         min={toDateTimeLocal(
                           new Date(
                             new Date(
@@ -805,11 +885,11 @@ export default async function MarketplaceListingsPage({
                         type="datetime-local"
                       />
                     </label>
-                    <label className="mt-4 flex items-start gap-3 text-sm text-slate-300">
+                    <label className="mt-4 flex items-start gap-3 text-sm text-ui-text">
                       <input name="confirmation" type="checkbox" />
                       Saya memahami histori order tidak berubah.
                     </label>
-                    <button className="primary-button mt-4" type="submit">
+                    <button className="inline-flex min-h-[var(--ui-control-height)] items-center justify-center rounded-[var(--ui-radius-md)] border border-ui-primary bg-ui-primary px-4 text-sm font-semibold text-ui-text-on-primary hover:bg-ui-primary-hover mt-4" type="submit">
                       Hentikan versi
                     </button>
                   </form>
@@ -821,14 +901,14 @@ export default async function MarketplaceListingsPage({
 
         {(activationPreview || previewError) && selectedVersion ? (
           <section className="mt-10" id="activation-preview">
-            <div className="panel-card">
-              <p className="section-kicker">Authoritative preview</p>
-              <h2 className="section-title">
+            <div className="rounded-[var(--ui-radius-lg)] border border-ui-border bg-ui-surface p-5 sm:p-6">
+              <p className="text-xs font-semibold uppercase tracking-wide text-ui-text-muted">Preview aktivasi</p>
+              <h2 className="mt-1 text-lg font-semibold text-ui-text">
                 Tinjau dampak aktivasi versi {selectedVersion.version}.
               </h2>
 
               {previewError ? (
-                <div className="mt-5 rounded-2xl border border-rose-400/20 bg-rose-400/[0.055] p-5 text-sm text-rose-100">
+                <div className="mt-5 rounded-[var(--ui-radius-lg)] border border-ui-danger bg-ui-danger-subtle p-5 text-sm text-ui-danger">
                   {previewError}
                 </div>
               ) : null}
@@ -860,10 +940,10 @@ export default async function MarketplaceListingsPage({
                         "Ditutup tepat pada boundary baru",
                       ],
                     ].map(([label, value, detail]) => (
-                      <article className="metric-card" key={String(label)}>
-                        <p className="metric-label">{label}</p>
-                        <p className="metric-value">{String(value)}</p>
-                        <p className="metric-detail">{detail}</p>
+                      <article className="rounded-[var(--ui-radius-lg)] border border-ui-border bg-ui-surface p-4" key={String(label)}>
+                        <p className="text-xs font-medium text-ui-text-muted">{label}</p>
+                        <p className="ui-number mt-1 text-xl font-semibold text-ui-text">{String(value)}</p>
+                        <p className="mt-1 text-xs leading-5 text-ui-text-muted">{detail}</p>
                       </article>
                     ))}
                   </div>
@@ -889,9 +969,9 @@ export default async function MarketplaceListingsPage({
                       type="hidden"
                       value={selectedVersion.version_id}
                     />
-                    <label className="field-label">
-                      Contoh quantity listing
-                      <input
+                    <label className="grid gap-2 text-sm font-semibold text-ui-text">
+                      Contoh jumlah listing
+                      <Input
                         defaultValue={sampleQuantity}
                         min={1}
                         name="sampleQuantity"
@@ -899,13 +979,13 @@ export default async function MarketplaceListingsPage({
                         type="number"
                       />
                     </label>
-                    <button className="nav-link" type="submit">
+                    <button className="inline-flex min-h-9 items-center text-sm font-semibold text-ui-primary hover:underline" type="submit">
                       Hitung ekspansi
                     </button>
                   </form>
 
-                  <div className="mt-5 overflow-hidden rounded-2xl border border-white/10">
-                    <div className="overflow-x-auto">
+                  <div className="mt-5 overflow-hidden rounded-[var(--ui-radius-lg)] border border-ui-border">
+                    <div className="overflow-x-auto [&_table]:w-full [&_table]:min-w-[760px] [&_table]:text-left [&_table]:text-sm [&_thead]:border-b [&_thead]:border-ui-border [&_thead]:bg-ui-surface-subtle [&_th]:px-4 [&_th]:py-3 [&_th]:text-xs [&_th]:font-semibold [&_th]:uppercase [&_th]:tracking-wide [&_th]:text-ui-text-muted [&_td]:px-4 [&_td]:py-4 [&_tbody]:divide-y [&_tbody]:divide-ui-border">
                       <table>
                         <thead>
                           <tr>
@@ -920,10 +1000,10 @@ export default async function MarketplaceListingsPage({
                           {activationPreview.components.map((component) => (
                             <tr key={component.productId}>
                               <td>
-                                <p className="font-medium text-white">
+                                <p className="font-medium text-ui-text">
                                   {component.productSku}
                                 </p>
-                                <p className="mt-1 text-xs text-slate-500">
+                                <p className="mt-1 text-xs text-ui-text-muted">
                                   {component.productName}
                                 </p>
                               </td>
@@ -937,10 +1017,10 @@ export default async function MarketplaceListingsPage({
                               <td>
                                 <Pill
                                   label={
-                                    component.active ? "ACTIVE" : "INACTIVE"
+                                    component.active ? "Aktif" : "Nonaktif"
                                   }
                                   tone={
-                                    component.active ? "success" : "danger"
+                                    component.active ? "selected" : "danger"
                                   }
                                 />
                               </td>
@@ -952,11 +1032,11 @@ export default async function MarketplaceListingsPage({
                   </div>
 
                   {activationPreview.blockers.length > 0 ? (
-                    <div className="mt-6 rounded-2xl border border-amber-400/20 bg-amber-400/[0.055] p-5">
-                      <p className="font-medium text-amber-100">
+                    <div className="mt-6 rounded-[var(--ui-radius-lg)] border border-ui-warning bg-ui-warning-subtle p-5">
+                      <p className="font-medium text-ui-warning">
                         Aktivasi diblokir
                       </p>
-                      <ul className="mt-3 space-y-2 text-sm leading-6 text-amber-100/90">
+                      <ul className="mt-3 space-y-2 text-sm leading-6 text-ui-warning">
                         {activationPreview.blockers.map((blocker) => (
                           <li key={`${blocker.code}:${blocker.scope}`}>
                             <span className="font-mono text-xs">
@@ -972,7 +1052,7 @@ export default async function MarketplaceListingsPage({
                   {activationPreview.eligible ? (
                     <form
                       action={activateMarketplaceListingVersionAction}
-                      className="mt-6 rounded-2xl border border-emerald-400/20 bg-emerald-400/[0.045] p-5"
+                      className="mt-6 rounded-[var(--ui-radius-lg)] border border-ui-border-strong bg-ui-primary-subtle p-5"
                     >
                       <input
                         name="intentId"
@@ -999,24 +1079,24 @@ export default async function MarketplaceListingsPage({
                         type="hidden"
                         value={activationPreview.basisHash}
                       />
-                      <p className="font-medium text-white">
+                      <p className="font-medium text-ui-text">
                         Konfirmasi aktivasi final
                       </p>
-                      <p className="mt-2 text-sm leading-6 text-slate-400">
+                      <p className="mt-2 text-sm leading-6 text-ui-text-muted">
                         Aktivasi membuat mapping tersedia untuk event pada
                         periode efektif. Aktivasi tidak langsung mengubah stok.
                       </p>
-                      <label className="mt-4 flex items-start gap-3 text-sm text-slate-300">
+                      <label className="mt-4 flex items-start gap-3 text-sm text-ui-text">
                         <input name="confirmation" type="checkbox" />
                         Saya sudah memeriksa produk, quantity, waktu efektif,
                         dan boundary versi sebelumnya.
                       </label>
-                      <button className="primary-button mt-4" type="submit">
+                      <button className="inline-flex min-h-[var(--ui-control-height)] items-center justify-center rounded-[var(--ui-radius-md)] border border-ui-primary bg-ui-primary px-4 text-sm font-semibold text-ui-text-on-primary hover:bg-ui-primary-hover mt-4" type="submit">
                         Aktifkan versi mapping
                       </button>
                     </form>
                   ) : (
-                    <p className="mt-6 text-sm text-slate-500">
+                    <p className="mt-6 text-sm text-ui-text-muted">
                       Tombol aktivasi tidak ditampilkan selama preview masih
                       memiliki blocker.
                     </p>
@@ -1026,7 +1106,6 @@ export default async function MarketplaceListingsPage({
             </div>
           </section>
         ) : null}
-      </div>
       </div>
     </AppShell>
   );

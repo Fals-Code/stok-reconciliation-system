@@ -61,6 +61,8 @@ export function getActiveNavHref(pathname: string): string | null {
     pathname.startsWith("/marketplace/listings/") ||
     pathname === "/marketplace/import" ||
     pathname.startsWith("/marketplace/import/") ||
+    pathname === "/marketplace/simulator" ||
+    pathname.startsWith("/marketplace/simulator/") ||
     pathname === "/notifications/operations" ||
     pathname.startsWith("/notifications/operations/")
   ) {

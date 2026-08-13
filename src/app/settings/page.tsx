@@ -175,10 +175,25 @@ export default async function SettingsPage() {
                 >
                   <span>
                     <span className="block text-sm font-semibold text-ui-text">
-                      Import / Simulator Pesanan
+                      Import Pesanan
                     </span>
                     <span className="mt-1 block text-sm leading-6 text-ui-text-muted">
-                      Uji dan masukkan file pesanan melalui alur khusus Admin.
+                      Masukkan file pesanan marketplace melalui preview dan validasi.
+                    </span>
+                  </span>
+                  <span aria-hidden="true" className="text-ui-primary">→</span>
+                </Link>
+
+                <Link
+                  className="flex min-h-[var(--ui-control-height)] items-center justify-between gap-4 rounded-[var(--ui-radius-md)] p-3 hover:bg-ui-surface-subtle"
+                  href="/marketplace/simulator"
+                >
+                  <span>
+                    <span className="block text-sm font-semibold text-ui-text">
+                      Simulator Pesanan
+                    </span>
+                    <span className="mt-1 block text-sm leading-6 text-ui-text-muted">
+                      Uji normalized event, reservasi, dan shipment untuk demo atau verifikasi Admin.
                     </span>
                   </span>
                   <span aria-hidden="true" className="text-ui-primary">→</span>
