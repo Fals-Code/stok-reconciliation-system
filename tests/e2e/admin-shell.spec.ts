@@ -735,3 +735,46 @@ test(
     expect(consoleErrors, `console.error: ${consoleErrors.join(" | ")}`).toEqual([]);
   },
 );
+test(
+  "Ringkasan Produk menjelaskan stok dari ledger tanpa error runtime",
+  async ({ page }) => {
+    const pageErrors: string[] = [];
+    const consoleErrors: string[] = [];
+    const serverFailures: string[] = [];
+    const hydrationErrors: string[] = [];
+
+    page.on("pageerror", (error) => pageErrors.push(error.message));
+    page.on("console", (message) => {
+      if (message.type() !== "error") return;
+      consoleErrors.push(message.text());
+      if (/hydration/i.test(message.text())) hydrationErrors.push(message.text());
+    });
+    page.on("response", (response) => {
+      if (response.status() >= 500) serverFailures.push(`${response.status()} ${response.url()}`);
+    });
+
+    await loginAsAdmin(page);
+    const productId = "30000000-0000-4000-8000-000000000001";
+    await page.goto(`/products/${productId}`, { waitUntil: "domcontentloaded" });
+    await expect(page.getByText("Layak Dijual", { exact: true })).toBeVisible();
+    await page.getByRole("link", { name: "Jelaskan Stok", exact: true }).click();
+    await page.waitForURL((url) => url.searchParams.get("explainStock") === "1");
+
+    await expect(page.getByRole("heading", { name: "Jelaskan Stok", exact: true })).toBeVisible();
+    await expect(page.getByText(/Batas ledger: urutan #/)).toBeVisible();
+    await expect(page.getByText("Sama", { exact: true }).first()).toBeVisible();
+    await expect(page.getByRole("link", { name: "Buka bukti ledger", exact: true }).first()).toBeVisible();
+
+    await page.reload({ waitUntil: "domcontentloaded" });
+    await expect(page.getByRole("heading", { name: "Jelaskan Stok", exact: true })).toBeVisible();
+    const drillDown = page.getByRole("link", { name: "Buka bukti ledger", exact: true }).first();
+    await drillDown.click();
+    await page.waitForURL((url) => url.pathname === "/ledger" && url.searchParams.get("productId") === productId);
+    await expect(page.getByRole("heading", { name: "Riwayat Stok", exact: true })).toBeVisible();
+
+    expect(pageErrors, `pageerror: ${pageErrors.join(" | ")}`).toEqual([]);
+    expect(hydrationErrors, `hydration: ${hydrationErrors.join(" | ")}`).toEqual([]);
+    expect(consoleErrors, `console.error: ${consoleErrors.join(" | ")}`).toEqual([]);
+    expect(serverFailures, `server failures: ${serverFailures.join(" | ")}`).toEqual([]);
+  },
+);

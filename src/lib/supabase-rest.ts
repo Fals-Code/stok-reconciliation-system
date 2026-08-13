@@ -154,6 +154,24 @@ export type LedgerTransactionDetail = {
   rows: LedgerExplorerRow[];
   reversalLinks: LedgerReversalLink[];
 };
+export type ProductStockExplanationGroup = {
+  transactionTypeCode: string;
+  reasonCode: string;
+  channelCode: string;
+  sourceTypeCode: string;
+  sellableDelta: number;
+  quarantineDelta: number;
+  damagedDelta: number;
+  onHandDelta: number;
+};
+
+export type ProductStockExplanation = {
+  ledgerBoundarySeq: number;
+  ledger: { sellableQty: number; quarantineQty: number; damagedQty: number; onHandQty: number };
+  projection: { sellableQty: number; quarantineQty: number; damagedQty: number; reservedQty: number; availableQty: number; onHandQty: number };
+  comparison: { sellableMatches: boolean; quarantineMatches: boolean; damagedMatches: boolean; onHandMatches: boolean };
+  groupedMovements: ProductStockExplanationGroup[];
+};
 
 export const TODAY_CONTROL_CENTER_SEVERITIES = [
   "CRITICAL",
@@ -4432,6 +4450,17 @@ export async function getLedgerStockStoryPage(
   filters: LedgerExplorerFilters = {},
 ): Promise<LedgerExplorerPage> {
   return getLedgerPageFromView("ledger_stock_story", filters);
+}
+export async function getProductStockExplanation(productId: string): Promise<ProductStockExplanation | null> {
+  const session = await getAdminSession();
+  if (!session) throw new Error("AUTH_SESSION_REQUIRED");
+
+  const normalizedProductId = productId.trim();
+  if (!LEDGER_UUID_PATTERN.test(normalizedProductId)) return null;
+
+  return callRpc<ProductStockExplanation | null>("product_stock_explanation", {
+    p_product_id: normalizedProductId,
+  });
 }
 
 export async function getLedgerTransactionDetail(
