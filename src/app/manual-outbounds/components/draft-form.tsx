@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { useState, useMemo, useRef, type FormEvent } from "react";
 import { useFormStatus } from "react-dom";
 
@@ -15,7 +16,7 @@ import {
 } from "@/app/manual-outbounds/draft";
 import { Button, StatusBadge } from "@/components/ui";
 import { WizardProgress } from "@/components/ui/wizard-progress";
-import type { ManualOutboundPreview } from "@/lib/supabase-rest";
+import type { ManualOutboundPreview, PromoReferenceRow } from "@/lib/supabase-rest";
 
 type ProductOption = {
   productId: string;
@@ -119,6 +120,17 @@ function PreviewPanel({
           <p className="text-xs text-ui-text-muted">Alokasi batch</p>
           <p className="mt-1 text-sm font-semibold text-ui-text">{numberFormatter.format(preview.allocationCount)} batch</p>
         </div>
+        {preview.reasonCode === "PROMO" && preview.promoReference ? (
+          <div className="sm:col-span-3">
+            <p className="text-xs text-ui-text-muted">Referensi Promo</p>
+            <p className="mt-1 text-sm font-semibold text-ui-text">{preview.promoReference.code} — {preview.promoReference.name}</p>
+          </div>
+        ) : preview.reference && preview.reasonCode !== "OFFLINE_SALE" ? (
+          <div className="sm:col-span-3">
+            <p className="text-xs text-ui-text-muted">Referensi Kegiatan</p>
+            <p className="mt-1 text-sm font-semibold text-ui-text">{preview.reference}</p>
+          </div>
+        ) : null}
       </div>
 
       {preview.blockers.length ? (
@@ -202,6 +214,7 @@ export default function ManualOutboundDraftForm({
   preview,
   previewError,
   products,
+  promos,
 }: {
   contextProductId: string | null;
   initialDraft: ManualOutboundDraft;
@@ -210,11 +223,17 @@ export default function ManualOutboundDraftForm({
   preview: ManualOutboundPreview | null;
   previewError: string | null;
   products: ProductOption[];
+  promos: PromoReferenceRow[];
 }) {
   const [sourceRef, setSourceRef] = useState(initialDraft.sourceRef);
   const [occurredAt, setOccurredAt] = useState(initialDraft.occurredAt);
   const [reasonCode, setReasonCode] = useState<ManualOutboundReasonCode>(initialDraft.reasonCode);
-  const [reference, setReference] = useState(initialDraft.reference ?? "");
+  const [selectedPromoCode, setSelectedPromoCode] = useState(
+    initialDraft.reasonCode === "PROMO" ? (initialDraft.reference ?? "") : ""
+  );
+  const [genericReference, setGenericReference] = useState(
+    initialDraft.reasonCode !== "PROMO" ? (initialDraft.reference ?? "") : ""
+  );
   const [note, setNote] = useState(initialDraft.note ?? "");
   const [lines, setLines] = useState<EditableLine[]>(initialDraft.lines.map((line) => ({ ...line, quantity: String(line.quantity) })));
   const [previewCurrent, setPreviewCurrent] = useState(Boolean(preview || previewError));
@@ -222,15 +241,27 @@ export default function ManualOutboundDraftForm({
   const [isSubmitting, setIsSubmitting] = useState(false);
   const referenceInput = useRef<HTMLInputElement>(null);
 
-  const draft = useMemo(() => serializeManualOutboundDraft({
-    sourceRef,
-    occurredAt,
-    reasonCode,
-    lines: lines.map((line) => ({ ...line, quantity: Number(line.quantity) })),
-    note: note.trim() || null,
-    reference: reference.trim() || null,
-  }), [sourceRef, occurredAt, reasonCode, lines, note, reference]);
-  const referenceRequired = reasonCode !== "OFFLINE_SALE";
+  const activePromos = useMemo(
+    () => promos.filter((p) => p.is_active).sort((a, b) => a.code.localeCompare(b.code)),
+    [promos]
+  );
+  const promoBlocked = reasonCode === "PROMO" && activePromos.length === 0;
+
+  const draft = useMemo(() => {
+    const ref = reasonCode === "PROMO"
+      ? (selectedPromoCode.trim() || null)
+      : reasonCode === "OFFLINE_SALE"
+        ? null
+        : (genericReference.trim() || null);
+    return serializeManualOutboundDraft({
+      sourceRef,
+      occurredAt,
+      reasonCode,
+      lines: lines.map((line) => ({ ...line, quantity: Number(line.quantity) })),
+      note: note.trim() || null,
+      reference: ref,
+    });
+  }, [sourceRef, occurredAt, reasonCode, lines, note, selectedPromoCode, genericReference]);
 
   function changed() {
     setPreviewCurrent(false);
@@ -243,7 +274,13 @@ export default function ManualOutboundDraftForm({
   }
 
   function submit(event: FormEvent<HTMLFormElement>) {
-    if (referenceRequired && !reference.trim()) {
+    if (reasonCode === "PROMO") {
+      if (!selectedPromoCode) {
+        event.preventDefault();
+        setReferenceError("Referensi Promo wajib dipilih.");
+        return;
+      }
+    } else if (reasonCode !== "OFFLINE_SALE" && !genericReference.trim()) {
       event.preventDefault();
       setReferenceError("Referensi kegiatan, persetujuan, penerima, atau pesanan wajib diisi.");
       referenceInput.current?.focus();
@@ -265,11 +302,32 @@ export default function ManualOutboundDraftForm({
           <label className="grid gap-2 text-sm font-semibold text-ui-text" htmlFor="outbound-reference">Referensi Barang Keluar<input className="min-h-[var(--ui-control-height)] rounded-[var(--ui-radius-md)] border border-ui-border bg-ui-surface px-3.5 text-sm font-normal text-ui-text" disabled={isSubmitting} id="outbound-reference" maxLength={200} onChange={(event) => { changed(); setSourceRef(event.target.value); }} required value={sourceRef} /></label>
           <label className="grid gap-2 text-sm font-semibold text-ui-text" htmlFor="outbound-occurred-at">Waktu Barang Keluar<input className="min-h-[var(--ui-control-height)] rounded-[var(--ui-radius-md)] border border-ui-border bg-ui-surface px-3.5 text-sm font-normal text-ui-text" disabled={isSubmitting} id="outbound-occurred-at" onChange={(event) => { changed(); setOccurredAt(event.target.value); }} required type="datetime-local" value={occurredAt} /></label>
           <label className="grid gap-2 text-sm font-semibold text-ui-text" htmlFor="outbound-reason">Alasan<select className="min-h-[var(--ui-control-height)] rounded-[var(--ui-radius-md)] border border-ui-border bg-ui-surface px-3.5 text-sm font-normal text-ui-text" disabled={isSubmitting} id="outbound-reason" onChange={(event) => { changed(); setReasonCode(event.target.value as ManualOutboundReasonCode); }} value={reasonCode}>{MANUAL_OUTBOUND_REASON_CODES.map((reason) => <option key={reason} value={reason}>{reasonLabel(reason)}</option>)}</select></label>
-          <div className="grid gap-2">
-            <label className="text-sm font-semibold text-ui-text" htmlFor="outbound-business-reference">Referensi Kegiatan {referenceRequired ? "(wajib)" : "(opsional)"}</label>
-            <input aria-describedby={referenceError ? "outbound-business-reference-error" : undefined} aria-invalid={referenceError ? true : undefined} className="min-h-[var(--ui-control-height)] rounded-[var(--ui-radius-md)] border border-ui-border bg-ui-surface px-3.5 text-sm text-ui-text" disabled={isSubmitting} id="outbound-business-reference" maxLength={200} onChange={(event) => { changed(); setReference(event.target.value); }} ref={referenceInput} required={referenceRequired} value={reference} />
-            {referenceError ? <p className="text-xs font-medium text-ui-danger" id="outbound-business-reference-error" role="alert">{referenceError}</p> : <p className="text-xs leading-5 text-ui-text-muted">Bonus, promo, dan sampel memerlukan kegiatan, persetujuan, penerima, atau pesanan.</p>}
-          </div>
+          {reasonCode === "PROMO" ? (
+            <div className="grid gap-2">
+              <label className="text-sm font-semibold text-ui-text" htmlFor="outbound-promo-selector">Referensi Promo (wajib)</label>
+              {activePromos.length > 0 ? (
+                <>
+                  <select className="min-h-[var(--ui-control-height)] rounded-[var(--ui-radius-md)] border border-ui-border bg-ui-surface px-3.5 text-sm text-ui-text" disabled={isSubmitting} id="outbound-promo-selector" onChange={(event) => { changed(); setSelectedPromoCode(event.target.value); }} required value={selectedPromoCode}>
+                    <option disabled value="">Pilih referensi Promo</option>
+                    {activePromos.map((promo) => <option key={promo.id} value={promo.code}>{promo.code} — {promo.name}</option>)}
+                  </select>
+                  <p className="text-xs leading-5 text-ui-text-muted">Pilih referensi Promo yang sesuai dari master data. <Link className="font-semibold text-ui-primary hover:underline" href="/settings/promos">Kelola Referensi Promo</Link></p>
+                </>
+              ) : (
+                <div className="rounded-[var(--ui-radius-md)] border border-ui-border bg-ui-surface-subtle p-4">
+                  <p className="text-sm text-ui-text-muted">Tidak ada referensi Promo aktif yang tersedia.</p>
+                  <Link className="mt-2 inline-flex text-xs font-semibold text-ui-primary hover:underline" href="/settings/promos">Kelola Referensi Promo</Link>
+                </div>
+              )}
+              {referenceError ? <p className="text-xs font-medium text-ui-danger" id="outbound-business-reference-error" role="alert">{referenceError}</p> : null}
+            </div>
+          ) : reasonCode !== "OFFLINE_SALE" ? (
+            <div className="grid gap-2">
+              <label className="text-sm font-semibold text-ui-text" htmlFor="outbound-business-reference">Referensi Kegiatan (wajib)</label>
+              <input aria-describedby={referenceError ? "outbound-business-reference-error" : undefined} aria-invalid={referenceError ? true : undefined} className="min-h-[var(--ui-control-height)] rounded-[var(--ui-radius-md)] border border-ui-border bg-ui-surface px-3.5 text-sm text-ui-text" disabled={isSubmitting} id="outbound-business-reference" maxLength={200} onChange={(event) => { changed(); setGenericReference(event.target.value); }} ref={referenceInput} required value={genericReference} />
+              {referenceError ? <p className="text-xs font-medium text-ui-danger" id="outbound-business-reference-error" role="alert">{referenceError}</p> : <p className="text-xs leading-5 text-ui-text-muted">Bonus dan sampel memerlukan kegiatan, persetujuan, penerima, atau pesanan.</p>}
+            </div>
+          ) : null}
           <label className="grid gap-2 text-sm font-semibold text-ui-text sm:col-span-2" htmlFor="outbound-note">Catatan (opsional)<textarea className="min-h-28 rounded-[var(--ui-radius-md)] border border-ui-border bg-ui-surface px-3.5 py-3 text-sm font-normal text-ui-text" disabled={isSubmitting} id="outbound-note" maxLength={2000} onChange={(event) => { changed(); setNote(event.target.value); }} value={note} /></label>
         </div>
         <div className="mt-6 border-t border-ui-border pt-5">
@@ -302,7 +360,7 @@ export default function ManualOutboundDraftForm({
           </div>
         </div>
         {preview && !previewCurrent ? <p className="mt-4 text-sm font-medium text-ui-warning">Data berubah. Dampak sebelumnya tidak berlaku. Periksa lagi sebelum menyimpan.</p> : null}
-        <div className="mt-5 flex justify-end"><PreviewButton /></div>
+        {promoBlocked ? null : <div className="mt-5 flex justify-end"><PreviewButton /></div>}
       </form>
       ) : null}
       {previewCurrent && previewError ? <p className="mt-6 rounded-[var(--ui-radius-md)] border border-ui-danger bg-ui-danger-subtle p-4 text-sm text-ui-danger" role="alert">{previewError}</p> : null}

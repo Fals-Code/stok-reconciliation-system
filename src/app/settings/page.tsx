@@ -238,6 +238,18 @@ export default async function SettingsPage() {
 
           <div className="border-t border-ui-border">
             <SettingsGroupLabel>
+              Operasional
+            </SettingsGroupLabel>
+
+            <SettingsLink
+              description="Kelola referensi Promo yang dapat dipilih saat mencatat barang keluar."
+              href="/settings/promos"
+              title="Referensi Promo"
+            />
+          </div>
+
+          <div className="border-t border-ui-border">
+            <SettingsGroupLabel>
               Status sistem
             </SettingsGroupLabel>
 

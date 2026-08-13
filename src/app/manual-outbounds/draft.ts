@@ -275,6 +275,8 @@ export function manualOutboundErrorMessage(error: unknown) {
       "Referensi kegiatan atau penerima maksimal 200 karakter.",
     OUTBOUND_REASON_REFERENCE_REQUIRED:
       "Bonus, promo, atau sample wajib memiliki referensi kegiatan, persetujuan, penerima, atau pesanan.",
+    OUTBOUND_PROMO_REFERENCE_INVALID:
+      "Referensi promo tidak valid, tidak aktif, atau tidak ditemukan.",
     OUTBOUND_METADATA_MUST_BE_OBJECT:
       "Metadata barang keluar tidak valid.",
     INSUFFICIENT_AVAILABLE_STOCK:
@@ -292,7 +294,7 @@ export function manualOutboundErrorMessage(error: unknown) {
     MANUAL_OUTBOUND_PREVIEW_BLOCKED:
       "Barang keluar tidak dapat diposting karena preview masih memiliki blocker.",
     STALE_MANUAL_OUTBOUND_PREVIEW:
-      "Posisi stok berubah setelah preview dibuat. Tinjau preview terbaru sebelum mengonfirmasi ulang.",
+      "Posisi stok berubah setelah preview dibuat atau referensi tidak valid. Tinjau preview terbaru sebelum mengonfirmasi ulang.",
     IDEMPOTENCY_KEY_REQUIRED:
       "Referensi proses barang keluar tidak tersedia. Muat ulang preview.",
     IDEMPOTENCY_KEY_TOO_LONG:

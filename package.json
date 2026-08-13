@@ -38,6 +38,8 @@
     "test:marketplace-external-event-parallel": "node scripts/test-marketplace-external-event-parallel.mjs",
     "test:marketplace-version-snapshot-parallel": "node scripts/test-marketplace-version-snapshot-parallel.mjs",
     "test:today-control-center-ui": "node scripts/test-today-control-center-ui.mjs",
+    "test:promo-reference-ui": "node scripts/test-promo-reference-ui.mjs",
+    "test:promo-manual-outbound-ui": "node scripts/test-promo-manual-outbound-ui.mjs",
     "test:stock-workspace-ui": "node scripts/test-stock-workspace-ui.mjs",
     "test:stocktake-ui": "node scripts/test-stocktake-ui.mjs",
     "test:login-ui": "node scripts/test-login-ui.mjs",

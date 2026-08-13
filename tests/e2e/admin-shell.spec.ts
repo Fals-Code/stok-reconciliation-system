@@ -638,3 +638,100 @@ test(
     expect(noHorizontalOverflow).toBe(true);
   },
 );
+
+test(
+  "manual outbound menampilkan referensi Promo aktif dan mempertahankan referensi generic",
+  async ({ page }) => {
+    const pageErrors: string[] = [];
+    const consoleErrors: string[] = [];
+    const hydrationErrors: string[] = [];
+
+    page.on("pageerror", (error) => pageErrors.push(error.message));
+    page.on("console", (message) => {
+      if (message.type() !== "error") return;
+      consoleErrors.push(message.text());
+      if (/hydration/i.test(message.text())) hydrationErrors.push(message.text());
+    });
+
+    await loginAsAdmin(page);
+
+    const fixtureSuffix = Date.now().toString(36).toUpperCase();
+    const activeFixtureCode = `E2E_ACTIVE_${fixtureSuffix}`;
+    const inactiveFixtureCode = `E2E_INACTIVE_${fixtureSuffix}`;
+
+    async function createPromoFixture(code: string, name: string) {
+      await page.goto("/settings/promos", { waitUntil: "domcontentloaded" });
+      const createPromo = page.locator("#promo-create-form");
+      await createPromo.locator("summary").click();
+      await createPromo.getByLabel("Kode Promo", { exact: true }).fill(code);
+      await createPromo.getByLabel("Nama Promo", { exact: true }).fill(name);
+      await createPromo.getByRole("button", { name: "Tambah Promo", exact: true }).click();
+      await expect(page.getByText(code, { exact: true })).toBeVisible();
+    }
+
+    await createPromoFixture(activeFixtureCode, `E2E Active ${fixtureSuffix}`);
+    await createPromoFixture(inactiveFixtureCode, `E2E Inactive ${fixtureSuffix}`);
+
+    const inactiveRow = page.locator("div.group.grid").filter({ hasText: inactiveFixtureCode });
+    await inactiveRow.locator("summary", { hasText: "Nonaktifkan" }).click();
+    await inactiveRow.getByLabel("Alasan Penonaktifan", { exact: true }).fill("Fixture browser inactive");
+    await inactiveRow.getByRole("checkbox").check();
+    await inactiveRow.getByRole("button", { name: "Nonaktifkan", exact: true }).click();
+    await expect(inactiveRow.getByText("Tidak Aktif", { exact: true })).toBeVisible();
+
+    await page.goto("/settings/promos", { waitUntil: "domcontentloaded" });
+    const promoRows = page.locator("div.group.grid");
+    const activePromoCodes = await promoRows
+      .filter({ has: page.getByText("Aktif", { exact: true }) })
+      .locator("p.ui-code")
+      .allTextContents();
+    const inactivePromoCodes = await promoRows
+      .filter({ has: page.getByText("Tidak Aktif", { exact: true }) })
+      .locator("p.ui-code")
+      .allTextContents();
+
+    expect(activePromoCodes).toContain(activeFixtureCode);
+
+    await page.goto("/manual-outbounds", { waitUntil: "domcontentloaded" });
+    const reason = page.locator("#outbound-reason");
+    const promoSelector = page.locator("#outbound-promo-selector");
+    const genericReference = page.locator("#outbound-business-reference");
+
+    await expect(reason).toHaveValue("OFFLINE_SALE");
+    await expect(promoSelector).toHaveCount(0);
+    await expect(genericReference).toHaveCount(0);
+
+    await reason.selectOption("PROMO");
+    await expect(promoSelector).toBeVisible();
+    await expect(promoSelector).toHaveValue("");
+
+    const selectablePromoCodes = await promoSelector.locator("option").evaluateAll(
+      (options) => options.flatMap((option) => {
+        const candidate = option as HTMLOptionElement;
+        return !candidate.disabled && candidate.value ? [candidate.value] : [];
+      }),
+    );
+    expect(selectablePromoCodes.sort()).toEqual([...activePromoCodes].sort());
+    expect(selectablePromoCodes).not.toContain(inactiveFixtureCode);
+    expect(selectablePromoCodes).not.toEqual(expect.arrayContaining(inactivePromoCodes));
+
+    await promoSelector.selectOption(activePromoCodes[0]);
+    await expect(promoSelector).toHaveValue(activePromoCodes[0]);
+
+    await reason.selectOption("BONUS");
+    await expect(promoSelector).toHaveCount(0);
+    await expect(genericReference).toBeVisible();
+
+    await reason.selectOption("SAMPLE");
+    await expect(promoSelector).toHaveCount(0);
+    await expect(genericReference).toBeVisible();
+
+    await reason.selectOption("OFFLINE_SALE");
+    await expect(promoSelector).toHaveCount(0);
+    await expect(genericReference).toHaveCount(0);
+
+    expect(pageErrors, `pageerror: ${pageErrors.join(" | ")}`).toEqual([]);
+    expect(hydrationErrors, `hydration: ${hydrationErrors.join(" | ")}`).toEqual([]);
+    expect(consoleErrors, `console.error: ${consoleErrors.join(" | ")}`).toEqual([]);
+  },
+);

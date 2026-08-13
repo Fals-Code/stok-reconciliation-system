@@ -913,6 +913,11 @@ export type ManualOutboundPreview = {
   products: ManualOutboundPreviewProduct[];
   allocations: ManualOutboundPreviewAllocation[];
   blockers: ManualOutboundPreviewBlocker[];
+  promoReference?: {
+    id: string;
+    code: string;
+    name: string;
+  } | null;
 };
 
 export type ManualOutboundMutationAllocation = {
@@ -1011,6 +1016,7 @@ export type ManualOutboundData = {
   selectedOutbound: ManualOutboundHeader | null;
   lines: ManualOutboundLine[];
   allocations: ManualOutboundAllocation[];
+  promos: PromoReferenceRow[];
 };
 
 
@@ -1876,6 +1882,7 @@ export async function getManualOutboundData(
     selectedOutboundRows,
     lines,
     allocations,
+    promos,
   ] = await Promise.all([
     apiFetch<ProductInventory[]>(
       `product_inventory?organization_id=eq.${encodedOrganizationId}&is_active=eq.true&select=*&order=name.asc`,
@@ -1886,6 +1893,7 @@ export async function getManualOutboundData(
     selectedOutboundPromise,
     selectedLinesPromise,
     selectedAllocationsPromise,
+    getPromoReferences(resolvedOrganizationId),
   ]);
 
   const selectedOutbound = selectedOutboundRows[0] ?? null;
@@ -1906,6 +1914,7 @@ export async function getManualOutboundData(
     selectedOutbound,
     lines,
     allocations,
+    promos,
   };
 }
 
@@ -4581,4 +4590,110 @@ export async function getTodayControlCenterWorkItems(
       ? encodeTodayControlCenterCursor(visibleRows[visibleRows.length - 1])
       : null,
   };
+}
+
+export type PromoReferenceRow = {
+  id: string;
+  organization_id: string;
+  code: string;
+  name: string;
+  description: string | null;
+  is_active: boolean;
+  row_version: number;
+  created_at: string;
+  created_by: string | null;
+  updated_at: string;
+  updated_by: string | null;
+};
+
+export type PromoReferenceCommandResponse = {
+  status: "CREATED" | "UPDATED" | "ARCHIVED" | "REACTIVATED";
+  promoId: string;
+  code: string;
+  name?: string;
+  isActive: boolean;
+  rowVersion: number;
+  auditId: string;
+  idempotencyKey: string;
+  recordedAt: string;
+};
+
+export async function getPromoReferences(organizationId?: string): Promise<PromoReferenceRow[]> {
+  const resolvedOrganizationId = await resolveOrganizationId(organizationId);
+  const encodedOrganizationId = encodeURIComponent(resolvedOrganizationId);
+  return apiFetch<PromoReferenceRow[]>(
+    `promo_references?organization_id=eq.${encodedOrganizationId}&select=*&order=is_active.desc,code.asc&limit=1000`
+  );
+}
+
+export async function createPromoReference(input: {
+  organizationId?: string;
+  idempotencyKey: string;
+  code: string;
+  name: string;
+  description?: string | null;
+}) {
+  const organizationId = await resolveOrganizationId(input.organizationId);
+  return callRpc<PromoReferenceCommandResponse>("create_promo_reference", {
+    p_organization_id: organizationId,
+    p_idempotency_key: input.idempotencyKey,
+    p_code: input.code,
+    p_name: input.name,
+    p_description: input.description ?? null,
+  });
+}
+
+export async function updatePromoReference(input: {
+  organizationId?: string;
+  idempotencyKey: string;
+  id: string;
+  expectedRowVersion: number;
+  name: string;
+  description?: string | null;
+  note?: string | null;
+}) {
+  const organizationId = await resolveOrganizationId(input.organizationId);
+  return callRpc<PromoReferenceCommandResponse>("update_promo_reference", {
+    p_organization_id: organizationId,
+    p_idempotency_key: input.idempotencyKey,
+    p_promo_id: input.id,
+    p_expected_row_version: input.expectedRowVersion,
+    p_name: input.name,
+    p_description: input.description ?? null,
+    p_note: input.note ?? null,
+  });
+}
+
+export async function archivePromoReference(input: {
+  organizationId?: string;
+  idempotencyKey: string;
+  id: string;
+  expectedRowVersion: number;
+  reason?: string | null;
+}) {
+  const organizationId = await resolveOrganizationId(input.organizationId);
+  return callRpc<PromoReferenceCommandResponse>("archive_promo_reference", {
+    p_organization_id: organizationId,
+    p_idempotency_key: input.idempotencyKey,
+    p_promo_id: input.id,
+    p_expected_row_version: input.expectedRowVersion,
+    p_reason: input.reason ?? null,
+  });
+}
+
+export async function reactivatePromoReference(input: {
+  organizationId?: string;
+  idempotencyKey: string;
+  id: string;
+  expectedRowVersion: number;
+  reason?: string | null;
+}) {
+  const organizationId = await resolveOrganizationId(input.organizationId);
+  return callRpc<PromoReferenceCommandResponse>("reactivate_promo_reference", {
+    p_organization_id: organizationId,
+    p_idempotency_key: input.idempotencyKey,
+    p_promo_id: input.id,
+    p_expected_row_version: input.expectedRowVersion,
+    p_reason: input.reason ?? null,
+  });
 }
