@@ -206,9 +206,9 @@ function provisionReadOnlyFixture() {
       p_title => 'Fixture Pusat Kendali: batch perlu diperiksa',
       p_message => 'Fixture baca stabil untuk Pusat Kendali Hari Ini.',
       p_action_route => '/?batchId=${batchId}',
-      p_condition_started_at => '2026-07-26 08:00:00+00'::timestamptz,
-      p_observed_at => '2026-07-26 08:00:00+00'::timestamptz,
-      p_due_at => '2026-08-25 08:00:00+00'::timestamptz,
+      p_condition_started_at => clock_timestamp() - interval '1 minute',
+      p_observed_at => clock_timestamp(),
+      p_due_at => clock_timestamp() + interval '30 days',
       p_source_snapshot => jsonb_build_object('smokeSuite', 'today-control-center-ui', 'fixtureVersion', 1, 'stockEffectCode', 'NONE'),
       p_stage_direction_code => 'ESCALATED',
       p_process_name => 'today-control-center-ui-smoke'
@@ -292,9 +292,9 @@ function provisionReadOnlyFixture() {
       p_title => 'Fixture route double-encoded tidak aman Pusat Kendali',
       p_message => 'Fixture untuk memastikan route ter-encode tidak menjadi deep-link.',
       p_action_route => '/%252F%252Fevil.example',
-      p_condition_started_at => '2026-07-26 06:00:00+00'::timestamptz,
-      p_observed_at => '2026-07-26 06:00:00+00'::timestamptz,
-      p_due_at => '2026-10-24 06:00:00+00'::timestamptz,
+      p_condition_started_at => clock_timestamp() - interval '2 minutes',
+      p_observed_at => clock_timestamp(),
+      p_due_at => clock_timestamp() + interval '90 days',
       p_source_snapshot => jsonb_build_object('smokeSuite', 'today-control-center-ui', 'fixtureVersion', 1, 'unsafeRouteFixture', true, 'stockEffectCode', 'NONE'),
       p_stage_direction_code => 'ESCALATED',
       p_process_name => 'today-control-center-ui-smoke'
@@ -304,12 +304,13 @@ function provisionReadOnlyFixture() {
       from notification.notifications notification_row
       where notification_row.organization_id = ${sqlLiteral(organizationId)}::uuid
         and notification_row.deduplication_key = ${sqlLiteral(unsafeRouteNotificationKey)}
+        and notification_row.lifecycle_status_code in ('OPEN', 'ACKNOWLEDGED')
     );
   `);
 
   const counts = parseJsonLine(runSql(`
     select jsonb_build_object(
-      'notificationCount', count(*) filter (where deduplication_key = ${sqlLiteral(notificationKey)}),
+      'notificationCount', count(*) filter (where deduplication_key = ${sqlLiteral(notificationKey)} and lifecycle_status_code in ('OPEN', 'ACKNOWLEDGED')),
       'resolvedNotificationCount', count(*) filter (where deduplication_key = ${sqlLiteral(resolvedNotificationKey)} and lifecycle_status_code = 'RESOLVED'),
       'unsafeRouteNotificationCount', count(*) filter (where deduplication_key = ${sqlLiteral(unsafeRouteNotificationKey)} and lifecycle_status_code in ('OPEN', 'ACKNOWLEDGED')),
       'ruleRunCount', (
@@ -322,8 +323,32 @@ function provisionReadOnlyFixture() {
     from notification.notifications
     where organization_id = ${sqlLiteral(organizationId)}::uuid;
   `));
-  check("Fixture durable tidak membuat episode atau rule-run ganda", counts.notificationCount === 1 && counts.resolvedNotificationCount === 1 && counts.unsafeRouteNotificationCount === 1 && counts.ruleRunCount === 1, JSON.stringify(counts));
+  check("Fixture aktif tetap tunggal dan rule-run durable tidak ganda", counts.notificationCount === 1 && counts.resolvedNotificationCount === 1 && counts.unsafeRouteNotificationCount === 1 && counts.ruleRunCount === 1, JSON.stringify(counts));
 }
+
+function cleanupReadOnlyFixture() {
+  if (!UUID.test(organizationId)) return;
+  runSql(`
+    select notification.resolve_notification(
+      p_organization_id => ${sqlLiteral(organizationId)}::uuid,
+      p_notification_id => notification_row.id,
+      p_resolution_code => 'SMOKE_FIXTURE_CLEANUP',
+      p_resolution_snapshot => jsonb_build_object('smokeSuite', 'today-control-center-ui', 'cleanup', true, 'stockEffectCode', 'NONE'),
+      p_resolved_at => clock_timestamp(),
+      p_correlation_id => gen_random_uuid(),
+      p_note => 'Cleanup fixture Today Control Center UI smoke.',
+      p_process_name => 'today-control-center-ui-smoke'
+    )
+    from notification.notifications notification_row
+    where notification_row.organization_id = ${sqlLiteral(organizationId)}::uuid
+      and notification_row.rule_code_snapshot = 'EXPIRY_RISK'
+      and notification_row.entity_type_code = 'PRODUCT_BATCH'
+      and notification_row.lifecycle_status_code in ('OPEN', 'ACKNOWLEDGED')
+      and notification_row.deduplication_key like '%:today-control-center-ui-smoke:%'
+      and notification_row.source_snapshot ->> 'smokeSuite' = 'today-control-center-ui';
+  `);
+}
+
 
 async function main() {
   await loadEnv();
@@ -509,6 +534,12 @@ try {
   console.error("Today Control Center UI smoke FAIL", error instanceof Error ? error.stack ?? error.message : String(error));
   process.exitCode = 1;
 } finally {
+  try {
+    cleanupReadOnlyFixture();
+  } catch (cleanupError) {
+    console.error("Today Control Center UI smoke cleanup FAIL", cleanupError instanceof Error ? cleanupError.stack ?? cleanupError.message : String(cleanupError));
+    process.exitCode = 1;
+  }
   if (server?.pid) {
     spawnSync("taskkill", ["/PID", String(server.pid), "/T", "/F"], { windowsHide: true, stdio: "ignore" });
   }
