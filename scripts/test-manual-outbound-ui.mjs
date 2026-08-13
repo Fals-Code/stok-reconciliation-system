@@ -2073,7 +2073,7 @@ returning organization_id::text;
 
     const serverLog = `${serverStdout}\n${serverStderr}`;
     const unsafeLogPattern =
-      /Unhandled Runtime Error|Internal Server Error|ReferenceError:|TypeError:|â¨¯/i;
+      /Unhandled Runtime Error|Internal Server Error|ReferenceError:|TypeError:|⨯/i;
 
     assertTest(
       !unsafeLogPattern.test(serverLog),

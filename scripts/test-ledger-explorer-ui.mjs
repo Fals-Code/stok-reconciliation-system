@@ -23,7 +23,7 @@ let serverOutput = "";
 function check(name, condition, detail = "") {
   if (!condition) throw new Error(`${name}${detail ? `: ${detail}` : ""}`);
   results.push(name);
-  console.log(`[PASS] ${name}${detail ? ` Ã¢â‚¬â€ ${detail}` : ""}`);
+  console.log(`[PASS] ${name}${detail ? ` — ${detail}` : ""}`);
 }
 
 function run(command, args, input) {

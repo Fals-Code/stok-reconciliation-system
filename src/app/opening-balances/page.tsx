@@ -712,7 +712,7 @@ export default async function OpeningBalancesPage({
                   {selected.cutover_no}
                 </h2>
                 <p className="mt-1 text-sm text-ui-text-muted">
-                  {selected.source_ref} {"Ã‚Â·"} efektif{" "}
+                  {selected.source_ref} {"·"} efektif{" "}
                   {selected.effective_local_date}
                 </p>
               </div>
@@ -845,11 +845,11 @@ export default async function OpeningBalancesPage({
                       >
                         <div>
                           <p className="text-sm font-semibold text-ui-text">
-                            {line.product_sku_snapshot} {"Ã‚Â·"}{" "}
+                            {line.product_sku_snapshot} {"·"}{" "}
                             {line.batch_code_snapshot}
                           </p>
                           <p className="mt-1 text-xs text-ui-text-muted">
-                            {bucketLabel(line.bucket_code)} {"Ã‚Â·"}{" "}
+                            {bucketLabel(line.bucket_code)} {"·"}{" "}
                             {number(line.quantity)} unit
                           </p>
                         </div>
@@ -888,7 +888,7 @@ export default async function OpeningBalancesPage({
                           key={line.opening_balance_line_id}
                         >
                           <p className="font-semibold text-ui-text">
-                            {line.product_sku_snapshot} {"Ã‚Â·"}{" "}
+                            {line.product_sku_snapshot} {"·"}{" "}
                             {line.batch_code_snapshot}
                           </p>
                           <p className="mt-2">
@@ -896,7 +896,7 @@ export default async function OpeningBalancesPage({
                           </p>
                           <p className="mt-1">
                             Jumlah fisik: {number(line.verifying_physical_quantity)}
-                            {" Ã‚Â· "}Selisih: {number(line.verifying_variance_quantity)}
+                            {" · "}Selisih: {number(line.verifying_variance_quantity)}
                           </p>
                           <p className="ui-code mt-2 break-all">
                             {line.verification_application_id}
@@ -1067,7 +1067,7 @@ export default async function OpeningBalancesPage({
                         {cutover.cutover_no}
                       </p>
                       <p className="mt-1 text-xs text-ui-text-muted">
-                        {cutover.source_ref} {"Ã‚Â·"}{" "}
+                        {cutover.source_ref} {"·"}{" "}
                         {number(cutover.total_quantity)} unit
                       </p>
                     </div>

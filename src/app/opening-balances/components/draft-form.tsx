@@ -268,7 +268,7 @@ export default function OpeningBalanceDraftForm({
                         key={batch.batch_id}
                         value={`${batch.product_id}:${batch.batch_id}`}
                       >
-                        {batch.sku} {"Â·"} {batch.batch_code} {"Â·"} kedaluwarsa{" "}
+                        {batch.sku} {"·"} {batch.batch_code} {"·"} kedaluwarsa{" "}
                         {batch.expiry_date}
                       </option>
                     ))}

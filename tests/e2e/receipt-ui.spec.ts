@@ -150,7 +150,7 @@ test.afterEach(async () => {
 /* ------------------------------------------------------------------ */
 
 test(
-  "Receipt existing batch Ã¢â‚¬â€ full mutation lifecycle",
+  "Receipt existing batch — full mutation lifecycle",
   async ({ page, isMobile }) => {
     test.skip(
       Boolean(isMobile),
@@ -429,7 +429,7 @@ test(
 /* ------------------------------------------------------------------ */
 
 test(
-  "Receipt new batch Ã¢â‚¬â€ full mutation lifecycle",
+  "Receipt new batch — full mutation lifecycle",
   async ({ page, isMobile }) => {
     test.skip(
       Boolean(isMobile),
@@ -612,11 +612,11 @@ test(
 );
 
 /* ------------------------------------------------------------------ */
-/*  D. CLIENT VALIDATION Ã¢â‚¬â€ date range                                  */
+/*  D. CLIENT VALIDATION — date range                                  */
 /* ------------------------------------------------------------------ */
 
 test(
-  "Client validation Ã¢â‚¬â€ manufactured after expiry shows warning and disables preview",
+  "Client validation — manufactured after expiry shows warning and disables preview",
   async ({ page, isMobile }) => {
     test.skip(
       Boolean(isMobile),
@@ -697,7 +697,7 @@ test(
 /* ------------------------------------------------------------------ */
 
 test(
-  "Quantity boundary Ã¢â‚¬â€ zero and negative prevent preview",
+  "Quantity boundary — zero and negative prevent preview",
   async ({ page, isMobile }) => {
     test.skip(
       Boolean(isMobile),
@@ -771,7 +771,7 @@ test(
 /* ------------------------------------------------------------------ */
 
 test(
-  "Multi-line Ã¢â‚¬â€ add and remove lines",
+  "Multi-line — add and remove lines",
   async ({ page, isMobile }) => {
     test.skip(
       Boolean(isMobile),
@@ -835,7 +835,7 @@ test(
 /* ------------------------------------------------------------------ */
 
 test(
-  "Product/batch filtering Ã¢â‚¬â€ existing batch only shows for selected product",
+  "Product/batch filtering — existing batch only shows for selected product",
   async ({ page, isMobile }) => {
     test.skip(
       Boolean(isMobile),
@@ -866,7 +866,7 @@ test(
     if (productOptions.length < 2) {
       test.skip(
         true,
-        "NOT EXERCISED Ã¢â‚¬â€ hanya ada satu produk, tidak dapat memverifikasi filtering lintas-produk.",
+        "NOT EXERCISED — hanya ada satu produk, tidak dapat memverifikasi filtering lintas-produk.",
       );
       return;
     }
@@ -941,7 +941,7 @@ test(
 /* ------------------------------------------------------------------ */
 
 test(
-  "Mobile Ã¢â‚¬â€ receipt form renders without horizontal overflow",
+  "Mobile — receipt form renders without horizontal overflow",
   async ({ page, isMobile }) => {
     test.skip(
       !Boolean(isMobile),
@@ -1009,11 +1009,11 @@ test(
 );
 
 /* ------------------------------------------------------------------ */
-/*  I. BROWSER HEALTH Ã¢â‚¬â€ dedicated check                                */
+/*  I. BROWSER HEALTH — dedicated check                                */
 /* ------------------------------------------------------------------ */
 
 test(
-  "Browser health Ã¢â‚¬â€ receipt page free of hydration errors and critical failures",
+  "Browser health — receipt page free of hydration errors and critical failures",
   async ({ page, isMobile }) => {
     test.skip(
       Boolean(isMobile),
