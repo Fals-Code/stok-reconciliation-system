@@ -20,6 +20,71 @@ import {
 export const dynamic =
   "force-dynamic";
 
+function SettingsChevron() {
+  return (
+    <svg
+      aria-hidden="true"
+      className="h-4 w-4"
+      fill="none"
+      viewBox="0 0 20 20"
+    >
+      <path
+        d="m7.5 5 5 5-5 5"
+        stroke="currentColor"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+        strokeWidth="1.6"
+      />
+    </svg>
+  );
+}
+
+function SettingsLink({
+  href,
+  title,
+  description,
+}: {
+  href: string;
+  title: string;
+  description: string;
+}) {
+  return (
+    <Link
+      className="group flex min-h-[4.75rem] items-center justify-between gap-5 px-5 py-4 transition-colors hover:bg-ui-surface-subtle focus-visible:bg-ui-surface-subtle motion-reduce:transition-none sm:px-6"
+      href={href}
+    >
+      <span className="min-w-0">
+        <span className="block text-sm font-semibold text-ui-text">
+          {title}
+        </span>
+
+        <span className="mt-1 block max-w-[42rem] text-sm leading-6 text-ui-text-muted">
+          {description}
+        </span>
+      </span>
+
+      <span
+        aria-hidden="true"
+        className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full text-ui-primary transition-transform group-hover:translate-x-0.5 motion-reduce:transform-none motion-reduce:transition-none"
+      >
+        <SettingsChevron />
+      </span>
+    </Link>
+  );
+}
+
+function SettingsGroupLabel({
+  children,
+}: {
+  children: string;
+}) {
+  return (
+    <p className="px-5 pb-1 pt-5 text-[0.7rem] font-semibold uppercase tracking-[0.09em] text-ui-text-muted sm:px-6">
+      {children}
+    </p>
+  );
+}
+
 export default async function SettingsPage() {
   const session =
     await requireAdminSession();
@@ -30,63 +95,77 @@ export default async function SettingsPage() {
 
   return (
     <AppShell profile={profile}>
-      <div className="mx-auto w-full max-w-[960px] px-4 py-6 sm:px-6 lg:px-8 lg:py-8">
+      <div className="mx-auto w-full max-w-[1040px] px-4 py-6 sm:px-6 lg:px-8 lg:py-8">
         <PageHeader
           description="Informasi akun dan organisasi yang sedang digunakan."
           eyebrow="Pengaturan"
           title="Pengaturan"
         />
 
-        <section className="mt-6 overflow-hidden rounded-[var(--ui-radius-lg)] border border-ui-border bg-ui-surface shadow-[var(--ui-shadow-sm)]">
-          <div className="border-b border-ui-border px-5 py-4">
+        <section className="mt-6 rounded-[var(--ui-radius-lg)] border border-ui-border bg-ui-surface shadow-[var(--ui-shadow-sm)]">
+          <div className="px-5 pb-2 pt-5 sm:px-6 sm:pt-6">
             <h2 className="text-base font-semibold text-ui-text">
               Akun Admin
             </h2>
+
+            <p className="mt-1 text-sm leading-6 text-ui-text-muted">
+              Identitas akses yang digunakan pada sesi ini.
+            </p>
           </div>
 
-          <dl>
-            <div className="grid gap-1 border-b border-ui-border px-5 py-4 sm:grid-cols-[180px_minmax(0,1fr)]">
-              <dt className="text-sm text-ui-text-muted">
+          <dl className="grid px-5 pb-5 sm:grid-cols-2 sm:gap-x-10 sm:px-6 sm:pb-6">
+            <div className="border-t border-ui-border py-4">
+              <dt className="text-xs font-medium text-ui-text-muted">
                 Nama
               </dt>
 
-              <dd className="text-sm font-medium text-ui-text">
+              <dd className="mt-1.5 text-sm font-semibold text-ui-text">
                 {
                   profile.display_name
                 }
               </dd>
             </div>
 
-            <div className="grid gap-1 border-b border-ui-border px-5 py-4 sm:grid-cols-[180px_minmax(0,1fr)]">
-              <dt className="text-sm text-ui-text-muted">
+            <div className="border-t border-ui-border py-4">
+              <dt className="text-xs font-medium text-ui-text-muted">
                 Akses
               </dt>
 
-              <dd>
+              <dd className="mt-1.5">
                 <StatusBadge tone="selected">
                   Admin
                 </StatusBadge>
               </dd>
             </div>
 
-            <div className="grid gap-1 border-b border-ui-border px-5 py-4 sm:grid-cols-[180px_minmax(0,1fr)]">
-              <dt className="text-sm text-ui-text-muted">
+            <div className="border-t border-ui-border py-4">
+              <dt className="text-xs font-medium text-ui-text-muted">
                 Kode pegawai
               </dt>
 
-              <dd className="text-sm text-ui-text">
+              <dd className="mt-1.5 text-sm font-medium text-ui-text">
                 {profile.employee_code ??
                   "Tidak tersedia"}
               </dd>
             </div>
 
-            <div className="grid gap-1 border-b border-ui-border px-5 py-4 sm:grid-cols-[180px_minmax(0,1fr)]">
-              <dt className="text-sm text-ui-text-muted">
+            <div className="border-t border-ui-border py-4">
+              <dt className="text-xs font-medium text-ui-text-muted">
+                Zona waktu
+              </dt>
+
+              <dd className="mt-1.5 text-sm font-medium text-ui-text">
+                {profile.timezone}
+              </dd>
+            </div>
+
+            <div className="border-t border-ui-border py-4 sm:col-span-2">
+              <dt className="text-xs font-medium text-ui-text-muted">
                 Organisasi
               </dt>
 
-              <dd>
-                <p className="text-sm font-medium text-ui-text">
+              <dd className="mt-1.5">
+                <p className="text-sm font-semibold text-ui-text">
                   {
                     profile.organization_name
                   }
@@ -99,16 +178,6 @@ export default async function SettingsPage() {
                 </p>
               </dd>
             </div>
-
-            <div className="grid gap-1 px-5 py-4 sm:grid-cols-[180px_minmax(0,1fr)]">
-              <dt className="text-sm text-ui-text-muted">
-                Zona waktu
-              </dt>
-
-              <dd className="text-sm text-ui-text">
-                {profile.timezone}
-              </dd>
-            </div>
           </dl>
         </section>
 
@@ -116,134 +185,97 @@ export default async function SettingsPage() {
           aria-labelledby="administrative-settings-heading"
           className="mt-6 overflow-hidden rounded-[var(--ui-radius-lg)] border border-ui-border bg-ui-surface shadow-[var(--ui-shadow-sm)]"
         >
-          <div className="border-b border-ui-border px-5 py-4">
+          <div className="px-5 pb-5 pt-5 sm:px-6 sm:pt-6">
             <h2
               className="text-base font-semibold text-ui-text"
               id="administrative-settings-heading"
             >
               Kebutuhan Administratif
             </h2>
-            <p className="mt-1 text-sm leading-6 text-ui-text-muted">
+
+            <p className="mt-1 max-w-[44rem] text-sm leading-6 text-ui-text-muted">
               Setup dan pengelolaan khusus Admin yang tidak termasuk pekerjaan gudang harian.
             </p>
           </div>
 
-          <div className="divide-y divide-ui-border">
-            <div className="px-5 py-4">
-              <p className="text-xs font-semibold uppercase tracking-wide text-ui-text-muted">
-                Stok awal
-              </p>
-              <Link
-                className="mt-3 flex min-h-[var(--ui-control-height)] items-center justify-between gap-4 rounded-[var(--ui-radius-md)] p-3 hover:bg-ui-surface-subtle"
-                href="/opening-balances"
-              >
-                <span>
-                  <span className="block text-sm font-semibold text-ui-text">
-                    Setup Stok Awal
-                  </span>
-                  <span className="mt-1 block text-sm leading-6 text-ui-text-muted">
-                    Siapkan basis stok pertama sebelum kegiatan gudang berjalan.
-                  </span>
-                </span>
-                <span aria-hidden="true" className="text-ui-primary">→</span>
-              </Link>
+          <div className="border-t border-ui-border">
+            <SettingsGroupLabel>
+              Stok awal
+            </SettingsGroupLabel>
+
+            <SettingsLink
+              description="Siapkan basis stok pertama sebelum kegiatan gudang berjalan."
+              href="/opening-balances"
+              title="Setup Stok Awal"
+            />
+          </div>
+
+          <div className="border-t border-ui-border">
+            <SettingsGroupLabel>
+              Marketplace
+            </SettingsGroupLabel>
+
+            <div className="divide-y divide-ui-border">
+              <SettingsLink
+                description="Hubungkan produk marketplace dengan produk dan isi paket yang benar."
+                href="/marketplace/listings"
+                title="Mapping Produk Marketplace"
+              />
+
+              <SettingsLink
+                description="Masukkan file pesanan marketplace melalui preview dan validasi."
+                href="/marketplace/import"
+                title="Import Pesanan"
+              />
+
+              <SettingsLink
+                description="Uji normalized event, reservasi, dan shipment untuk demo atau verifikasi Admin."
+                href="/marketplace/simulator"
+                title="Simulator Pesanan"
+              />
             </div>
+          </div>
 
-            <div className="px-5 py-4">
-              <p className="text-xs font-semibold uppercase tracking-wide text-ui-text-muted">
-                Marketplace
-              </p>
-              <div className="mt-3 grid gap-2">
-                <Link
-                  className="flex min-h-[var(--ui-control-height)] items-center justify-between gap-4 rounded-[var(--ui-radius-md)] p-3 hover:bg-ui-surface-subtle"
-                  href="/marketplace/listings"
-                >
-                  <span>
-                    <span className="block text-sm font-semibold text-ui-text">
-                      Mapping Produk Marketplace
-                    </span>
-                    <span className="mt-1 block text-sm leading-6 text-ui-text-muted">
-                      Hubungkan produk marketplace dengan produk dan isi paket yang benar.
-                    </span>
-                  </span>
-                  <span aria-hidden="true" className="text-ui-primary">→</span>
-                </Link>
+          <div className="border-t border-ui-border">
+            <SettingsGroupLabel>
+              Status sistem
+            </SettingsGroupLabel>
 
-                <Link
-                  className="flex min-h-[var(--ui-control-height)] items-center justify-between gap-4 rounded-[var(--ui-radius-md)] p-3 hover:bg-ui-surface-subtle"
-                  href="/marketplace/import"
-                >
-                  <span>
-                    <span className="block text-sm font-semibold text-ui-text">
-                      Import Pesanan
-                    </span>
-                    <span className="mt-1 block text-sm leading-6 text-ui-text-muted">
-                      Masukkan file pesanan marketplace melalui preview dan validasi.
-                    </span>
-                  </span>
-                  <span aria-hidden="true" className="text-ui-primary">→</span>
-                </Link>
-
-                <Link
-                  className="flex min-h-[var(--ui-control-height)] items-center justify-between gap-4 rounded-[var(--ui-radius-md)] p-3 hover:bg-ui-surface-subtle"
-                  href="/marketplace/simulator"
-                >
-                  <span>
-                    <span className="block text-sm font-semibold text-ui-text">
-                      Simulator Pesanan
-                    </span>
-                    <span className="mt-1 block text-sm leading-6 text-ui-text-muted">
-                      Uji normalized event, reservasi, dan shipment untuk demo atau verifikasi Admin.
-                    </span>
-                  </span>
-                  <span aria-hidden="true" className="text-ui-primary">→</span>
-                </Link>
-              </div>
-            </div>
-
-            <div className="px-5 py-4">
-              <p className="text-xs font-semibold uppercase tracking-wide text-ui-text-muted">
-                Status sistem
-              </p>
-              <Link
-                className="mt-3 flex min-h-[var(--ui-control-height)] items-center justify-between gap-4 rounded-[var(--ui-radius-md)] p-3 hover:bg-ui-surface-subtle"
-                href="/notifications/operations"
-              >
-                <span>
-                  <span className="block text-sm font-semibold text-ui-text">
-                    Status &amp; Diagnostik Sistem
-                  </span>
-                  <span className="mt-1 block text-sm leading-6 text-ui-text-muted">
-                    Periksa pengiriman notifikasi dan tangani kegagalan yang memerlukan Admin.
-                  </span>
-                </span>
-                <span aria-hidden="true" className="text-ui-primary">→</span>
-              </Link>
-            </div>
+            <SettingsLink
+              description="Periksa pengiriman notifikasi dan tangani kegagalan yang memerlukan Admin."
+              href="/notifications/operations"
+              title="Status & Diagnostik Sistem"
+            />
           </div>
         </section>
 
-        <section className="mt-6 rounded-[var(--ui-radius-lg)] border border-ui-border bg-ui-surface p-5 shadow-[var(--ui-shadow-sm)]">
-          <h2 className="text-base font-semibold text-ui-text">
-            Sesi
-          </h2>
+        <section
+          aria-labelledby="session-heading"
+          className="mt-8 border-t border-ui-border pt-6"
+        >
+          <div className="flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
+            <div>
+              <h2
+                className="text-base font-semibold text-ui-text"
+                id="session-heading"
+              >
+                Sesi
+              </h2>
 
-          <p className="mt-1 text-sm leading-6 text-ui-text-muted">
-            Keluar dari perangkat ini
-            setelah pekerjaan selesai.
-          </p>
+              <p className="mt-1 text-sm leading-6 text-ui-text-muted">
+                Keluar dari perangkat ini setelah pekerjaan selesai.
+              </p>
+            </div>
 
-          <form
-            action={logoutAction}
-            className="mt-4"
-          >
-            <Button
-              type="submit"
-              variant="secondary"
-            >
-              Keluar dari aplikasi
-            </Button>
-          </form>
+            <form action={logoutAction}>
+              <Button
+                type="submit"
+                variant="secondary"
+              >
+                Keluar dari aplikasi
+              </Button>
+            </form>
+          </div>
         </section>
       </div>
     </AppShell>

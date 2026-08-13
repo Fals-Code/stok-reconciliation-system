@@ -132,7 +132,7 @@ export function NavigationLink({
             ? "text-ui-primary"
             : "text-ui-text-muted hover:text-ui-text"
           : active
-            ? "font-semibold text-ui-primary"
+            ? "bg-ui-surface-selected font-semibold text-ui-primary"
             : "text-ui-text-muted hover:bg-ui-surface hover:text-ui-text",
       )}
       href={item.href}
@@ -153,7 +153,7 @@ export function NavigationLink({
           active
             ? compact
               ? "bg-ui-primary-subtle text-ui-primary"
-              : "bg-ui-primary-subtle text-ui-primary"
+              : "text-ui-primary"
             : "text-ui-text-muted group-hover:text-ui-text",
         )}
       >

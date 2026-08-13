@@ -128,7 +128,7 @@ for (const [label, href] of [
   ["Mapping Produk Marketplace", "/marketplace/listings"],
   ["Import Pesanan", "/marketplace/import"],
   ["Simulator Pesanan", "/marketplace/simulator"],
-  ["Status &amp; Diagnostik Sistem", "/notifications/operations"],
+  ["Status & Diagnostik Sistem", "/notifications/operations"],
 ]) {
   assert.ok(
     settingsSource.includes(label),
@@ -403,7 +403,7 @@ assert.ok(
   "Failure mapping marketplace harus kembali ke Pengaturan",
 );
 assert.ok(
-  diagnosticsSource.includes("Halaman operasi belum dapat dimuat.") &&
+  diagnosticsSource.includes("Diagnostik belum dapat dimuat") &&
     diagnosticsSource.includes('href="/settings"'),
   "Failure diagnostics harus kembali ke Pengaturan",
 );
