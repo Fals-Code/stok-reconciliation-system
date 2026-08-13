@@ -1,7 +1,6 @@
 import {
   expect,
   test,
-  type Locator,
   type Page,
 } from "@playwright/test";
 
@@ -52,718 +51,590 @@ async function loginAsAdmin(page: Page) {
   ]);
 
   await expect(
-    page.locator(
-      '[data-app-topbar="admin"]',
-    ),
-  ).toBeVisible();
+    page.getByRole("link", { name: "Lewati ke konten utama" })
+  ).toBeAttached();
 }
 
-function getNotificationElements(page: Page) {
-  const details = page.locator(
-    'details[data-exclusive-popover="notification"]',
-  );
+async function expectNoRootOverflow(page: Page) {
+  const overflow = await page.evaluate(() => ({
+    scrollWidth: document.documentElement.scrollWidth,
+    viewportWidth: document.documentElement.clientWidth,
+  }));
 
-  return {
-    details,
-    trigger: details.locator("summary").first(),
-    panel: details.locator(
-      "[data-notification-preview]",
-    ),
-  };
+  expect(overflow.scrollWidth).toBeLessThanOrEqual(
+    overflow.viewportWidth + 1,
+  );
 }
 
-function getAccountElements(page: Page) {
-  const details = page.locator(
-    'details[data-exclusive-popover="account"]',
-  );
-
-  return {
-    details,
-    trigger: details.locator("summary").first(),
-    panel: details.locator(
-      "[data-account-popover]",
-    ),
-  };
-}
-
-async function expectInsideViewport(
-  page: Page,
-  locator: Locator,
-) {
-  const viewport = page.viewportSize();
-  const box = await locator.boundingBox();
-
-  if (!viewport || !box) {
-    throw new Error(
-      "Viewport atau bounding box tidak tersedia.",
-    );
-  }
-
-  expect(box.x).toBeGreaterThanOrEqual(0);
-  expect(box.y).toBeGreaterThanOrEqual(0);
-  expect(
-    box.x + box.width,
-  ).toBeLessThanOrEqual(viewport.width + 1);
-  expect(
-    box.y + box.height,
-  ).toBeLessThanOrEqual(viewport.height + 1);
-}
-
-async function expectSpaciousPopover({
-  page,
-  panel,
-  trigger,
-}: {
-  page: Page;
-  panel: Locator;
-  trigger: Locator;
-}) {
-  const triggerBox = await trigger.boundingBox();
-  const panelBox = await panel.boundingBox();
-
-  if (!triggerBox || !panelBox) {
-    throw new Error(
-      "Bounding box trigger atau popover tidak tersedia.",
-    );
-  }
-
-  const triggerBottom =
-    triggerBox.y + triggerBox.height;
-  const gap = panelBox.y - triggerBottom;
-
-  // mt-3 = sekitar 12 px, dengan toleransi rendering.
-  expect(gap).toBeGreaterThanOrEqual(8);
-  expect(gap).toBeLessThanOrEqual(20);
-
-  const styles = await panel.evaluate(
-    (element) => {
-      const computed =
-        window.getComputedStyle(element);
-
-      return {
-        overflowX: computed.overflowX,
-        overflowY: computed.overflowY,
-        bottomLeftRadius:
-          Number.parseFloat(
-            computed.borderBottomLeftRadius,
-          ),
-        bottomRightRadius:
-          Number.parseFloat(
-            computed.borderBottomRightRadius,
-          ),
-      };
-    },
-  );
-
-  expect(styles.overflowX).toBe("hidden");
-  expect(styles.overflowY).toBe("hidden");
-  expect(styles.bottomLeftRadius).toBeGreaterThan(0);
-  expect(styles.bottomRightRadius).toBeGreaterThan(0);
-
-  await expectInsideViewport(page, panel);
-}
-
-async function moveThroughHoverBridge({
-  page,
-  panel,
-  trigger,
-}: {
-  page: Page;
-  panel: Locator;
-  trigger: Locator;
-}) {
-  const triggerBox = await trigger.boundingBox();
-  const panelBox = await panel.boundingBox();
-
-  if (!triggerBox || !panelBox) {
-    throw new Error(
-      "Bounding box hover bridge tidak tersedia.",
-    );
-  }
-
-  const triggerBottom =
-    triggerBox.y + triggerBox.height;
-  const gap = panelBox.y - triggerBottom;
-
-  const triggerCenterX =
-    triggerBox.x + triggerBox.width / 2;
-
-  const bridgeX = Math.min(
-    Math.max(
-      triggerCenterX,
-      panelBox.x + 8,
-    ),
-    panelBox.x + panelBox.width - 8,
-  );
-
-  await page.mouse.move(
-    bridgeX,
-    triggerBottom + gap / 2,
-    {
-      steps: 5,
-    },
-  );
-
-  await expect(panel).toBeVisible();
-
-  await page.mouse.move(
-    bridgeX,
-    panelBox.y + 8,
-    {
-      steps: 5,
-    },
-  );
-
-  await expect(panel).toBeVisible();
+function visiblePrimaryNavLink(page: Page, name: string) {
+  return page
+    .locator("nav[aria-label='Navigasi utama']")
+    .getByRole("link", { name, exact: true })
+    .filter({ visible: true });
 }
 
 test(
-  "popover notifikasi memiliki jarak, clipping, dan hover bridge yang benar",
+  "shell desktop memiliki navigasi utama dan active state yang benar",
   async ({ page, isMobile }) => {
     test.skip(
       Boolean(isMobile),
-      "Pemeriksaan hover khusus desktop.",
+      "Pemeriksaan visual dan interaksi khusus desktop.",
     );
+
+    const runtimeErrors: string[] = [];
+    page.on("pageerror", (err) => {
+      runtimeErrors.push(err.message);
+    });
 
     await loginAsAdmin(page);
 
-    const {
-      trigger,
-      panel,
-    } = getNotificationElements(page);
-
-    await trigger.hover();
-    await expect(panel).toBeVisible();
-
-    await expect(panel).toHaveAttribute(
-      "data-notification-preview-mode",
-      "latest",
-    );
-
-    await expect(panel).toHaveAttribute(
-      "data-popover-offset",
-      "spacious",
-    );
-
-    await expect(panel).toHaveAttribute(
-      "data-popover-clip",
-      "rounded",
-    );
-
-    await expectSpaciousPopover({
-      page,
-      panel,
-      trigger,
+    // 1. Desktop sidebar navigation sidebar visible
+    const sidebar = page.locator("aside").filter({
+      has: page.locator("nav[aria-label='Navigasi utama']"),
     });
+    await expect(sidebar).toBeVisible();
 
-    await moveThroughHoverBridge({
-      page,
-      panel,
-      trigger,
-    });
+    // 2. Primary & Settings navigation links exist
+    const homeLink = sidebar.getByRole("link", { name: "Beranda", exact: true });
+    const stockLink = sidebar.getByRole("link", { name: "Stok", exact: true });
+    const orderLink = sidebar.getByRole("link", { name: "Pesanan", exact: true });
+    const settingsLink = sidebar.getByRole("link", { name: "Pengaturan", exact: true });
 
-    const notificationRows = panel.locator(
-      'a[href*="notificationId="]',
-    );
+    await expect(homeLink).toBeVisible();
+    await expect(stockLink).toBeVisible();
+    await expect(orderLink).toBeVisible();
+    await expect(settingsLink).toBeVisible();
 
-    const emptyState = panel.getByText(
-      "Belum ada notifikasi.",
-      {
-        exact: true,
-      },
-    );
+    // 3. Profile details displayed statically in sidebar
+    await expect(sidebar.getByText("Sistem Rekonsiliasi Stok")).toBeVisible();
+    await expect(sidebar.getByText("Operasional gudang")).toBeVisible();
 
-    const hasNotificationRows =
-      (await notificationRows.count()) > 0;
+    // 4. Default active navigation state on '/'
+    await expect(homeLink).toHaveAttribute("aria-current", "page");
+    await expect(stockLink).not.toHaveAttribute("aria-current");
 
-    const hasEmptyState =
-      await emptyState
-        .isVisible()
-        .catch(() => false);
+    // 5. Navigation interaction updates URL and active tab
+    await stockLink.click();
+    await page.waitForURL((url) => url.pathname === "/products");
+    await expect(stockLink).toHaveAttribute("aria-current", "page");
+    await expect(homeLink).not.toHaveAttribute("aria-current");
 
-    expect(
-      hasNotificationRows || hasEmptyState,
-      "Panel harus berisi notifikasi terbaru atau empty state.",
-    ).toBeTruthy();
-
-    const footer = panel.getByRole("link", {
-      name: "Lihat semua notifikasi",
-      exact: true,
-    });
-
-    await expect(footer).toBeVisible();
-
-    const backgroundBeforeHover =
-      await footer.evaluate(
-        (element) =>
-          window.getComputedStyle(element)
-            .backgroundColor,
-      );
-
-    await footer.hover();
-
-    await expect
-      .poll(
-        () =>
-          footer.evaluate(
-            (element) =>
-              window.getComputedStyle(element)
-                .backgroundColor,
-          ),
-        {
-          timeout: 1_500,
-        },
-      )
-      .not.toBe(backgroundBeforeHover);
-
-    const viewport = page.viewportSize();
-
-    if (!viewport) {
-      throw new Error("Viewport tidak tersedia.");
-    }
-
-    await page.mouse.move(
-      8,
-      viewport.height - 8,
-    );
-
-    await expect(panel).toBeHidden();
+    // 6. No relevant console or page errors
+    expect(runtimeErrors).toEqual([]);
   },
 );
 
 test(
-  "popover notifikasi dan akun eksklusif serta dapat ditutup dengan Escape",
+  "shell mobile merender bottom navigation bar",
   async ({ page, isMobile }) => {
     test.skip(
-      Boolean(isMobile),
-      "Pemeriksaan hover dan keyboard khusus desktop.",
+      !Boolean(isMobile),
+      "Pemeriksaan bottom navigation khusus mobile.",
     );
 
     await loginAsAdmin(page);
 
-    const notification =
-      getNotificationElements(page);
-    const account = getAccountElements(page);
+    // Mobile header is visible
+    await expect(page.locator("header.lg\\:hidden")).toBeVisible();
 
-    await notification.trigger.hover();
-    await expect(
-      notification.panel,
-    ).toBeVisible();
+    // Mobile bottom navigation contains 4 links
+    const bottomNav = page.locator("nav[aria-label='Navigasi utama'].lg\\:hidden");
+    await expect(bottomNav).toBeVisible();
 
-    await account.trigger.hover();
-    await expect(account.panel).toBeVisible();
-    await expect(
-      notification.details,
-    ).not.toHaveAttribute("open", "");
+    const homeLink = bottomNav.getByRole("link", { name: "Beranda", exact: true });
+    const stockLink = bottomNav.getByRole("link", { name: "Stok", exact: true });
+    const orderLink = bottomNav.getByRole("link", { name: "Pesanan", exact: true });
+    const settingsLink = bottomNav.getByRole("link", { name: "Pengaturan", exact: true });
 
-    await notification.trigger.hover();
-    await expect(
-      notification.panel,
-    ).toBeVisible();
-    await expect(
-      account.details,
-    ).not.toHaveAttribute("open", "");
-
-    const viewport = page.viewportSize();
-
-    if (!viewport) {
-      throw new Error("Viewport tidak tersedia.");
-    }
-
-    await page.mouse.move(
-      8,
-      viewport.height - 8,
-    );
-
-    await account.trigger.focus();
-    await expect(account.trigger).toBeFocused();
-
-    await page.keyboard.press("Enter");
-
-    await expect(account.panel).toBeVisible();
-    await expect(account.details).toHaveAttribute(
-      "open",
-      "",
-    );
-
-    await page.keyboard.press("Escape");
-
-    await expect(
-      account.details,
-    ).not.toHaveAttribute("open", "");
-
-    await expect(account.panel).toBeHidden();
+    await expect(homeLink).toBeVisible();
+    await expect(stockLink).toBeVisible();
+    await expect(orderLink).toBeVisible();
+    await expect(settingsLink).toBeVisible();
   },
 );
 
 test(
-  "skip link, keyboard popover, dan preferensi sidebar bekerja setelah reload",
-  async ({ page, isMobile }) => {
-    test.skip(
-      Boolean(isMobile),
-      "Pemeriksaan desktop khusus keyboard dan sidebar.",
-    );
-
+  "keyboard navigation skip-link dan focus basic bekerja",
+  async ({ page }) => {
     await loginAsAdmin(page);
 
-    // Redirect login dapat mempertahankan fokus tombol
-    // submit. Fresh navigation menguji urutan Tab pada
-    // dokumen terautentikasi yang baru dimuat.
     await page.goto("/", {
       waitUntil: "domcontentloaded",
     });
 
-    await expect(
-      page.locator(
-        '[data-app-topbar="admin"]',
-      ),
-    ).toBeVisible();
-
+    // Press Tab to focus Skip Link
     await page.keyboard.press("Tab");
 
     const skipLink = page.getByRole("link", {
-      name: /lewati.*konten/i,
+      name: "Lewati ke konten utama",
     });
-
     await expect(skipLink).toBeFocused();
 
+    // Press Enter on skip link and ensure main content area receives focus
     await page.keyboard.press("Enter");
-
-    await expect(
-      page.locator("#main-content"),
-    ).toBeFocused();
-
-    const notification =
-      getNotificationElements(page);
-
-    await notification.trigger.focus();
-    await expect(
-      notification.trigger,
-    ).toBeFocused();
-
-    await page.keyboard.press("Enter");
-
-    await expect(
-      notification.panel,
-    ).toBeVisible();
-
-    await expect(
-      notification.details,
-    ).toHaveAttribute("open", "");
-
-    await page.keyboard.press("Tab");
-
-    const focusMovedInside =
-      await notification.details.evaluate(
-        (details) => {
-          const active =
-            document.activeElement;
-          const summary =
-            details.querySelector("summary");
-
-          return Boolean(
-            active &&
-              active !== summary &&
-              details.contains(active),
-          );
-        },
-      );
-
-    expect(
-      focusMovedInside,
-      "Tab harus dapat masuk ke isi popover.",
-    ).toBeTruthy();
-
-    await page.keyboard.press("Escape");
-
-    const sidebarToggle = page
-      .locator(
-        [
-          '[data-app-topbar="admin"]',
-          'button:visible[aria-label*="sidebar" i]',
-          ',',
-          '[data-app-topbar="admin"]',
-          'button:visible[aria-label*="ciutkan" i]',
-          ',',
-          '[data-app-topbar="admin"]',
-          'button:visible[aria-label*="perluas" i]',
-        ].join(" "),
-      )
-      .first();
-
-    await expect(sidebarToggle).toBeVisible();
-
-    const initialLabel =
-      await sidebarToggle.getAttribute(
-        "aria-label",
-      );
-
-    expect(initialLabel).toBeTruthy();
-
-    await sidebarToggle.click();
-
-    const changedLabel =
-      await sidebarToggle.getAttribute(
-        "aria-label",
-      );
-
-    expect(changedLabel).toBeTruthy();
-    expect(changedLabel).not.toBe(initialLabel);
-
-    await page.reload({
-      waitUntil: "domcontentloaded",
-    });
-
-    const persistedToggle = page
-      .locator(
-        [
-          '[data-app-topbar="admin"]',
-          'button:visible[aria-label*="sidebar" i]',
-          ',',
-          '[data-app-topbar="admin"]',
-          'button:visible[aria-label*="ciutkan" i]',
-          ',',
-          '[data-app-topbar="admin"]',
-          'button:visible[aria-label*="perluas" i]',
-        ].join(" "),
-      )
-      .first();
-
-    await expect(persistedToggle).toHaveAttribute(
-      "aria-label",
-      changedLabel ?? "",
-    );
+    const mainContent = page.locator("#main-content");
+    await expect(mainContent).toBeFocused();
   },
 );
 
 test(
-  "shell desktop bebas error browser, hydration, dan request penting yang gagal",
-  async ({ page, isMobile }) => {
-    test.skip(
-      Boolean(isMobile),
-      "Pemeriksaan runtime dijalankan sekali pada desktop.",
-    );
-
-    const runtimeIssues: string[] = [];
+  "Pengaturan membuka capability administratif tanpa menambah primary navigation",
+  async ({ page }) => {
+    const runtimeErrors: string[] = [];
+    const serverFailures: string[] = [];
 
     page.on("console", (message) => {
       if (message.type() === "error") {
-        runtimeIssues.push(
-          `console: ${message.text()}`,
-        );
+        runtimeErrors.push(`${new URL(page.url()).pathname}: ${message.text()}`);
       }
     });
-
     page.on("pageerror", (error) => {
-      runtimeIssues.push(
-        `pageerror: ${error.message}`,
-      );
+      runtimeErrors.push(error.message);
     });
-
-    page.on("requestfailed", (request) => {
-      const importantTypes = new Set([
-        "document",
-        "script",
-        "stylesheet",
-        "fetch",
-        "xhr",
-      ]);
-
-      if (
-        !importantTypes.has(
-          request.resourceType(),
-        )
-      ) {
-        return;
+    page.on("response", (response) => {
+      if (response.status() >= 500) {
+        serverFailures.push(`${response.status()} ${response.url()}`);
       }
-
-      const failure =
-        request.failure()?.errorText ??
-        "unknown failure";
-
-      if (
-        /ERR_ABORTED|NS_BINDING_ABORTED/i.test(
-          failure,
-        )
-      ) {
-        return;
-      }
-
-      runtimeIssues.push(
-        [
-          "requestfailed:",
-          request.method(),
-          request.url(),
-          failure,
-        ].join(" "),
-      );
     });
 
     await loginAsAdmin(page);
-
-    const notification =
-      getNotificationElements(page);
-    const account = getAccountElements(page);
-
-    await notification.trigger.hover();
-    await expect(
-      notification.panel,
-    ).toBeVisible();
-
-    await account.trigger.hover();
-    await expect(account.panel).toBeVisible();
-
-    await page.reload({
+    await page.goto("/settings", {
       waitUntil: "domcontentloaded",
     });
 
-    await page.waitForTimeout(750);
+    const settingsLink = page
+      .locator("nav[aria-label='Navigasi utama']")
+      .getByRole("link", { name: "Pengaturan", exact: true })
+      .filter({ visible: true });
 
-    expect(
-      runtimeIssues,
-      runtimeIssues.join("\n"),
-    ).toEqual([]);
+    await expect(settingsLink).toHaveAttribute("aria-current", "page");
+
+    for (const [label, href] of [
+      ["Setup Stok Awal", "/opening-balances"],
+      ["Mapping Produk Marketplace", "/marketplace/listings"],
+      ["Import Pesanan", "/marketplace/import"],
+      ["Simulator Pesanan", "/marketplace/simulator"],
+      ["Status & Diagnostik Sistem", "/notifications/operations"],
+    ] as const) {
+      await expect(
+        page.getByRole("link", { name: new RegExp(`^${label}`) }),
+      ).toHaveAttribute("href", href);
+    }
+
+    for (const href of [
+      "/opening-balances",
+      "/marketplace/listings",
+      "/marketplace/import",
+      "/marketplace/simulator",
+      "/notifications/operations",
+    ]) {
+      await expect(
+        page.locator(`nav[aria-label='Navigasi utama'] a[href='${href}']`),
+      ).toHaveCount(0);
+    }
+
+    const administrativeFlows = [
+      ["Setup Stok Awal", "/opening-balances"],
+      ["Mapping Produk Marketplace", "/marketplace/listings"],
+      ["Import Pesanan", "/marketplace/import"],
+      ["Simulator Pesanan", "/marketplace/simulator"],
+      ["Status & Diagnostik Sistem", "/notifications/operations"],
+    ] as const;
+
+    for (const [label, pathname] of administrativeFlows) {
+      await page.getByRole("link", { name: new RegExp(`^${label}`) }).click();
+      await page.waitForURL((url) => url.pathname === pathname);
+
+      await expect(
+        visiblePrimaryNavLink(page, "Pengaturan"),
+      ).toHaveAttribute("aria-current", "page");
+
+      const overflowState = await page.evaluate(() => {
+        const viewportWidth = document.documentElement.clientWidth;
+        const candidates = Array.from(
+          document.querySelectorAll<HTMLElement>("body *"),
+        )
+          .filter(
+            (element) =>
+              element.getBoundingClientRect().right > viewportWidth + 1,
+          )
+          .slice(0, 10)
+          .map((element) => ({
+            className: element.className,
+            tagName: element.tagName,
+            text: element.textContent?.trim().slice(0, 80) ?? "",
+          }));
+
+        return {
+          candidates,
+          rootScrollWidth: document.documentElement.scrollWidth,
+          viewportWidth,
+        };
+      });
+
+      expect(
+        overflowState.rootScrollWidth,
+        JSON.stringify(overflowState.candidates),
+      ).toBeLessThanOrEqual(overflowState.viewportWidth + 1);
+
+      await page.reload({ waitUntil: "domcontentloaded" });
+      await expect(
+        page.getByRole("link", { name: /Kembali ke Pengaturan$/ }),
+      ).toBeVisible();
+      await page
+        .getByRole("link", { name: /Kembali ke Pengaturan$/ })
+        .click();
+      await page.waitForURL((url) => url.pathname === "/settings");
+    }
+
+    expect(runtimeErrors).toEqual([]);
+    expect(serverFailures).toEqual([]);
   },
 );
 
 test(
-  "drawer mobile dan fallback tap popover bekerja tanpa keluar viewport",
+  "login mempertahankan route dan query internal setelah autentikasi",
+  async ({ page }) => {
+    const target = "/marketplace?status=OPEN";
+
+    await page.goto(target, { waitUntil: "domcontentloaded" });
+    await page.waitForURL((url) => url.pathname === "/login");
+
+    const loginUrl = new URL(page.url());
+    expect(loginUrl.searchParams.get("returnTo")).toBe(target);
+
+    await page.getByLabel("Email", { exact: true }).fill(ADMIN_EMAIL);
+    await page
+      .getByLabel("Password", { exact: true })
+      .fill(getAdminPassword());
+    await page.getByRole("button", { name: "Masuk", exact: true }).click();
+    await page.waitForURL((url) => (
+      url.pathname === "/marketplace" &&
+      url.searchParams.get("status") === "OPEN"
+    ));
+
+    await page.reload({ waitUntil: "domcontentloaded" });
+    expect(new URL(page.url()).searchParams.get("status")).toBe("OPEN");
+    await expect(
+      visiblePrimaryNavLink(page, "Pesanan"),
+    ).toHaveAttribute("aria-current", "page");
+  },
+);
+
+test(
+  "route kerja utama dan administratif tetap reachable di desktop dan mobile",
+  async ({ page }) => {
+    const runtimeErrors: string[] = [];
+    const serverFailures: string[] = [];
+
+    page.on("pageerror", (error) => runtimeErrors.push(error.message));
+    page.on("response", (response) => {
+      if (response.status() >= 500) {
+        serverFailures.push(`${response.status()} ${response.url()}`);
+      }
+    });
+
+    await loginAsAdmin(page);
+
+    for (const [pathname, navName] of [
+      ["/", "Beranda"],
+      ["/products", "Stok"],
+      ["/ledger", "Stok"],
+      ["/stock-issues", "Stok"],
+      ["/stocktakes", "Stok"],
+      ["/marketplace", "Pesanan"],
+      ["/returns", "Pesanan"],
+      ["/settings", "Pengaturan"],
+      ["/opening-balances", "Pengaturan"],
+      ["/marketplace/listings", "Pengaturan"],
+      ["/marketplace/import", "Pengaturan"],
+      ["/notifications/operations", "Pengaturan"],
+    ] as const) {
+      const response = await page.goto(pathname, {
+        waitUntil: "domcontentloaded",
+      });
+
+      expect(response?.status(), pathname).toBeLessThan(500);
+      await expect(
+        visiblePrimaryNavLink(page, navName),
+      ).toHaveAttribute("aria-current", "page");
+      await expectNoRootOverflow(page);
+    }
+
+    expect(runtimeErrors).toEqual([]);
+    expect(serverFailures).toEqual([]);
+  },
+);
+
+test(
+  "compatibility route tetap mengarah ke workspace final",
+  async ({ page }) => {
+    await loginAsAdmin(page);
+
+    await page.goto("/today", { waitUntil: "domcontentloaded" });
+    await page.waitForURL((url) => url.pathname === "/");
+
+    await page.goto("/notifications", { waitUntil: "domcontentloaded" });
+    await page.waitForURL((url) => url.pathname === "/");
+
+    await page.goto("/reconciliation?status=MISMATCH", {
+      waitUntil: "domcontentloaded",
+    });
+    await page.waitForURL((url) => (
+      url.pathname === "/stock-issues" &&
+      url.searchParams.get("status") === "MISMATCH"
+    ));
+    await expect(
+      visiblePrimaryNavLink(page, "Stok"),
+    ).toHaveAttribute("aria-current", "page");
+  },
+);
+
+test(
+  "detail import dan Retur dibuka bila fixture read-only tersedia",
+  async ({ page }, testInfo) => {
+    await loginAsAdmin(page);
+
+    for (const flow of [
+      {
+        list: "/marketplace/import",
+        selector: "main a[href^='/marketplace/import/']:not([href='/marketplace/import/template'])",
+        backName: /Kembali ke Import CSV$/,
+        kind: "job Import",
+      },
+      {
+        list: "/returns",
+        selector: "main a[href^='/returns/']",
+        backName: /Kembali ke Retur & Klaim$/,
+        kind: "Retur",
+      },
+    ] as const) {
+      await page.goto(flow.list, { waitUntil: "domcontentloaded" });
+      const detailLink = page.locator(flow.selector).filter({ visible: true }).first();
+
+      if (await detailLink.count() === 0) {
+        testInfo.annotations.push({
+          type: "fixture",
+          description: `${flow.kind} tidak tersedia; tidak membuat mutation untuk smoke.`,
+        });
+        continue;
+      }
+
+      await detailLink.click();
+      await page.reload({ waitUntil: "domcontentloaded" });
+      await expect(page.getByRole("link", { name: flow.backName })).toBeVisible();
+      await expectNoRootOverflow(page);
+      await page.getByRole("link", { name: flow.backName }).click();
+      await page.waitForURL((url) => url.pathname === flow.list);
+    }
+  },
+);
+
+test(
+  "detail kontekstual mempertahankan list state saat reload dan kembali",
+  async ({ page }, testInfo) => {
+    await loginAsAdmin(page);
+
+    const flows = [
+      {
+        list: "/products?q=SER",
+        selector: "main a[href^='/products/']",
+        detail: /^\/products\/[^/]+$/,
+        backName: "Kembali ke Stok",
+      },
+      {
+        list: "/ledger?page=1",
+        selector: "main a[href^='/ledger/']",
+        detail: /^\/ledger\/[^/]+$/,
+        backName: "Kembali ke Riwayat Stok",
+      },
+      {
+        list: "/stocktakes",
+        selector: "main a[href^='/stocktakes/']:not([href='/stocktakes/new'])",
+        detail: /^\/stocktakes\/[^/]+$/,
+        backName: "Kembali ke Hitung Stok",
+      },
+      {
+        list: "/marketplace?channel=SHOPEE",
+        selector: "main a[href^='/marketplace/']",
+        detail: /^\/marketplace\/[^/]+$/,
+        backName: "Kembali ke daftar",
+      },
+    ] as const;
+
+    for (const flow of flows) {
+      await page.goto(flow.list, { waitUntil: "domcontentloaded" });
+      const detailLink = page.locator(flow.selector).filter({ visible: true }).first();
+
+      if (await detailLink.count() === 0) {
+        testInfo.annotations.push({
+          type: "fixture",
+          description: `${flow.list} tidak memiliki detail fixture; flow dilewati tanpa mutation.`,
+        });
+        continue;
+      }
+
+      await expect(detailLink, flow.list).toBeVisible();
+      await detailLink.click();
+      await page.waitForURL((url) => flow.detail.test(url.pathname));
+
+      await page.reload({ waitUntil: "domcontentloaded" });
+      const backLink = page.getByRole("link", {
+        name: new RegExp(`${flow.backName}$`),
+      });
+      await expect(backLink).toHaveAttribute("href", flow.list);
+      await expectNoRootOverflow(page);
+      await backLink.click();
+      await page.waitForURL((url) => `${url.pathname}${url.search}` === flow.list);
+    }
+
+    await page.goto("/products?q=SER", { waitUntil: "domcontentloaded" });
+    await page.locator("main a[href^='/products/']").filter({ visible: true }).first().click();
+    await page.waitForURL((url) => /^\/products\/[^/]+$/.test(url.pathname));
+    const productUrl = new URL(page.url());
+    productUrl.searchParams.set("tab", "batches");
+    await page.goto(productUrl.toString(), { waitUntil: "domcontentloaded" });
+    const batchLink = page.locator("main a[href*='/batches/']").filter({ visible: true }).first();
+    await expect(batchLink).toBeVisible();
+    await batchLink.click();
+    await page.waitForURL((url) => /\/products\/[^/]+\/batches\/[^/]+$/.test(url.pathname));
+    await page.reload({ waitUntil: "domcontentloaded" });
+    await expect(
+      page.getByRole("link", { name: "Kembali ke Produk", exact: true }),
+    ).toHaveAttribute("href", new RegExp("^/products/[^?]+\\?"));
+    await expectNoRootOverflow(page);
+  },
+);
+
+test(
+  "route contextual mengaktifkan parent menu yang benar secara visual",
   async ({ page, isMobile }) => {
     test.skip(
-      !Boolean(isMobile),
-      "Pemeriksaan khusus mobile.",
+      Boolean(isMobile),
+      "Pemeriksaan parent activation khusus desktop.",
     );
 
     await loginAsAdmin(page);
 
-    const openButton = page.getByRole(
-      "button",
-      {
-        name: "Buka navigasi",
-        exact: true,
-      },
+    const sidebar = page.locator("aside").filter({
+      has: page.locator("nav[aria-label='Navigasi utama']"),
+    });
+    const stockLink = sidebar.getByRole("link", { name: "Stok", exact: true });
+    const orderLink = sidebar.getByRole("link", { name: "Pesanan", exact: true });
+    const settingsLink = sidebar.getByRole("link", { name: "Pengaturan", exact: true });
+
+    // Goto /receipts/new -> should light up 'Stok'
+    await page.goto("/receipts/new", { waitUntil: "domcontentloaded" });
+    await expect(stockLink).toHaveAttribute("aria-current", "page");
+
+    // Goto /returns -> should light up 'Pesanan'
+    await page.goto("/returns", { waitUntil: "domcontentloaded" });
+    await expect(orderLink).toHaveAttribute("aria-current", "page");
+
+    // Goto /opening-balances -> should light up 'Pengaturan'
+    await page.goto("/opening-balances", { waitUntil: "domcontentloaded" });
+    await expect(settingsLink).toHaveAttribute("aria-current", "page");
+  },
+);
+
+test(
+  "action Retur dari Beranda mempertahankan object context",
+  async ({ page }) => {
+    const expectedHref =
+      process.env.PLAYWRIGHT_RETURN_NOTIFICATION_ROUTE;
+    test.skip(
+      !expectedHref,
+      "Memerlukan action route dari fixture notification Retur aktif.",
     );
 
-    await expect(openButton).toBeVisible();
-    await expect(openButton).toHaveAttribute(
-      "aria-expanded",
-      "false",
-    );
+    const runtimeErrors: string[] = [];
+    const serverFailures: string[] = [];
 
-    await openButton.tap();
+    page.on("console", (message) => {
+      if (message.type() === "error") {
+        runtimeErrors.push(message.text());
+      }
+    });
+    page.on("pageerror", (error) => {
+      runtimeErrors.push(error.message);
+    });
+    page.on("response", (response) => {
+      if (response.status() >= 500) {
+        serverFailures.push(`${response.status()} ${response.url()}`);
+      }
+    });
 
-    const drawer = page.locator(
-      "#mobile-navigation",
-    );
+    await loginAsAdmin(page);
 
-    const modal = page
-      .locator('[aria-modal="true"]')
+    const action = page
+      .locator(`main a[href=${JSON.stringify(expectedHref)}]`)
       .first();
+    await expect(action).toBeVisible();
 
-    await expect(modal).toBeVisible();
-    await expect(drawer).toBeVisible();
-    await expect(openButton).toHaveAttribute(
-      "aria-expanded",
-      "true",
+    const href = await action.getAttribute("href");
+    expect(href).toBeTruthy();
+
+    const expected = new URL(href!, "http://internal.local");
+    const returnId = expected.searchParams.get("returnId");
+    const claimId = expected.searchParams.get("claimId");
+
+    expect(returnId).toMatch(
+      /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i,
     );
 
-    await expect
-      .poll(() =>
-        page.evaluate(
-          () =>
-            window.getComputedStyle(
-              document.body,
-            ).overflow,
-        ),
-      )
-      .toBe("hidden");
-
-    const closeButton = modal.getByRole(
-      "button",
-      {
-        name: "Tutup menu",
-        exact: true,
-      },
-    );
-
-    await expect(closeButton).toBeFocused();
-
-    await page.keyboard.press("Shift+Tab");
-
-    const focusStillInside =
-      await modal.evaluate(
-        (element) =>
-          element.contains(
-            document.activeElement,
-          ),
+    await action.click();
+    await page.waitForURL((url) => {
+      return (
+        url.pathname === `/returns/${returnId}` &&
+        (!claimId || url.searchParams.get("claimId") === claimId)
       );
+    });
 
-    expect(
-      focusStillInside,
-      "Focus harus tetap berada di drawer.",
-    ).toBeTruthy();
+    if (claimId) {
+      await expect(page.locator("#claim-detail")).toBeVisible();
+      expect(new URL(page.url()).hash).toBe("#claim-detail");
+    }
 
-    await page.keyboard.press("Escape");
+    const orderLink = page
+      .locator("nav[aria-label='Navigasi utama']")
+      .getByRole("link", { name: "Pesanan", exact: true })
+      .filter({ visible: true });
+    await expect(orderLink).toHaveAttribute("aria-current", "page");
 
-    await expect(drawer).toBeHidden();
-    await expect(openButton).toBeFocused();
-    await expect(openButton).toHaveAttribute(
-      "aria-expanded",
-      "false",
+    await page.reload({ waitUntil: "domcontentloaded" });
+    expect(new URL(page.url()).pathname).toBe(`/returns/${returnId}`);
+    if (claimId) {
+      expect(new URL(page.url()).searchParams.get("claimId")).toBe(claimId);
+      await expect(page.locator("#claim-detail")).toBeVisible();
+    }
+
+    const overflow = await page.evaluate(() => ({
+      scrollWidth: document.documentElement.scrollWidth,
+      viewportWidth: document.documentElement.clientWidth,
+    }));
+    expect(overflow.scrollWidth).toBeLessThanOrEqual(
+      overflow.viewportWidth + 1,
     );
 
-    const notification =
-      getNotificationElements(page);
-    const account = getAccountElements(page);
+    await page
+      .getByRole("link", { name: "Kembali ke Retur & Klaim", exact: true })
+      .click();
+    await page.waitForURL((url) => url.pathname === "/returns");
 
-    await notification.trigger.tap();
+    expect(runtimeErrors).toEqual([]);
+    expect(serverFailures).toEqual([]);
+  },
+);
 
-    await expect(
-      notification.details,
-    ).toHaveAttribute("open", "");
+test(
+  "bebas dari horizontal overflow di layout utama",
+  async ({ page }) => {
+    await loginAsAdmin(page);
 
-    await expect(
-      notification.panel,
-    ).toBeVisible();
+    const noHorizontalOverflow = await page.evaluate(() => {
+      return document.documentElement.scrollWidth <= document.documentElement.clientWidth + 1;
+    });
 
-    await expectInsideViewport(
-      page,
-      notification.panel,
-    );
-
-    await account.trigger.tap();
-
-    await expect(
-      account.details,
-    ).toHaveAttribute("open", "");
-
-    await expect(account.panel).toBeVisible();
-    await expect(
-      notification.panel,
-    ).toBeHidden();
-
-    await expectInsideViewport(
-      page,
-      account.panel,
-    );
-
-    await expect(
-      account.panel.getByRole("button", {
-        name: "Keluar dari akun",
-        exact: true,
-      }),
-    ).toBeVisible();
-
-    const noHorizontalOverflow =
-      await page.evaluate(
-        () =>
-          document.documentElement.scrollWidth <=
-          document.documentElement.clientWidth + 1,
-      );
-
-    expect(
-      noHorizontalOverflow,
-      "Halaman mobile tidak boleh memiliki overflow horizontal.",
-    ).toBeTruthy();
+    expect(noHorizontalOverflow).toBe(true);
   },
 );

@@ -1,34 +1,626 @@
 import { randomUUID } from "node:crypto";
 import Link from "next/link";
-import { notFound } from "next/navigation";
+import {
+  notFound,
+} from "next/navigation";
 
-import { archiveProductAction, reactivateProductAction, updateProductAction, createProductBatchAction } from "@/app/products/actions";
-import { getProductMasterData, getProductBatchMasterData } from "@/lib/supabase-rest";
-import { LedgerStockStory } from "@/app/ledger/stock-story";
+import {
+  AppShell,
+} from "@/app/app-shell/app-shell";
+import {
+  PageHeader,
+} from "@/app/app-shell/page-header";
+import {
+  archiveProductAction,
+  reactivateProductAction,
+  updateProductAction,
+} from "@/app/products/actions";
+import {
+  ProductBatches,
+} from "@/app/products/[productId]/product-batches";
+import {
+  ProductHistory,
+} from "@/app/products/[productId]/product-history";
+import {
+  ProductSummary,
+} from "@/app/products/[productId]/product-summary";
+import {
+  Alert,
+  Input,
+  Textarea,
+} from "@/components/ui";
+import {
+  requireAdminSession,
+} from "@/lib/auth";
+import {
+  safeInternalRoute,
+} from "@/lib/safe-internal-route";
+import {
+  getLedgerStockStoryPage,
+  getProductBatchMasterData,
+  getProductMasterData,
+} from "@/lib/supabase-rest";
 
-export const dynamic = "force-dynamic";
-type SearchParams = { success?: string; error?: string; batchQ?: string; batchStatus?: string; expiry?: string };
-const formatter = new Intl.NumberFormat("id-ID");
-function quantity(value: number) { return formatter.format(Number(value)); }
-function formatDate(value: string) { return new Intl.DateTimeFormat("id-ID", { timeZone: "Asia/Jakarta", dateStyle: "medium", timeStyle: "short", hour12: false }).format(new Date(value)); }
-function Message({ params }: { params: SearchParams }) { const text = params.success ?? params.error; return text ? <p role="status" className={`mb-5 rounded-xl border px-4 py-3 text-sm ${params.error ? "border-rose-400/30 bg-rose-400/10 text-rose-100" : "border-emerald-400/30 bg-emerald-400/10 text-emerald-100"}`}>{text}</p> : null; }
+export const dynamic =
+  "force-dynamic";
 
-export default async function ProductDetailPage({ params, searchParams }: { params: Promise<{ productId: string }>; searchParams: Promise<SearchParams> }) {
-  const [{ productId }, query] = await Promise.all([params, searchParams]);
-  let data;
-  try { data = await getProductMasterData(); } catch { return <main className="min-h-screen px-5 py-12 text-slate-100"><section className="panel-card mx-auto max-w-3xl"><h1 className="section-title">Produk gagal dimuat.</h1><p className="mt-3 text-slate-300">Sesi Admin diperlukan atau koneksi aplikasi perlu diperiksa.</p></section></main>; }
-  const product = data.products.find((row) => row.product_id === productId);
-if (!product) notFound();
-  const batchData = await getProductBatchMasterData();
-  const batchQuery = query.batchQ?.toLowerCase() ?? "";
-  const batchStatus = query.batchStatus ?? "ALL";
-  const productBatches = batchData.batches.filter((batch) => batch.product_id === product.product_id && (!batchQuery || batch.batch_code.toLowerCase().includes(batchQuery)) && (batchStatus === "ALL" || batch.lifecycle_status_code === batchStatus));
-  const audits = data.audits.filter((audit) => audit.product_id === product.product_id);
-  const lockedSize = product.has_authoritative_history && product.size_ml !== null;
-  return <main className="mx-auto w-full max-w-6xl px-5 py-8 text-slate-100"><Link className="nav-link inline-flex" href="/products">← Kembali ke Produk</Link><header className="mt-5 flex flex-wrap items-start justify-between gap-4"><div><p className="section-kicker">Master Data / Produk</p><h1 className="mt-2 text-3xl font-semibold tracking-tight">{product.name}</h1><p className="mt-1 font-mono text-sm text-emerald-300">{product.sku}</p></div><span className={product.is_active ? "status-pill status-success" : "status-pill status-warning"}>{product.is_active ? "AKTIF" : "DIARSIPKAN"}</span></header><Message params={query} />
-  <section className="mt-6 grid gap-4 md:grid-cols-3"><div className="metric-card"><p className="text-xs text-slate-400">Sellable</p><p className="mt-1 text-2xl font-semibold">{quantity(product.sellable_qty)}</p></div><div className="metric-card"><p className="text-xs text-slate-400">Quarantine / Damaged</p><p className="mt-1 text-2xl font-semibold">{quantity(product.quarantine_qty)} / {quantity(product.damaged_qty)}</p></div><div className="metric-card"><p className="text-xs text-slate-400">Reserved / Available</p><p className="mt-1 text-2xl font-semibold">{quantity(product.reserved_qty)} / {quantity(product.available_qty)}</p></div></section>
-  <section className="panel-card mt-6"><p className="section-kicker">Edit Produk</p><h2 className="section-title">Identitas master</h2>{lockedSize && <p className="mt-3 rounded-xl border border-amber-400/25 bg-amber-400/10 px-4 py-3 text-sm text-amber-100">Ukuran dan SKU dikunci karena Produk sudah memiliki histori authoritative. Nama dan deskripsi tetap dapat diperbarui tanpa mengubah snapshot lama.</p>}<form action={updateProductAction} className="form-grid mt-5"><input type="hidden" name="intentId" value={randomUUID()} /><input type="hidden" name="productId" value={product.product_id} /><input type="hidden" name="rowVersion" value={product.row_version} /><label className="field-label">SKU<input value={product.sku} disabled readOnly /><span className="mt-1 block text-xs text-slate-400">Dibuat otomatis dari nama dan ukuran.</span></label><label className="field-label">Nama Produk<input required name="name" defaultValue={product.name} /></label><label className="field-label">Ukuran{lockedSize ? <><input type="hidden" name="size" value={product.size_ml ?? ""} /><input value={`${product.size_ml} ml`} disabled readOnly aria-describedby="size-lock-reason" /></> : <input required name="size" inputMode="decimal" defaultValue={product.size_ml ?? ""} placeholder="Contoh: 30 ml atau 1,5 L" />}</label><label className="field-label">Satuan<input value="UNIT" readOnly /></label><label className="field-label">Deskripsi<textarea name="description" rows={3} defaultValue={product.description ?? ""} /></label><label className="field-label sm:col-span-2">Catatan audit<textarea name="note" rows={2} placeholder="Opsional; jelaskan perubahan" /></label>{lockedSize && <p id="size-lock-reason" className="text-xs text-amber-200 sm:col-span-2">Ukuran yang sudah memiliki histori authoritative tidak dapat diubah.</p>}<div className="sm:col-span-2"><button className="primary-button" type="submit">Simpan perubahan</button></div></form></section>
-  <section className="panel-card mt-6"><p className="section-kicker">Status Produk</p><h2 className="section-title">{product.is_active ? "Arsipkan Produk" : "Aktifkan kembali Produk"}</h2><p className="mt-3 text-sm leading-6 text-slate-400">{product.is_active ? "Pengarsipan menghentikan pemakaian Produk pada transaksi baru. Histori, audit, dan snapshot lama tidak dihapus." : "Reaktivasi hanya dapat dilakukan bila identitas SKU tidak berbenturan dengan Produk aktif lain."}</p><form action={product.is_active ? archiveProductAction : reactivateProductAction} className="mt-5 grid gap-3"><input type="hidden" name="intentId" value={randomUUID()} /><input type="hidden" name="productId" value={product.product_id} /><input type="hidden" name="rowVersion" value={product.row_version} /><label className="field-label">Alasan / catatan<textarea name="reason" rows={2} placeholder="Direkomendasikan untuk audit" /></label><label className="flex items-center gap-2 text-sm text-slate-200"><input name="confirmation" type="checkbox" /> Saya memahami perubahan status ini tidak menghapus histori.</label><div><button className="primary-button" type="submit">{product.is_active ? "Konfirmasi arsip Produk" : "Konfirmasi aktifkan Produk"}</button></div></form></section>
-  <section className="panel-card mt-6"><p className="section-kicker">Konteks master</p><div className="mt-4 grid gap-3 text-sm text-slate-300 sm:grid-cols-2"><p>Histori authoritative: <strong>{product.has_authoritative_history ? "Ada" : "Belum ada"}</strong></p><p>Jumlah Batch: <strong>{quantity(product.batch_count)}</strong></p><p>Referensi listing: <strong>{quantity(product.listing_reference_count)}</strong></p><p>Ledger sequence terakhir: <strong>{quantity(product.last_ledger_seq)}</strong></p><p>Dibuat: <strong>{formatDate(product.created_at)}</strong></p><p>Diperbarui: <strong>{formatDate(product.updated_at)}</strong></p></div><Link className="primary-button mt-5 inline-flex" href={`/ledger?productId=${encodeURIComponent(product.product_id)}&productSku=${encodeURIComponent(product.sku)}`}>Lihat Jejak Stok</Link></section><LedgerStockStory productId={product.product_id} productLabel={`${product.name} · ${product.sku}`} />
-  <section className="panel-card mt-6"><p className="section-kicker">Audit Produk</p><h2 className="section-title">Jejak perubahan</h2>{audits.length === 0 ? <p className="mt-4 text-sm text-slate-400">Belum ada audit Produk.</p> : <div className="mt-5 overflow-x-auto"><table><thead><tr><th>Waktu</th><th>Aksi</th><th>Actor</th><th>Alasan / catatan</th><th>Command</th></tr></thead><tbody>{audits.map((audit) => <tr key={audit.audit_id}><td>{formatDate(audit.occurred_at)}</td><td>{audit.action_code}</td><td>{audit.actor_display_name ?? audit.process_name ?? "Proses tepercaya"}</td><td>{audit.reason ?? audit.note ?? "-"}</td><td>{audit.command_scope}</td></tr>)}</tbody></table></div>}</section><section id="batches" className="panel-card mt-6"><p className="section-kicker">Batch Produk</p><h2 className="section-title">Batch STANDARD</h2><p className="mt-2 text-sm text-slate-400">ACTIVE belum tentu eligible FEFO; BLOCKED, expired efektif, dan ARCHIVED tidak eligible. QUARANTINE adalah bucket stok.</p>{product.is_active?<form action={createProductBatchAction} className="form-grid mt-4"><input type="hidden" name="intentId" value={randomUUID()}/><input type="hidden" name="productId" value={product.product_id}/><label className="field-label">Kode Batch<input name="batchCode" required/></label><label className="field-label">Expiry<input name="expiryDate" type="date" required/></label><label className="field-label">Manufactured<input name="manufacturedDate" type="date"/></label><label className="field-label">First received<input name="receivedFirstAt" type="datetime-local"/></label><label className="field-label">Kind<input value="STANDARD" readOnly/></label><div><button className="primary-button">Tambah Batch STANDARD</button></div></form>:<p className="mt-3 text-amber-200">Produk archived tidak dapat menerima Batch baru.</p>}<form method="get" className="mt-5 flex gap-2"><input name="batchQ" defaultValue={query.batchQ??""} placeholder="Cari batch"/><select name="batchStatus" defaultValue={batchStatus}><option value="ALL">Semua</option><option value="ACTIVE">ACTIVE</option><option value="BLOCKED">BLOCKED</option><option value="ARCHIVED">ARCHIVED</option></select><button className="primary-button">Filter</button></form>{productBatches.length===0?<p className="mt-4 text-slate-400">Tidak ada Batch yang cocok.</p>:<div className="mt-4 overflow-x-auto"><table><thead><tr><th>Batch</th><th>Status</th><th>Expiry</th><th>Stock</th><th>FEFO</th></tr></thead><tbody>{productBatches.map((batch)=><tr key={batch.batch_id}><td><Link className="text-emerald-300" href={`/products/${product.product_id}/batches/${batch.batch_id}`}>{batch.batch_code}</Link><p>{batch.batch_kind_code}</p></td><td>{batch.lifecycle_status_code}</td><td>{batch.expiry_date} {batch.effective_expiry_state}</td><td>{quantity(batch.sellable_qty)}/{quantity(batch.quarantine_qty)}/{quantity(batch.damaged_qty)}</td><td>{batch.is_fefo_eligible?"Eligible":"Tidak eligible"}</td></tr>)}</tbody></table></div>}</section></main>;
+type SearchParams =
+  Record<
+    string,
+    string | string[] | undefined
+  >;
+
+type ProductTab =
+  | "summary"
+  | "batches"
+  | "history";
+
+function first(
+  value: SearchParams[string],
+) {
+  return Array.isArray(value)
+    ? value[0]
+    : value;
+}
+
+function tabFrom(
+  value?: string,
+): ProductTab {
+  if (value === "batches") {
+    return "batches";
+  }
+
+  if (value === "history") {
+    return "history";
+  }
+
+  return "summary";
+}
+
+function tabHref({
+  productId,
+  returnTo,
+  tab,
+}: {
+  productId: string;
+  returnTo: string;
+  tab: ProductTab;
+}) {
+  const query =
+    new URLSearchParams();
+
+  if (tab !== "summary") {
+    query.set("tab", tab);
+  }
+
+  if (returnTo !== "/products") {
+    query.set(
+      "returnTo",
+      returnTo,
+    );
+  }
+
+  const encoded =
+    query.toString();
+
+  return `/products/${encodeURIComponent(
+    productId,
+  )}${encoded ? `?${encoded}` : ""}`;
+}
+
+export default async function ProductDetailPage({
+  params,
+  searchParams,
+}: {
+  params: Promise<{
+    productId: string;
+  }>;
+  searchParams:
+    Promise<SearchParams>;
+}) {
+  const [
+    { productId },
+    query,
+    session,
+  ] = await Promise.all([
+    params,
+    searchParams,
+    requireAdminSession(),
+  ]);
+
+  let master;
+
+  try {
+    master =
+      await getProductMasterData(
+        session.profile
+          .organization_id,
+      );
+  } catch {
+    return (
+      <AppShell
+        profile={
+          session.profile
+        }
+      >
+        <div className="mx-auto w-full max-w-[1120px] px-4 py-6 sm:px-6 lg:px-8 lg:py-8">
+          <PageHeader
+            description="Data produk belum dapat dimuat. Kondisi gagal tidak mengubah stok."
+            title="Detail Produk"
+          />
+
+          <Alert
+            className="mt-6"
+            title="Produk belum dapat dimuat"
+            tone="warning"
+          >
+            Muat ulang halaman sebelum
+            melakukan perubahan pada
+            master produk.
+          </Alert>
+        </div>
+      </AppShell>
+    );
+  }
+
+  const product =
+    master.products.find(
+      (row) =>
+        row.product_id ===
+        productId,
+    );
+
+  if (!product) {
+    notFound();
+  }
+
+  const returnTo = safeInternalRoute(
+    first(query.returnTo),
+    "/products",
+    { allowedPathnames: ["/products"] },
+  );
+
+  const tab =
+    tabFrom(
+      first(query.tab),
+    );
+
+  const success =
+    first(query.success);
+
+  const error =
+    first(query.error);
+
+  const summaryHref =
+    tabHref({
+      productId,
+      returnTo,
+      tab: "summary",
+    });
+
+  const batchesHref =
+    tabHref({
+      productId,
+      returnTo,
+      tab: "batches",
+    });
+
+  const historyHref =
+    tabHref({
+      productId,
+      returnTo,
+      tab: "history",
+    });
+
+  let recentRows = null;
+
+  if (tab === "summary") {
+    try {
+      const recent =
+        await getLedgerStockStoryPage({
+          productId,
+          pageSize: 10,
+        });
+
+      recentRows =
+        recent.rows.slice(0, 5);
+    } catch {
+      recentRows = null;
+    }
+  }
+
+  let batchData = null;
+
+  if (tab === "batches") {
+    try {
+      batchData =
+        await getProductBatchMasterData(
+          session.profile
+            .organization_id,
+        );
+    } catch {
+      batchData = null;
+    }
+  }
+
+  const audits =
+    master.audits.filter(
+      (audit) =>
+        audit.product_id ===
+        product.product_id,
+    );
+
+  const lockedSize =
+    product.has_authoritative_history &&
+    product.size_ml !== null;
+
+  return (
+    <AppShell
+      profile={session.profile}
+    >
+      <div className="mx-auto w-full max-w-[1120px] px-4 py-6 sm:px-6 lg:px-8 lg:py-8">
+        <PageHeader
+          action={
+            <Link
+              className="inline-flex min-h-[var(--ui-control-height)] items-center text-sm font-semibold text-ui-primary hover:underline"
+              href={returnTo}
+            >
+              Kembali ke Stok
+            </Link>
+          }
+          description={`${product.sku} · ${
+            product.is_active
+              ? "Aktif"
+              : "Tidak Aktif"
+          }`}
+          eyebrow="Stok"
+          title={product.name}
+        />
+
+        {success ? (
+          <Alert
+            className="mt-6"
+            title="Perubahan tersimpan"
+            tone="success"
+          >
+            {success}
+          </Alert>
+        ) : null}
+
+        {error ? (
+          <Alert
+            className="mt-6"
+            title="Perubahan belum tersimpan"
+            tone="warning"
+          >
+            {error}
+          </Alert>
+        ) : null}
+
+        <nav
+          aria-label="Detail Produk"
+          className="mt-6 flex max-w-full gap-1 overflow-x-auto border-b border-ui-border"
+        >
+          {[
+            [
+              "summary",
+              "Ringkasan",
+              summaryHref,
+            ],
+            [
+              "batches",
+              "Batch",
+              batchesHref,
+            ],
+            [
+              "history",
+              "Riwayat",
+              historyHref,
+            ],
+          ].map(
+            ([
+              value,
+              label,
+              href,
+            ]) => (
+              <Link
+                aria-current={
+                  tab === value
+                    ? "page"
+                    : undefined
+                }
+                className={
+                  tab === value
+                    ? "shrink-0 border-b-2 border-ui-primary px-4 py-3 text-sm font-semibold text-ui-primary"
+                    : "shrink-0 border-b-2 border-transparent px-4 py-3 text-sm font-semibold text-ui-text-muted hover:text-ui-text"
+                }
+                href={href}
+                key={value}
+              >
+                {label}
+              </Link>
+            ),
+          )}
+        </nav>
+
+        <section className="mt-6">
+          {tab === "summary" ? (
+            <ProductSummary
+              historyHref={
+                historyHref
+              }
+              product={product}
+              recentRows={
+                recentRows
+              }
+            />
+          ) : null}
+
+          {tab === "batches" ? (
+            batchData ? (
+              <ProductBatches
+                batchQuery={first(
+                  query.batchQ,
+                )}
+                batchStatus={first(
+                  query.batchStatus,
+                )}
+                batches={batchData.batches.filter(
+                  (batch) =>
+                    batch.product_id ===
+                    product.product_id,
+                )}
+                product={product}
+                returnTo={returnTo}
+              />
+            ) : (
+              <Alert
+                title="Batch belum dapat dimuat"
+                tone="warning"
+              >
+                Data Produk tetap
+                tersedia, tetapi daftar
+                Batch belum dapat dibaca.
+              </Alert>
+            )
+          ) : null}
+
+          {tab === "history" ? (
+            <ProductHistory
+              params={query}
+              productId={
+                product.product_id
+              }
+              productSku={
+                product.sku
+              }
+              returnTo={returnTo}
+            />
+          ) : null}
+        </section>
+
+        {tab === "summary" ? (
+          <div className="mt-8 grid gap-4">
+            <details className="rounded-[var(--ui-radius-lg)] border border-ui-border bg-ui-surface p-4 sm:p-5">
+              <summary className="cursor-pointer text-sm font-semibold text-ui-text">
+                Pengaturan Produk
+              </summary>
+
+              <p className="mt-3 text-sm leading-6 text-ui-text-muted">
+                Mengubah master Produk
+                tidak mengedit ledger atau
+                snapshot transaksi lama.
+              </p>
+
+              {lockedSize ? (
+                <Alert
+                  className="mt-4"
+                  title="Ukuran produk sudah dikunci"
+                  tone="warning"
+                >
+                  Produk sudah memiliki histori authoritative.
+                  Ukuran dan SKU tidak dapat diubah manual.
+                  Nama dan deskripsi masih dapat diperbarui.
+                </Alert>
+              ) : null}
+
+              <form
+                action={
+                  updateProductAction
+                }
+                className="mt-4 grid gap-4 sm:grid-cols-2"
+              >
+                <input
+                  name="intentId"
+                  type="hidden"
+                  value={randomUUID()}
+                />
+                <input
+                  name="productId"
+                  type="hidden"
+                  value={
+                    product.product_id
+                  }
+                />
+                <input
+                  name="rowVersion"
+                  type="hidden"
+                  value={
+                    product.row_version
+                  }
+                />
+
+                <label className="grid gap-2 text-sm font-semibold text-ui-text">
+                  SKU
+                  <Input disabled readOnly value={product.sku} />
+                  <span className="text-xs font-normal text-ui-text-muted">
+                    Dibuat otomatis dari nama dan ukuran; tidak dapat diedit manual.
+                  </span>
+                </label>
+
+                <label className="grid gap-2 text-sm font-semibold text-ui-text">
+                  Nama Produk
+                  <Input
+                    defaultValue={
+                      product.name
+                    }
+                    name="name"
+                    required
+                  />
+                </label>
+                <label className="grid gap-2 text-sm font-semibold text-ui-text">
+                  Ukuran
+                  {lockedSize ? (
+                    <>
+                      <input name="size" type="hidden" value={product.size_ml ?? ""} />
+                      <Input disabled readOnly value={`${product.size_ml} ml`} />
+                    </>
+                  ) : (
+                    <Input defaultValue={product.size_ml ?? ""} inputMode="decimal" name="size" placeholder="Contoh: 30 ml atau 1,5 L" required />
+                  )}
+                </label>
+
+
+                <label className="grid gap-2 text-sm font-semibold text-ui-text sm:col-span-2">
+                  Deskripsi
+                  <Textarea
+                    defaultValue={
+                      product.description ??
+                      ""
+                    }
+                    name="description"
+                  />
+                </label>
+
+                <label className="grid gap-2 text-sm font-semibold text-ui-text sm:col-span-2">
+                  Catatan audit
+                  <Textarea name="note" />
+                </label>
+
+                <div className="sm:col-span-2">
+                  <button
+                    className="min-h-[var(--ui-control-height)] rounded-[var(--ui-radius-md)] border border-ui-primary bg-ui-primary px-4 text-sm font-semibold text-ui-text-on-primary"
+                    type="submit"
+                  >
+                    Simpan Produk
+                  </button>
+                </div>
+              </form>
+
+              <form
+                action={
+                  product.is_active
+                    ? archiveProductAction
+                    : reactivateProductAction
+                }
+                className="mt-6 grid gap-3 border-t border-ui-border pt-5"
+              >
+                <input
+                  name="intentId"
+                  type="hidden"
+                  value={randomUUID()}
+                />
+                <input
+                  name="productId"
+                  type="hidden"
+                  value={
+                    product.product_id
+                  }
+                />
+                <input
+                  name="rowVersion"
+                  type="hidden"
+                  value={
+                    product.row_version
+                  }
+                />
+
+                <label className="grid gap-2 text-sm font-semibold text-ui-text">
+                  Alasan{" "}
+                  {product.is_active
+                    ? "menonaktifkan"
+                    : "mengaktifkan kembali"}
+                  <Textarea
+                    name="reason"
+                    required
+                  />
+                </label>
+
+                <label className="flex items-start gap-2 text-sm text-ui-text">
+                  <input
+                    className="mt-1"
+                    name="confirmation"
+                    required
+                    type="checkbox"
+                  />
+                  Saya memahami perubahan
+                  status tidak menghapus
+                  histori Produk.
+                </label>
+
+                <div>
+                  <button
+                    className="min-h-[var(--ui-control-height)] rounded-[var(--ui-radius-md)] border border-ui-border px-4 text-sm font-semibold text-ui-text"
+                    type="submit"
+                  >
+                    {product.is_active
+                      ? "Nonaktifkan Produk"
+                      : "Aktifkan Kembali Produk"}
+                  </button>
+                </div>
+              </form>
+            </details>
+
+            <details className="rounded-[var(--ui-radius-lg)] border border-ui-border bg-ui-surface p-4 sm:p-5">
+              <summary className="cursor-pointer text-sm font-semibold text-ui-text">
+                Jejak Perubahan Master
+              </summary>
+
+              {audits.length ? (
+                <div className="mt-4 grid gap-3">
+                  {audits.map(
+                    (audit) => (
+                      <article
+                        className="rounded-[var(--ui-radius-md)] bg-ui-surface-subtle p-3 text-sm"
+                        key={
+                          audit.audit_id
+                        }
+                      >
+                        <p className="font-semibold text-ui-text">
+                          {
+                            audit.action_code
+                          }
+                        </p>
+
+                        <p className="mt-1 text-ui-text-muted">
+                          {audit.reason ??
+                            audit.note ??
+                            "Tanpa catatan"}
+                        </p>
+
+                        <p className="mt-1 text-xs text-ui-text-muted">
+                          {audit.actor_display_name ??
+                            audit.process_name ??
+                            "Proses tepercaya"}
+                          {" · "}
+                          {
+                            audit.occurred_at
+                          }
+                        </p>
+                      </article>
+                    ),
+                  )}
+                </div>
+              ) : (
+                <p className="mt-3 text-sm text-ui-text-muted">
+                  Belum ada perubahan
+                  master yang tercatat.
+                </p>
+              )}
+            </details>
+          </div>
+        ) : null}
+      </div>
+    </AppShell>
+  );
 }

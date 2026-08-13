@@ -1,380 +1,404 @@
+"use client";
+
+import { useState } from "react";
+import { useFormStatus } from "react-dom";
+
 import {
   completeStocktakeCountingAction,
   requestStocktakeRecountAction,
   submitStocktakeCountAction,
 } from "@/app/stocktakes/actions";
-import {
-  STOCKTAKE_BUCKET_LABELS,
-  STOCKTAKE_COUNT_STATUS_META,
-  type StocktakePillTone,
-} from "@/lib/stocktakes/constants";
+import { Input, StatusBadge, Textarea } from "@/components/ui";
 import type {
   StocktakeCountingLine,
-  StocktakeDetails,
-  StocktakeListItem,
   StocktakeNonBlindLine,
+  StocktakeVisibility,
 } from "@/lib/stocktakes/types";
 
 const numberFormatter = new Intl.NumberFormat("id-ID");
 
-function formatNumber(value: number | null) {
-  return value === null ? "Belum ada" : numberFormatter.format(Number(value));
-}
-
-function formatDate(value: string) {
-  const date = new Date(value);
-
-  if (Number.isNaN(date.getTime())) {
-    return value;
-  }
-
-  return new Intl.DateTimeFormat("id-ID", {
-    timeZone: "Asia/Jakarta",
-    day: "2-digit",
-    month: "short",
-    year: "numeric",
-  }).format(date);
+function bucketLabel(bucket: string) {
+  return bucket === "SELLABLE"
+    ? "Layak Dijual"
+    : bucket === "QUARANTINE"
+      ? "Ditahan"
+      : "Rusak";
 }
 
 function isNonBlindLine(
   line: StocktakeCountingLine,
 ): line is StocktakeNonBlindLine {
-  return "system_qty_at_snapshot" in line;
+  return "expected_qty_at_count" in line;
 }
 
-function StatusPill({
-  label,
-  tone,
-}: {
-  label: string;
-  tone: StocktakePillTone;
-}) {
-  const tones: Record<StocktakePillTone, string> = {
-    success: "border-emerald-400/25 bg-emerald-400/10 text-emerald-200",
-    warning: "border-amber-400/25 bg-amber-400/10 text-amber-100",
-    danger: "border-rose-400/25 bg-rose-400/10 text-rose-100",
-    neutral: "border-white/10 bg-white/[0.04] text-slate-300",
-  };
+function CountSubmitButton() {
+  const { pending } = useFormStatus();
 
   return (
-    <span
-      className={`inline-flex items-center rounded-full border px-2.5 py-1 text-xs font-medium ${tones[tone]}`}
+    <button
+      className="min-h-[var(--ui-control-height)] rounded-[var(--ui-radius-md)] border border-ui-primary bg-ui-primary px-4 text-sm font-semibold text-ui-text-on-primary disabled:cursor-not-allowed disabled:opacity-60"
+      disabled={pending}
+      type="submit"
     >
-      {label}
-    </span>
+      {pending ? "Menyimpan..." : "Simpan Hitungan"}
+    </button>
   );
 }
 
-function CountForm({
-  stocktakeId,
-  line,
-}: {
-  stocktakeId: string;
-  line: StocktakeCountingLine;
-}) {
-  const isRecount = line.count_status_code === "RECOUNT_REQUESTED";
+function RecountSubmitButton() {
+  const { pending } = useFormStatus();
 
   return (
-    <form
-      action={submitStocktakeCountAction}
-      className="mt-5 rounded-2xl border border-white/10 bg-slate-950/45 p-4"
+    <button
+      className="min-h-[var(--ui-control-height)] rounded-[var(--ui-radius-md)] border border-ui-border bg-ui-surface px-4 text-sm font-semibold text-ui-text disabled:cursor-not-allowed disabled:opacity-60"
+      disabled={pending}
+      type="submit"
     >
-      <input type="hidden" name="stocktakeId" value={stocktakeId} />
-      <input
-        type="hidden"
-        name="stocktakeLineId"
-        value={line.stocktake_line_id}
-      />
-      <input
-        type="hidden"
-        name="attemptNo"
-        value={line.count_attempt_no}
-      />
-
-      <div className="grid gap-4 lg:grid-cols-[minmax(0,14rem)_1fr]">
-        <label>
-          <span className="field-label">Quantity fisik</span>
-          <input
-            className="mt-2 w-full rounded-xl border border-white/10 bg-slate-950 px-3 py-2.5 text-sm text-white outline-none transition focus:border-emerald-400/50"
-            type="number"
-            name="physicalQty"
-            min="0"
-            step="1"
-            inputMode="numeric"
-            required
-          />
-        </label>
-
-        <label>
-          <span className="field-label">Catatan count</span>
-          <textarea
-            className="mt-2 min-h-20 w-full rounded-xl border border-white/10 bg-slate-950 px-3 py-2.5 text-sm text-white outline-none transition focus:border-emerald-400/50"
-            name="note"
-            maxLength={2000}
-            placeholder="Opsional, misalnya kondisi kemasan atau lokasi fisik."
-          />
-        </label>
-      </div>
-
-      <label className="mt-4 flex items-start gap-3 rounded-xl border border-white/10 p-3">
-        <input className="mt-1" type="checkbox" name="zeroConfirmed" />
-        <span>
-          <span className="text-sm font-medium text-slate-200">
-            Konfirmasi quantity fisik benar-benar nol
-          </span>
-          <span className="mt-1 block text-xs leading-5 text-slate-500">
-            Wajib dicentang hanya ketika quantity yang dimasukkan adalah 0.
-            Kolom kosong tidak pernah dianggap nol.
-          </span>
-        </span>
-      </label>
-
-      <button className="primary-button mt-4" type="submit">
-        {isRecount ? "Simpan hasil hitung ulang" : "Simpan hasil hitung"}
-      </button>
-    </form>
+      {pending ? "Meminta..." : "Minta Hitung Ulang"}
+    </button>
   );
 }
 
-function RecountForm({
-  stocktakeId,
-  line,
+function CompleteSubmitButton({
+  disabled,
 }: {
-  stocktakeId: string;
-  line: StocktakeCountingLine;
+  disabled: boolean;
 }) {
+  const { pending } = useFormStatus();
+
   return (
-    <details className="mt-4 rounded-xl border border-white/10 bg-slate-950/35 p-4">
-      <summary className="cursor-pointer text-sm font-semibold text-amber-100">
-        Minta hitung ulang
-      </summary>
-
-      <form action={requestStocktakeRecountAction} className="mt-4">
-        <input type="hidden" name="stocktakeId" value={stocktakeId} />
-        <input
-          type="hidden"
-          name="stocktakeLineId"
-          value={line.stocktake_line_id}
-        />
-        <input
-          type="hidden"
-          name="attemptNo"
-          value={line.count_attempt_no}
-        />
-
-        <label>
-          <span className="field-label">Alasan recount</span>
-          <textarea
-            className="mt-2 min-h-24 w-full rounded-xl border border-white/10 bg-slate-950 px-3 py-2.5 text-sm text-white outline-none transition focus:border-amber-400/50"
-            name="reason"
-            maxLength={2000}
-            required
-            placeholder="Jelaskan mengapa count perlu diverifikasi ulang."
-          />
-        </label>
-
-        <button
-          className="mt-4 rounded-xl border border-amber-400/30 bg-amber-400/10 px-4 py-2.5 text-sm font-semibold text-amber-100 transition hover:bg-amber-400/15"
-          type="submit"
-        >
-          Tandai perlu hitung ulang
-        </button>
-      </form>
-    </details>
+    <button
+      className="min-h-[var(--ui-control-height)] rounded-[var(--ui-radius-md)] border border-ui-primary bg-ui-primary px-4 text-sm font-semibold text-ui-text-on-primary disabled:cursor-not-allowed disabled:border-ui-border disabled:bg-ui-surface-subtle disabled:text-ui-text-muted"
+      disabled={disabled || pending}
+      type="submit"
+    >
+      {pending ? "Menyelesaikan..." : "Selesaikan Penghitungan"}
+    </button>
   );
 }
 
-export default function CountingPanel({
-  details,
-  summary,
+export function CountingPanel({
   lines,
+  returnTo,
+  stocktakeId,
+  stocktakeVersion,
+  visibility,
 }: {
-  details: StocktakeDetails;
-  summary: StocktakeListItem | null;
   lines: StocktakeCountingLine[];
+  returnTo: string;
+  stocktakeId: string;
+  stocktakeVersion: number;
+  visibility: StocktakeVisibility;
 }) {
-  const countedLineCount = lines.filter(
+  const [quantities, setQuantities] = useState<Record<string, string>>({});
+  const [recountOpenByLine, setRecountOpenByLine] = useState<
+    Record<string, boolean>
+  >({});
+
+  const countedCount = lines.filter(
     (line) => line.count_status_code === "COUNTED",
   ).length;
-  const lineCount = lines.length;
-  const canComplete = lineCount > 0 && countedLineCount === lineCount;
-  const isBlind = details.visibility_code === "BLIND";
+  const remainingCount = lines.length - countedCount;
+  const allCounted = lines.length > 0 && remainingCount === 0;
 
   return (
-    <section className="mt-8">
-      <div className="panel-card">
-        <div className="flex flex-col gap-5 lg:flex-row lg:items-end lg:justify-between">
-          <div>
-            <p className="section-kicker">Counting</p>
-            <h2 className="section-title">
-              {isBlind ? "Blind physical count." : "Non-blind physical count."}
-            </h2>
-            <p className="mt-3 max-w-3xl text-sm leading-6 text-slate-400">
-              Setiap submit membuat count attempt append-only. Recount tidak
-              menimpa attempt sebelumnya, dan tidak satu pun tindakan counting
-              mengubah ledger atau saldo projection.
-            </p>
-          </div>
-
-          <div className="rounded-2xl border border-white/10 bg-slate-950/45 px-5 py-4">
-            <p className="text-xs uppercase tracking-[0.14em] text-slate-500">
-              Progress
-            </p>
-            <p className="mt-2 text-2xl font-semibold text-white">
-              {formatNumber(countedLineCount)} / {formatNumber(lineCount)}
-            </p>
-          </div>
+    <section className="mt-6">
+      <div className="flex flex-col gap-1 border-b border-ui-border pb-4 sm:flex-row sm:items-end sm:justify-between">
+        <div>
+          <h2 className="text-lg font-semibold text-ui-text">
+            Hitung barang fisik
+          </h2>
+          <p className="mt-1 text-sm text-ui-text-muted">
+            {visibility === "BLIND"
+              ? "Jumlah sistem dan selisih disembunyikan selama menghitung."
+              : "Catatan sistem tersedia sebagai informasi pendamping."}
+          </p>
         </div>
-
-        {isBlind ? (
-          <div className="mt-5 rounded-xl border border-sky-400/20 bg-sky-400/[0.06] p-4 text-sm leading-6 text-sky-100">
-            Expected quantity, variance, snapshot quantity, dan attempt history
-            tidak diambil dari database selama sesi BLIND masih berada pada
-            COUNTING.
-          </div>
-        ) : null}
+        <p className="text-sm font-medium text-ui-text-muted">
+          {countedCount} dari {lines.length} selesai
+        </p>
       </div>
 
-      <div className="mt-5 space-y-4">
+      <div className="mt-4 grid gap-3">
         {lines.map((line) => {
-          const status = STOCKTAKE_COUNT_STATUS_META[line.count_status_code];
-          const nonBlind = isNonBlindLine(line);
-          const showSavedPhysical =
-            line.final_physical_qty !== null &&
-            (line.count_status_code === "COUNTED" || nonBlind);
+          const physicalQty = quantities[line.stocktake_line_id] ?? "";
+          const isZero = physicalQty === "0";
+          const nonBlind =
+            visibility === "NON_BLIND" && isNonBlindLine(line);
+          const isCounted = line.count_status_code === "COUNTED";
+          const needsRecount =
+            line.count_status_code === "RECOUNT_REQUESTED";
+          const canCount = line.count_status_code !== "COUNTED";
+          const recountOpen =
+            recountOpenByLine[line.stocktake_line_id] ?? false;
+
+          const expectedQty = nonBlind
+            ? line.expected_qty_at_count ?? line.system_qty_at_snapshot
+            : null;
 
           return (
-            <article key={line.stocktake_line_id} className="panel-card">
-              <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
-                <div>
-                  <div className="flex flex-wrap items-center gap-2">
-                    <span className="font-mono text-xs text-slate-500">
-                      Line {formatNumber(line.line_no)}
-                    </span>
-                    <StatusPill label={status.label} tone={status.tone} />
-                    <StatusPill
-                      label={STOCKTAKE_BUCKET_LABELS[line.bucket_code]}
-                      tone="neutral"
-                    />
-                  </div>
-
-                  <h3 className="mt-3 text-lg font-semibold text-white">
-                    {line.product_sku_snapshot} / {line.product_name_snapshot}
+            <article
+              className={`rounded-[var(--ui-radius-md)] border p-4 ${
+                isCounted
+                  ? "border-ui-border bg-ui-surface"
+                  : "border-ui-border bg-ui-surface-subtle"
+              }`}
+              key={line.stocktake_line_id}
+            >
+              <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+                <div className="min-w-0">
+                  <h3 className="font-semibold text-ui-text">
+                    {line.product_name_snapshot}
                   </h3>
-                  <p className="mt-2 text-sm text-slate-400">
-                    Batch {line.batch_code_snapshot} / Expiry{" "}
-                    {formatDate(line.expiry_date_snapshot)}
+                  <p className="mt-1 text-sm text-ui-text-muted">
+                    {line.product_sku_snapshot}
+                    {" · "}Kode Batch {line.batch_code_snapshot}
+                    {" · "}
+                    {bucketLabel(line.bucket_code)}
                   </p>
                 </div>
 
-                <div className="grid grid-cols-2 gap-3 text-sm sm:grid-cols-3">
-                  <div className="rounded-xl border border-white/10 bg-slate-950/40 p-3">
-                    <p className="text-xs text-slate-500">Attempt</p>
-                    <p className="mt-1 font-semibold text-white">
-                      {formatNumber(line.count_attempt_no)}
-                    </p>
-                  </div>
-
-                  {showSavedPhysical ? (
-                    <div className="rounded-xl border border-white/10 bg-slate-950/40 p-3">
-                      <p className="text-xs text-slate-500">Fisik tersimpan</p>
-                      <p className="mt-1 font-semibold text-white">
-                        {formatNumber(line.final_physical_qty)}
-                      </p>
-                    </div>
-                  ) : null}
-
-                  {nonBlind ? (
-                    <div className="rounded-xl border border-white/10 bg-slate-950/40 p-3">
-                      <p className="text-xs text-slate-500">Snapshot awal</p>
-                      <p className="mt-1 font-semibold text-white">
-                        {formatNumber(line.system_qty_at_snapshot)}
-                      </p>
-                    </div>
-                  ) : null}
-                </div>
+                <StatusBadge
+                  tone={
+                    isCounted
+                      ? "selected"
+                      : needsRecount
+                        ? "warning"
+                        : "neutral"
+                  }
+                >
+                  {isCounted
+                    ? "Sudah dihitung"
+                    : needsRecount
+                      ? "Perlu hitung ulang"
+                      : "Belum dihitung"}
+                </StatusBadge>
               </div>
 
-              {nonBlind && line.count_status_code === "COUNTED" ? (
-                <div className="mt-4 grid gap-3 sm:grid-cols-3">
-                  <div className="rounded-xl border border-white/10 p-3">
-                    <p className="text-xs text-slate-500">Expected at count</p>
-                    <p className="mt-1 font-semibold text-white">
-                      {formatNumber(line.expected_qty_at_count)}
+              {isCounted ? (
+                <div
+                  className={`mt-4 grid gap-3 text-sm ${
+                    nonBlind ? "sm:grid-cols-3" : "sm:grid-cols-1"
+                  }`}
+                >
+                  {nonBlind ? (
+                    <p>
+                      <span className="text-ui-text-muted">
+                        Catatan sistem
+                      </span>
+                      <br />
+                      <span className="ui-number font-semibold text-ui-text">
+                        {numberFormatter.format(expectedQty ?? 0)} unit
+                      </span>
                     </p>
-                  </div>
-                  <div className="rounded-xl border border-white/10 p-3">
-                    <p className="text-xs text-slate-500">Variance</p>
-                    <p className="mt-1 font-semibold text-white">
-                      {formatNumber(line.variance_qty)}
+                  ) : null}
+
+                  <p>
+                    <span className="text-ui-text-muted">Fisik terakhir</span>
+                    <br />
+                    <span className="ui-number font-semibold text-ui-text">
+                      {line.final_physical_qty === null
+                        ? "Belum tersedia"
+                        : `${numberFormatter.format(line.final_physical_qty)} unit`}
+                    </span>
+                  </p>
+
+                  {nonBlind ? (
+                    <p>
+                      <span className="text-ui-text-muted">
+                        Selisih terakhir
+                      </span>
+                      <br />
+                      <span className="ui-number font-semibold text-ui-text">
+                        {line.variance_qty === null
+                          ? "Belum tersedia"
+                          : `${line.variance_qty > 0 ? "+" : ""}${numberFormatter.format(line.variance_qty)} unit`}
+                      </span>
                     </p>
-                  </div>
-                  <div className="rounded-xl border border-white/10 p-3">
-                    <p className="text-xs text-slate-500">Ledger cutoff</p>
-                    <p className="mt-1 font-semibold text-white">
-                      {formatNumber(line.count_cutoff_ledger_seq)}
-                    </p>
-                  </div>
+                  ) : null}
+                </div>
+              ) : nonBlind ? (
+                <div className="mt-4 text-sm">
+                  <p>
+                    <span className="text-ui-text-muted">Catatan sistem</span>
+                    <br />
+                    <span className="ui-number font-semibold text-ui-text">
+                      {numberFormatter.format(expectedQty ?? 0)} unit
+                    </span>
+                  </p>
                 </div>
               ) : null}
 
-              {line.count_status_code === "PENDING" ||
-              line.count_status_code === "RECOUNT_REQUESTED" ? (
-                <CountForm stocktakeId={details.stocktake_id} line={line} />
+              {canCount ? (
+                <form
+                  action={submitStocktakeCountAction}
+                  className="mt-4 grid gap-3 border-t border-ui-border pt-4 sm:grid-cols-[minmax(0,200px)_1fr_auto]"
+                >
+                  <input name="returnTo" type="hidden" value={returnTo} />
+                  <input
+                    name="stocktakeId"
+                    type="hidden"
+                    value={stocktakeId}
+                  />
+                  <input
+                    name="stocktakeLineId"
+                    type="hidden"
+                    value={line.stocktake_line_id}
+                  />
+                  <input
+                    name="attemptNo"
+                    type="hidden"
+                    value={line.count_attempt_no}
+                  />
+
+                  <label className="grid gap-2 text-sm font-semibold text-ui-text">
+                    Jumlah fisik
+                    <Input
+                      inputMode="numeric"
+                      min="0"
+                      name="physicalQty"
+                      onChange={(event) =>
+                        setQuantities((current) => ({
+                          ...current,
+                          [line.stocktake_line_id]: event.target.value,
+                        }))
+                      }
+                      required
+                      step="1"
+                      type="number"
+                      value={physicalQty}
+                    />
+                  </label>
+
+                  <label className="grid gap-2 text-sm font-semibold text-ui-text">
+                    Catatan (opsional)
+                    <Textarea
+                      className="min-h-[var(--ui-control-height)]"
+                      name="note"
+                      placeholder="Contoh: rak belakang"
+                      rows={1}
+                    />
+                  </label>
+
+                  <div className="flex flex-col justify-end gap-2">
+                    {isZero ? (
+                      <label className="flex max-w-52 items-start gap-2 text-xs leading-5 text-ui-text-muted">
+                        <input
+                          className="mt-1"
+                          name="zeroConfirmed"
+                          required
+                          type="checkbox"
+                        />
+                        Saya memastikan jumlah fisiknya nol
+                      </label>
+                    ) : null}
+
+                    <CountSubmitButton />
+                  </div>
+                </form>
               ) : null}
 
-              {line.count_status_code === "COUNTED" ? (
-                <RecountForm stocktakeId={details.stocktake_id} line={line} />
+              {isCounted ? (
+                <div className="mt-4 border-t border-ui-border pt-3">
+                  {!recountOpen ? (
+                    <button
+                      className="inline-flex min-h-[var(--ui-control-height)] items-center text-sm font-semibold text-ui-primary hover:underline"
+                      onClick={() =>
+                        setRecountOpenByLine((current) => ({
+                          ...current,
+                          [line.stocktake_line_id]: true,
+                        }))
+                      }
+                      type="button"
+                    >
+                      Hitung ulang
+                    </button>
+                  ) : (
+                    <form
+                      action={requestStocktakeRecountAction}
+                      className="grid gap-3 sm:grid-cols-[1fr_auto] sm:items-end"
+                    >
+                      <input name="returnTo" type="hidden" value={returnTo} />
+                      <input
+                        name="stocktakeId"
+                        type="hidden"
+                        value={stocktakeId}
+                      />
+                      <input
+                        name="stocktakeLineId"
+                        type="hidden"
+                        value={line.stocktake_line_id}
+                      />
+                      <input
+                        name="attemptNo"
+                        type="hidden"
+                        value={line.count_attempt_no}
+                      />
+
+                      <label className="grid gap-2 text-sm font-semibold text-ui-text">
+                        Alasan hitung ulang
+                        <Input
+                          name="reason"
+                          placeholder="Contoh: jumlah perlu dicek kembali"
+                          required
+                        />
+                      </label>
+
+                      <div className="flex flex-wrap gap-2">
+                        <button
+                          className="min-h-[var(--ui-control-height)] rounded-[var(--ui-radius-md)] px-3 text-sm font-semibold text-ui-text-muted hover:text-ui-text"
+                          onClick={() =>
+                            setRecountOpenByLine((current) => ({
+                              ...current,
+                              [line.stocktake_line_id]: false,
+                            }))
+                          }
+                          type="button"
+                        >
+                          Batal
+                        </button>
+                        <RecountSubmitButton />
+                      </div>
+                    </form>
+                  )}
+                </div>
+              ) : null}
+
+              {needsRecount ? (
+                <p className="mt-3 text-xs font-medium text-ui-warning">
+                  Lakukan hitung ulang lalu simpan hasil baru.
+                </p>
               ) : null}
             </article>
           );
         })}
-
-        {lines.length === 0 ? (
-          <div className="panel-card text-sm text-slate-400">
-            Tidak ada count line yang dapat dibaca untuk sesi ini.
-          </div>
-        ) : null}
       </div>
 
-      <section className="mt-6 rounded-2xl border border-emerald-400/20 bg-emerald-400/[0.055] p-5">
-        <div className="flex flex-col gap-5 lg:flex-row lg:items-end lg:justify-between">
-          <div>
-            <p className="font-semibold text-emerald-100">
-              Selesaikan counting setelah seluruh line tersimpan.
-            </p>
-            <p className="mt-2 max-w-3xl text-sm leading-6 text-slate-400">
-              Server tetap memeriksa seluruh line. Tombol browser hanya membantu
-              mencegah submit terlalu dini, bukan menggantikan validasi domain.
-            </p>
-            <p className="mt-2 text-xs text-slate-500">
-              Ringkasan server: {formatNumber(summary?.counted_line_count ?? 0)}
-              {" / "}
-              {formatNumber(summary?.line_count ?? 0)} line.
-            </p>
-          </div>
+      <form
+        action={completeStocktakeCountingAction}
+        className="mt-6 flex flex-col gap-3 border-t border-ui-border pt-5 sm:flex-row sm:items-center sm:justify-between"
+      >
+        <input name="returnTo" type="hidden" value={returnTo} />
+        <input name="stocktakeId" type="hidden" value={stocktakeId} />
+        <input
+          name="stocktakeVersion"
+          type="hidden"
+          value={stocktakeVersion}
+        />
 
-          <form action={completeStocktakeCountingAction}>
-            <input
-              type="hidden"
-              name="stocktakeId"
-              value={details.stocktake_id}
-            />
-            <input
-              type="hidden"
-              name="stocktakeVersion"
-              value={details.version_no}
-            />
-            <button
-              className="primary-button disabled:cursor-not-allowed disabled:opacity-40"
-              type="submit"
-              disabled={!canComplete}
-            >
-              Selesaikan counting
-            </button>
-          </form>
+        <div>
+          <p className="text-sm font-semibold text-ui-text">
+            {allCounted
+              ? "Semua lokasi sudah dihitung."
+              : `${remainingCount} lokasi masih perlu dihitung.`}
+          </p>
+          <p className="mt-1 text-sm text-ui-text-muted">
+            Setelah selesai, hasil masuk ke pemeriksaan dan stok belum berubah.
+          </p>
         </div>
-      </section>
+
+        <CompleteSubmitButton disabled={!allCounted} />
+      </form>
     </section>
   );
 }

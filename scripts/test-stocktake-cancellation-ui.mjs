@@ -29,8 +29,8 @@ ok(
 );
 ok(
   /details\.status_code === "CANCELLED"/.test(source.page) &&
-    /tidak memiliki tindakan lanjutan/.test(source.page) &&
-    /stok tidak berubah/.test(source.page) &&
+    /tidak memiliki tindakan\s+lanjutan/.test(source.page) &&
+    /stok\s+tidak berubah/.test(source.page) &&
     /cancellation\.reason/.test(source.page),
   "CANCELLED harus terminal, stock-neutral, dan menampilkan alasan.",
 );

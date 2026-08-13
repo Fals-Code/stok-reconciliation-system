@@ -1,344 +1,513 @@
+import {
+  Suspense,
+} from "react";
 import Link from "next/link";
 
 import {
+  AppShell,
+} from "@/app/app-shell/app-shell";
+import {
+  PageHeader,
+} from "@/app/app-shell/page-header";
+import { LedgerFilterControls } from "@/app/ledger/ledger-filter-controls";
+
+import {
+  Alert,
+  EmptyState,
+  StatusBadge,
+} from "@/components/ui";
+import {
+  requireAdminSession,
+} from "@/lib/auth";
+import {
   getLedgerExplorerPage,
   type LedgerExplorerFilters,
-  type LedgerExplorerPage as LedgerPageResult,
+  type LedgerExplorerPage,
   type LedgerExplorerRow,
 } from "@/lib/supabase-rest";
 
 export const dynamic = "force-dynamic";
 
-type SearchParamValue = string | string[] | undefined;
-type LedgerSearchParams = Record<string, SearchParamValue>;
+type SearchParams = Record<string, string | string[] | undefined>;
 
 const numberFormatter = new Intl.NumberFormat("id-ID");
+const dateFormatter = new Intl.DateTimeFormat("id-ID", {
+  timeZone: "Asia/Jakarta",
+  dateStyle: "medium",
+  timeStyle: "short",
+});
 
-function firstParam(value: SearchParamValue) {
+function first(value: SearchParams[string]) {
   return Array.isArray(value) ? value[0] : value;
 }
 
-function textParam(params: LedgerSearchParams, name: string) {
-  return firstParam(params[name])?.trim() ?? "";
+function text(params: SearchParams, name: string) {
+  return first(params[name])?.trim() ?? "";
 }
 
-function formatNumber(value: number) {
-  return numberFormatter.format(value);
+function isLedgerCursor(value: string) {
+  return /^\d+$/.test(value) && BigInt(value) > BigInt(0);
 }
 
-function formatDate(value: string | null) {
-  if (!value) return "-";
+function paginationContext(params: SearchParams) {
+  const value = text(params, "page");
+  const parsedPage = /^[1-9]\d*$/.test(value) ? Number(value) : 1;
+  const page = Number.isSafeInteger(parsedPage) ? parsedPage : 1;
+  const cursor = text(params, "cursor");
 
-  const date = new Date(value);
-  if (Number.isNaN(date.getTime())) return value;
-
-  return new Intl.DateTimeFormat("id-ID", {
-    timeZone: "Asia/Jakarta",
-    day: "2-digit",
-    month: "short",
-    year: "numeric",
-    hour: "2-digit",
-    minute: "2-digit",
-    hour12: false,
-  }).format(date);
-}
-
-function labelFromCode(value: string) {
-  return value
-    .toLowerCase()
-    .split("_")
-    .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
-    .join(" ");
-}
-
-function signedQuantity(value: number) {
-  return `${value > 0 ? "+" : ""}${formatNumber(value)}`;
-}
-
-function filtersFromParams(params: LedgerSearchParams): LedgerExplorerFilters {
-  const direction = textParam(params, "direction");
-  const quantityDirection = textParam(params, "quantityDirection");
+  if (page === 1 || !isLedgerCursor(cursor)) {
+    return { cursor: undefined, direction: "next" as const, page: 1 };
+  }
 
   return {
-    occurredFrom: textParam(params, "occurredFrom") || undefined,
-    occurredTo: textParam(params, "occurredTo") || undefined,
-    recordedFrom: textParam(params, "recordedFrom") || undefined,
-    recordedTo: textParam(params, "recordedTo") || undefined,
-    productId: textParam(params, "productId") || undefined,
-    productSku: textParam(params, "productSku") || undefined,
-    batchId: textParam(params, "batchId") || undefined,
-    batchCode: textParam(params, "batchCode") || undefined,
-    transactionType: textParam(params, "transactionType") || undefined,
-    reason: textParam(params, "reason") || undefined,
-    channel: textParam(params, "channel") || undefined,
-    sourceType: textParam(params, "sourceType") || undefined,
-    sourceRef: textParam(params, "sourceRef") || undefined,
-    actorProcess: textParam(params, "actorProcess") || undefined,
-    bucket: textParam(params, "bucket") || undefined,
+    cursor,
+    direction: text(params, "direction") === "previous" ? "previous" as const : "next" as const,
+    page,
+  };
+}
+
+function ledgerFilters(params: SearchParams): LedgerExplorerFilters {
+  const pagination = paginationContext(params);
+  const quantityDirection = text(params, "quantityDirection");
+  const reversalState = text(params, "reversalState");
+
+  return {
+    occurredFrom: text(params, "occurredFrom") || undefined,
+    occurredTo: text(params, "occurredTo") || undefined,
+    recordedFrom: text(params, "recordedFrom") || undefined,
+    recordedTo: text(params, "recordedTo") || undefined,
+    productId: text(params, "productId") || undefined,
+    productSku: text(params, "productSku") || undefined,
+    batchId: text(params, "batchId") || undefined,
+    batchCode: text(params, "batchCode") || undefined,
+    transactionType: text(params, "transactionType") || undefined,
+    reason: text(params, "reason") || undefined,
+    channel: text(params, "channel") || undefined,
+    sourceType: text(params, "sourceType") || undefined,
+    sourceRef: text(params, "sourceRef") || undefined,
+    actorProcess: text(params, "actorProcess") || undefined,
+    bucket: text(params, "bucket") || undefined,
     quantityDirection:
       quantityDirection === "IN" || quantityDirection === "OUT"
         ? quantityDirection
         : undefined,
-    reversalState: textParam(params, "reversalState") as LedgerExplorerFilters["reversalState"] || undefined,
-    cursor: textParam(params, "cursor") || undefined,
-    direction: direction === "previous" ? "previous" : "next",
+    reversalState:
+      reversalState === "NOT_REVERSED" ||
+      reversalState === "PARTIALLY_REVERSED" ||
+      reversalState === "FULLY_REVERSED" ||
+      reversalState === "REVERSAL"
+        ? reversalState
+        : undefined,
+    cursor: pagination.cursor,
+    direction: pagination.direction,
     pageSize: 20,
   };
 }
 
-function queryForState(
-  params: LedgerSearchParams,
+function formatDate(value: string | null) {
+  if (!value) return "-";
+  const date = new Date(value);
+  return Number.isNaN(date.getTime()) ? "-" : dateFormatter.format(date);
+}
+
+function signedQuantity(value: number) {
+  return `${value > 0 ? "+" : ""}${numberFormatter.format(value)} unit`;
+}
+
+function transactionLabel(code: string) {
+  if (code === "INITIAL_BALANCE") return "Saldo Awal";
+  if (code === "RECEIPT") return "Barang Masuk";
+  if (code === "MARKETPLACE_OUTBOUND" || code === "OUTBOUND_MARKETPLACE") {
+    return "Barang Keluar";
+  }
+  if (code === "MANUAL_OUTBOUND" || code === "OUTBOUND_MANUAL") {
+    return "Barang Keluar";
+  }
+  if (code.startsWith("RETURN")) return "Retur";
+  if (code === "DISPOSAL_DAMAGED") return "Barang Rusak";
+  if (code === "DISPOSAL_EXPIRED") return "Barang Kedaluwarsa";
+  if (code.startsWith("DISPOSAL")) return "Barang Rusak / Kedaluwarsa";
+  if (code === "STOCKTAKE_ADJUSTMENT") return "Penyesuaian Hasil Hitung";
+  if (code === "REVERSAL") return "Pembatalan";
+  return "Perubahan Stok";
+}
+
+function reversalBadgeLabel(state: LedgerExplorerRow["reversal_state"]) {
+  if (state === "REVERSAL") return "Pembatalan";
+  if (state === "FULLY_REVERSED") return "Dibatalkan";
+  if (state === "PARTIALLY_REVERSED") return "Dibatalkan sebagian";
+  return null;
+}
+
+function codeLabel(value: string) {
+  return value
+    .toLowerCase()
+    .split("_")
+    .filter(Boolean)
+    .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
+    .join(" ");
+}
+
+function queryFor(
+  params: SearchParams,
   cursor: string | null,
   direction: "next" | "previous",
+  page: number,
 ) {
-  const next = new URLSearchParams();
+  const query = new URLSearchParams();
   const names = [
-    "occurredFrom",
-    "occurredTo",
-    "recordedFrom",
-    "recordedTo",
-    "productId",
-    "productSku",
-    "batchId",
-    "batchCode",
-    "transactionType",
-    "reason",
-    "channel",
-    "sourceType",
-    "sourceRef",
-    "actorProcess",
-    "bucket",
-    "quantityDirection",
+    "occurredFrom", "occurredTo", "recordedFrom", "recordedTo", "productId",
+    "productSku", "batchId", "batchCode", "transactionType", "reason", "channel",
+    "sourceType", "sourceRef", "actorProcess", "bucket", "quantityDirection",
     "reversalState",
   ];
 
   for (const name of names) {
-    const value = textParam(params, name);
-    if (value) next.set(name, value);
+    const value = text(params, name);
+    if (value) query.set(name, value);
   }
 
   if (cursor) {
-    next.set("cursor", cursor);
-    next.set("direction", direction);
+    query.set("cursor", cursor);
+    query.set("direction", direction);
   }
+  query.set("page", String(page));
 
-  const query = next.toString();
-  return query ? `/ledger?${query}` : "/ledger";
+  const encoded = query.toString();
+  return encoded ? `/ledger?${encoded}` : "/ledger";
 }
 
-function DetailLink({
-  row,
+function detailHref(row: LedgerExplorerRow, params: SearchParams) {
+  const pagination = paginationContext(params);
+  const context = new URL(queryFor(params, pagination.cursor ?? null, pagination.direction, pagination.page), "http://ledger.local");
+  return `/ledger/${row.transaction_id}${context.search}`;
+}
+
+function LedgerCards({
+  rows,
   params,
 }: {
-  row: LedgerExplorerRow;
-  params: LedgerSearchParams;
+  rows: LedgerExplorerRow[];
+  params: SearchParams;
 }) {
-  const detailQuery = new URLSearchParams();
-  const sourceQuery = new URLSearchParams(queryForState(params, null, "next").split("?")[1] ?? "");
-  sourceQuery.forEach((value, key) => detailQuery.set(key, value));
-  const query = detailQuery.toString();
-
   return (
-    <Link
-      className="font-mono text-xs text-emerald-300 underline decoration-emerald-300/30 underline-offset-4 hover:text-emerald-200"
-      href={`/ledger/${row.transaction_id}${query ? `?${query}` : ""}`}
-    >
-      {row.transaction_no}
-    </Link>
-  );
-}
+    <div className="grid gap-3 md:hidden">
+      {rows.map((row) => {
+        const reversalBadge = reversalBadgeLabel(
+          row.reversal_state,
+        );
 
-function FilterForm({ params }: { params: LedgerSearchParams }) {
-  const fields = [
-    ["occurredFrom", "Occurred dari", "datetime-local"],
-    ["occurredTo", "Occurred sampai", "datetime-local"],
-    ["recordedFrom", "Recorded dari", "datetime-local"],
-    ["recordedTo", "Recorded sampai", "datetime-local"],
-    ["productSku", "SKU produk", "text"],
-    ["batchCode", "Kode batch", "text"],
-    ["transactionType", "Tipe transaksi", "text"],
-    ["reason", "Reason", "text"],
-    ["channel", "Channel", "text"],
-    ["sourceType", "Source type", "text"],
-    ["sourceRef", "Source reference", "text"],
-    ["actorProcess", "Actor / process", "text"],
-  ] as const;
+        return (
+          <article
+            className="rounded-[var(--ui-radius-lg)] border border-ui-border bg-ui-surface p-4"
+            key={row.ledger_entry_id}
+          >
+            <div className="flex items-start justify-between gap-3">
+              <div className="min-w-0">
+                <div className="flex flex-wrap items-center gap-2">
+                  <p className="font-semibold text-ui-text">
+                    {transactionLabel(row.transaction_type_code)}
+                  </p>
+                  {reversalBadge ? (
+                    <StatusBadge tone="warning">
+                      {reversalBadge}
+                    </StatusBadge>
+                  ) : null}
+                </div>
 
-  return (
-    <form method="get" className="panel-card" data-testid="ledger-filter-form">
-      {(["productId", "batchId"] as const).map((name) => {
-        const value = textParam(params, name);
-        return value ? <input key={name} type="hidden" name={name} value={value} /> : null;
+                <p className="mt-1 text-sm text-ui-text">
+                  {row.product_sku_snapshot}
+                </p>
+                <p
+                  className="mt-0.5 truncate text-xs text-ui-text-muted"
+                  title={row.batch_code_snapshot}
+                >
+                  Batch {row.batch_code_snapshot}
+                </p>
+              </div>
+
+              <p
+                className={
+                  row.quantity_delta >= 0
+                    ? "ui-number shrink-0 text-sm font-semibold text-ui-primary"
+                    : "ui-number shrink-0 text-sm font-semibold text-ui-danger"
+                }
+              >
+                {signedQuantity(row.quantity_delta)}
+              </p>
+            </div>
+
+            <dl className="mt-3 grid gap-2 text-xs">
+              <div>
+                <dt className="text-ui-text-muted">Referensi</dt>
+                <dd className="mt-0.5 break-words font-medium text-ui-text">
+                  {row.source_ref_snapshot}
+                </dd>
+              </div>
+
+              <div className="flex flex-wrap items-center gap-x-2 gap-y-1 text-ui-text-muted">
+                <span>{formatDate(row.occurred_at)}</span>
+                <span aria-hidden="true">·</span>
+                <span>No. transaksi {row.transaction_no}</span>
+              </div>
+            </dl>
+
+            <Link
+              className="mt-4 inline-flex min-h-[var(--ui-control-height)] items-center text-sm font-semibold text-ui-primary hover:underline"
+              href={detailHref(row, params)}
+            >
+              Detail
+            </Link>
+          </article>
+        );
       })}
-      <div className="flex flex-wrap items-start justify-between gap-4">
-        <div>
-          <p className="section-kicker">Filter read-only</p>
-          <h2 className="section-title">Cari alasan di balik movement.</h2>
-        </div>
-        <Link className="nav-link" href="/ledger">Reset filter</Link>
-      </div>
-
-      <div className="mt-6 grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
-        {fields.map(([name, label, type]) => (
-          <label key={name} className="field-label">
-            {label}
-            <input
-              name={name}
-              type={type}
-              defaultValue={textParam(params, name)}
-              placeholder={type === "text" ? `Filter ${label.toLowerCase()}` : undefined}
-            />
-          </label>
-        ))}
-
-        <label className="field-label">
-          Bucket
-          <select name="bucket" defaultValue={textParam(params, "bucket")}>
-            <option value="">Semua bucket</option>
-            <option value="SELLABLE">SELLABLE</option>
-            <option value="QUARANTINE">QUARANTINE</option>
-            <option value="DAMAGED">DAMAGED</option>
-          </select>
-        </label>
-        <label className="field-label">
-          Arah quantity
-          <select name="quantityDirection" defaultValue={textParam(params, "quantityDirection")}>
-            <option value="">Semua arah</option>
-            <option value="IN">IN (+)</option>
-            <option value="OUT">OUT (-)</option>
-          </select>
-        </label>
-        <label className="field-label">
-          Reversal state
-          <select name="reversalState" defaultValue={textParam(params, "reversalState")}>
-            <option value="">Semua state</option>
-            <option value="NOT_REVERSED">NOT_REVERSED</option>
-            <option value="PARTIALLY_REVERSED">PARTIALLY_REVERSED</option>
-            <option value="FULLY_REVERSED">FULLY_REVERSED</option>
-            <option value="REVERSAL">REVERSAL</option>
-          </select>
-        </label>
-      </div>
-
-      <div className="mt-5 flex flex-wrap items-center gap-3">
-        <button className="primary-button" type="submit">Terapkan filter</button>
-        <span className="text-xs text-slate-500">Filter disimpan di URL dan tetap setelah refresh.</span>
-      </div>
-    </form>
+    </div>
   );
 }
-
-function LedgerTable({ rows, params }: { rows: LedgerExplorerRow[]; params: LedgerSearchParams }) {
+function LedgerTable({
+  rows,
+  params,
+}: {
+  rows: LedgerExplorerRow[];
+  params: SearchParams;
+}) {
   return (
-    <div className="overflow-x-auto rounded-2xl border border-white/10" data-testid="ledger-table">
-      <table className="min-w-[1200px] w-full text-left text-sm">
-        <thead className="bg-white/[0.04] text-xs uppercase tracking-wide text-slate-500">
+    <div
+      className="hidden overflow-x-auto md:block"
+      data-testid="ledger-table"
+    >
+      <table className="w-full min-w-[960px] text-left text-sm">
+        <thead className="border-b border-ui-border bg-ui-surface-subtle text-xs font-semibold text-ui-text-muted">
           <tr>
-            <th className="px-4 py-3">Transaction</th>
-            <th className="px-4 py-3">Occurred</th>
-            <th className="px-4 py-3">Recorded</th>
-            <th className="px-4 py-3">Produk / batch</th>
-            <th className="px-4 py-3">Bucket</th>
-            <th className="px-4 py-3">Quantity</th>
-            <th className="px-4 py-3">Reason / channel</th>
-            <th className="px-4 py-3">Source</th>
-            <th className="px-4 py-3">Actor / process</th>
-            <th className="px-4 py-3">Reversal</th>
+            <th className="px-4 py-3">Waktu</th>
+            <th className="px-4 py-3">Perubahan</th>
+            <th className="px-4 py-3">Produk / Batch</th>
+            <th className="px-4 py-3 text-right">Jumlah</th>
+            <th className="px-4 py-3">Referensi</th>
+            <th className="px-4 py-3">
+              <span className="sr-only">Aksi</span>
+            </th>
           </tr>
         </thead>
-        <tbody className="divide-y divide-white/5">
-          {rows.map((row) => (
-            <tr key={row.ledger_entry_id} className="align-top hover:bg-white/[0.025]">
-              <td className="px-4 py-4">
-                <DetailLink row={row} params={params} />
-                <p className="mt-1 text-xs text-slate-500">{labelFromCode(row.transaction_type_code)} · line {row.line_no}</p>
-              </td>
-              <td className="whitespace-nowrap px-4 py-4 text-slate-300">{formatDate(row.occurred_at)}</td>
-              <td className="whitespace-nowrap px-4 py-4 text-slate-400">{formatDate(row.recorded_at)}</td>
-              <td className="px-4 py-4">
-                <p className="font-mono text-xs text-slate-200">{row.product_sku_snapshot}</p>
-                <p className="mt-1 text-xs text-slate-500">{row.batch_code_snapshot}</p>
-              </td>
-              <td className="px-4 py-4 text-xs text-slate-300">{row.bucket_code}</td>
-              <td className={`whitespace-nowrap px-4 py-4 font-mono font-semibold ${row.quantity_delta >= 0 ? "text-emerald-300" : "text-rose-300"}`}>
-                <span aria-label={row.quantity_delta >= 0 ? "quantity masuk" : "quantity keluar"}>{signedQuantity(row.quantity_delta)}</span>
-                <span className="ml-2 text-[0.65rem] text-slate-500">{row.quantity_direction}</span>
-              </td>
-              <td className="px-4 py-4 text-xs">
-                <p className="text-slate-300">{row.reason_code_snapshot}</p>
-                <p className="mt-1 text-slate-500">{row.channel_code_snapshot}</p>
-              </td>
-              <td className="max-w-48 px-4 py-4 text-xs">
-                <p className="text-slate-300">{row.source_type_code}</p>
-                <p className="mt-1 break-all text-slate-500">{row.source_ref_snapshot}</p>
-              </td>
-              <td className="max-w-48 px-4 py-4 text-xs text-slate-400">
-                {row.process_name ?? row.actor_user_id ?? "-"}
-              </td>
-              <td className="px-4 py-4 text-xs text-slate-400">{row.reversal_state}</td>
-            </tr>
-          ))}
+
+        <tbody>
+          {rows.map((row) => {
+            const reversalBadge = reversalBadgeLabel(
+              row.reversal_state,
+            );
+
+            return (
+              <tr
+                className="border-b border-ui-border last:border-0"
+                key={row.ledger_entry_id}
+              >
+                <td className="whitespace-nowrap px-4 py-4 align-top text-ui-text-muted">
+                  {formatDate(row.occurred_at)}
+                </td>
+
+                <td className="px-4 py-4 align-top">
+                  <div className="flex flex-wrap items-center gap-2">
+                    <p className="font-semibold text-ui-text">
+                      {transactionLabel(row.transaction_type_code)}
+                    </p>
+                    {reversalBadge ? (
+                      <StatusBadge tone="warning">
+                        {reversalBadge}
+                      </StatusBadge>
+                    ) : null}
+                  </div>
+                  <p className="mt-1 text-xs text-ui-text-muted">
+                    Alasan: {codeLabel(row.reason_code_snapshot)}
+                  </p>
+                </td>
+
+                <td className="max-w-[20rem] px-4 py-4 align-top">
+                  <p className="font-medium text-ui-text">
+                    {row.product_sku_snapshot}
+                  </p>
+                  <p
+                    className="mt-1 truncate text-xs text-ui-text-muted"
+                    title={row.batch_code_snapshot}
+                  >
+                    Batch {row.batch_code_snapshot}
+                  </p>
+                </td>
+
+                <td
+                  className={
+                    row.quantity_delta >= 0
+                      ? "ui-number whitespace-nowrap px-4 py-4 text-right align-top font-semibold text-ui-primary"
+                      : "ui-number whitespace-nowrap px-4 py-4 text-right align-top font-semibold text-ui-danger"
+                  }
+                >
+                  {signedQuantity(row.quantity_delta)}
+                </td>
+
+                <td className="max-w-[20rem] px-4 py-4 align-top">
+                  <p className="break-words font-medium text-ui-text">
+                    {row.source_ref_snapshot}
+                  </p>
+                  <p className="mt-1 text-xs text-ui-text-muted">
+                    No. transaksi {row.transaction_no}
+                  </p>
+                </td>
+
+                <td className="px-4 py-4 align-top">
+                  <Link
+                    className="inline-flex min-h-[var(--ui-control-height)] items-center text-sm font-semibold text-ui-primary hover:underline"
+                    href={detailHref(row, params)}
+                  >
+                    Detail
+                  </Link>
+                </td>
+              </tr>
+            );
+          })}
         </tbody>
       </table>
     </div>
   );
 }
+function Pagination({ result, params, page }: { result: LedgerExplorerPage; params: SearchParams; page: number }) {
+  const previousPage = Math.max(1, page - 1);
+  const nextPage = page + 1;
+  const controlClass = "inline-flex size-11 shrink-0 items-center justify-center rounded-[var(--ui-radius-md)] border border-ui-border text-sm font-semibold text-ui-text hover:bg-ui-surface-subtle";
+  const activeClass = "inline-flex size-11 shrink-0 items-center justify-center rounded-[var(--ui-radius-md)] border border-ui-border bg-ui-surface-subtle text-sm font-semibold text-ui-text";
+  const disabledClass = "inline-flex size-11 shrink-0 cursor-not-allowed items-center justify-center rounded-[var(--ui-radius-md)] border border-ui-border text-sm font-semibold text-ui-text-muted opacity-50";
+  const hasPrevious = result.hasPreviousPage && Boolean(result.previousCursor);
+  const hasNext = result.hasNextPage && Boolean(result.nextCursor);
+  const previousHref = hasPrevious
+    ? previousPage === 1
+      ? queryFor(params, null, "previous", previousPage)
+      : queryFor(params, result.previousCursor, "previous", previousPage)
+    : "";
+  const nextHref = hasNext ? queryFor(params, result.nextCursor, "next", nextPage) : "";
 
-function Pagination({ result, params }: { result: LedgerPageResult; params: LedgerSearchParams }) {
-  return (
-    <div className="flex flex-wrap items-center justify-between gap-3 border-t border-white/10 pt-5" data-testid="ledger-pagination">
-      <p className="text-xs text-slate-500">Menampilkan maksimal {result.pageSize} baris per halaman.</p>
-      <div className="flex gap-2">
-        {result.hasPreviousPage && result.previousCursor ? (
-          <Link className="nav-link" href={queryForState(params, result.previousCursor, "previous")}>← Lebih baru</Link>
-        ) : <span className="rounded-xl border border-white/5 px-3 py-2 text-sm text-slate-700">← Lebih baru</span>}
-        {result.hasNextPage && result.nextCursor ? (
-          <Link className="primary-button" href={queryForState(params, result.nextCursor, "next")}>Lebih lama →</Link>
-        ) : <span className="rounded-xl border border-white/5 px-3 py-2 text-sm text-slate-700">Lebih lama →</span>}
-      </div>
-    </div>
+  return <div className="flex flex-wrap items-center justify-between gap-3 border-t border-ui-border px-4 py-4"><p className="text-sm text-ui-text-muted">{result.pageSize} perubahan per halaman</p><nav aria-label="Navigasi halaman riwayat stok" className="flex shrink-0 items-center gap-1" data-testid="ledger-pagination">{hasPrevious ? <Link aria-label="Halaman sebelumnya" className={controlClass} href={previousHref}>‹</Link> : <span aria-disabled="true" aria-label="Halaman sebelumnya" className={disabledClass}>‹</span>}{hasPrevious ? <Link aria-label={`Halaman ${previousPage}`} className={controlClass} href={previousHref}>{previousPage}</Link> : null}<span aria-current="page" className={activeClass}>{page}</span>{hasNext ? <Link aria-label={`Halaman ${nextPage}`} className={controlClass} href={nextHref}>{nextPage}</Link> : null}{hasNext ? <Link aria-label="Halaman berikutnya" className={controlClass} href={nextHref}>›</Link> : <span aria-disabled="true" aria-label="Halaman berikutnya" className={disabledClass}>›</span>}</nav></div>;
+}
+
+const editableLedgerFilterNames = [
+  "occurredFrom",
+  "occurredTo",
+  "recordedFrom",
+  "recordedTo",
+  "productSku",
+  "batchCode",
+  "transactionType",
+  "reason",
+  "channel",
+  "sourceType",
+  "sourceRef",
+  "actorProcess",
+  "bucket",
+  "quantityDirection",
+  "reversalState",
+] as const;
+
+function hasEditableLedgerFilter(
+  params: SearchParams,
+) {
+  return editableLedgerFilterNames.some(
+    (name) => Boolean(text(params, name)),
   );
 }
 
-function ReadError({ message }: { message: string }) {
-  return <section className="rounded-2xl border border-rose-400/20 bg-rose-400/[0.06] p-6 text-sm text-rose-100" data-testid="ledger-error"><strong>Ledger tidak dapat dibaca.</strong><p className="mt-2 text-rose-200/80">{message}</p></section>;
+function hasLedgerContext(
+  params: SearchParams,
+) {
+  return Boolean(
+    text(params, "productId") ||
+      text(params, "batchId"),
+  );
 }
 
-export default async function LedgerPage({ searchParams }: { searchParams: Promise<LedgerSearchParams> }) {
-  const params = await searchParams;
-  const filters = filtersFromParams(params);
-  let result: LedgerPageResult;
-  let errorMessage: string | null = null;
+function ledgerContextHref(
+  params: SearchParams,
+) {
+  const query = new URLSearchParams();
 
-  try {
-    result = await getLedgerExplorerPage(filters);
-  } catch (error) {
-    result = { rows: [], pageSize: 20, nextCursor: null, previousCursor: null, hasNextPage: false, hasPreviousPage: false };
-    errorMessage = error instanceof Error ? error.message : "Kesalahan database tidak diketahui.";
+  for (
+    const name of [
+      "productId",
+      "batchId",
+    ] as const
+  ) {
+    const value = text(params, name);
+
+    if (value) {
+      query.set(name, value);
+    }
   }
 
-  return (
-    <main className="min-h-screen bg-slate-950 text-slate-100">
-      <div className="mx-auto w-full max-w-[1500px] px-5 py-8 lg:px-8">
-        <header className="mb-7 flex flex-col gap-5 lg:flex-row lg:items-end lg:justify-between">
-          <div>
-            <p className="section-kicker">Auditability / Ledger</p>
-            <h1 className="mt-3 text-3xl font-semibold tracking-tight sm:text-4xl">Ledger Explorer</h1>
-            <p className="mt-3 max-w-3xl text-sm leading-6 text-slate-400">Explorer read-only untuk menjawab mengapa saldo produk atau batch berubah. Ledger tetap append-only dan reservasi tidak dihitung sebagai movement fisik.</p>
-          </div>
-          <span className="rounded-full border border-emerald-400/20 bg-emerald-400/10 px-3 py-2 text-xs text-emerald-200">Read-only · organization-scoped</span>
-        </header>
+  const encoded = query.toString();
 
-        <FilterForm params={params} />
-        <section className="panel-card mt-6" aria-labelledby="ledger-result-title">
-          <div className="mb-5 flex flex-wrap items-end justify-between gap-3">
-            <div><p className="section-kicker">Movement history</p><h2 id="ledger-result-title" className="section-title">Perubahan stok yang dapat ditelusuri</h2></div>
-            <p className="text-xs text-slate-500">Urutan ledger_seq terbaru ke terlama.</p>
-          </div>
-          {errorMessage ? <ReadError message={errorMessage} /> : result.rows.length === 0 ? <div className="rounded-2xl border border-white/10 bg-white/[0.02] p-8 text-center text-sm text-slate-400" data-testid="ledger-empty">Tidak ada movement untuk filter ini.</div> : <LedgerTable rows={result.rows} params={params} />}
-          {!errorMessage && result.rows.length > 0 ? <div className="mt-5"><Pagination result={result} params={params} /></div> : null}
-        </section>
-      </div>
-    </main>
-  );
+  return encoded
+    ? `/ledger?${encoded}`
+    : "/ledger";
+}
+
+async function LedgerResults({ params }: { params: SearchParams }) {
+  const result = await getLedgerExplorerPage(ledgerFilters(params)).catch(() => null);
+  const { page } = paginationContext(params);
+  if (!result) return <Alert className="mt-6" title="Riwayat stok belum dapat dimuat" tone="danger"><p>Data riwayat stok tidak dapat dimuat. Coba muat ulang halaman ini.</p><Link className="mt-3 inline-flex min-h-[var(--ui-control-height)] items-center rounded-[var(--ui-radius-md)] border border-ui-danger px-4 font-semibold" href={queryFor(params, null, "next", page)}>Coba Lagi</Link></Alert>;
+  if (result.rows.length === 0) {
+    const hasEditableFilter =
+      hasEditableLedgerFilter(params);
+    const hasContext =
+      hasLedgerContext(params);
+
+    if (hasEditableFilter) {
+      return (
+        <EmptyState
+          action={
+            <Link
+              className="inline-flex min-h-[var(--ui-control-height)] items-center rounded-[var(--ui-radius-md)] border border-ui-primary bg-ui-primary px-4 text-sm font-semibold text-ui-text-on-primary hover:bg-ui-primary-hover"
+              href={ledgerContextHref(params)}
+            >
+              Hapus Filter
+            </Link>
+          }
+          className="mt-6"
+          description="Tidak ada perubahan stok yang cocok dengan filter saat ini."
+          title="Tidak ada riwayat yang cocok"
+        />
+      );
+    }
+
+    if (hasContext) {
+      return (
+        <EmptyState
+          action={
+            <Link
+              className="inline-flex min-h-[var(--ui-control-height)] items-center rounded-[var(--ui-radius-md)] border border-ui-primary bg-ui-primary px-4 text-sm font-semibold text-ui-text-on-primary hover:bg-ui-primary-hover"
+              href="/ledger"
+            >
+              Lihat semua riwayat
+            </Link>
+          }
+          className="mt-6"
+          description="Belum ada perubahan stok yang cocok dengan produk atau batch yang sedang dibuka."
+          title="Belum ada riwayat untuk konteks ini"
+        />
+      );
+    }
+
+    return (
+      <EmptyState
+        className="mt-6"
+        description="Perubahan stok akan muncul di sini setelah transaksi pertama tercatat."
+        title="Belum ada perubahan stok"
+      />
+    );
+  }
+  return <section className="mt-6 overflow-hidden rounded-[var(--ui-radius-lg)] border border-ui-border bg-ui-surface shadow-[var(--ui-shadow-sm)]"><LedgerCards params={params} rows={result.rows} /><LedgerTable params={params} rows={result.rows} /><Pagination page={page} params={params} result={result} /></section>;
+}
+
+function LedgerLoading() {
+  return <section aria-live="polite" className="mt-6 rounded-[var(--ui-radius-lg)] border border-ui-border bg-ui-surface p-6"><p className="text-sm text-ui-text-muted">Memuat riwayat stok</p><div className="mt-4 h-56 animate-pulse rounded-[var(--ui-radius-md)] bg-ui-surface-subtle motion-reduce:animate-none" /></section>;
+}
+
+export default async function LedgerPage({ searchParams }: { searchParams: Promise<SearchParams> }) {
+  const [session, params] = await Promise.all([requireAdminSession(), searchParams]);
+  return <AppShell profile={session.profile}><div className="mx-auto w-full max-w-[1440px] px-4 py-6 sm:px-6 lg:px-8 lg:py-8"><PageHeader description="Lihat kronologi perubahan stok dan telusuri bukti setiap transaksi." title="Riwayat Stok" /><p className="mt-4 text-sm text-ui-text-muted">Setiap baris menunjukkan perubahan stok yang sudah tercatat. Gunakan Detail untuk melihat waktu pencatatan, pelaksana, sumber, dan hubungan pembatalan. Transaksi yang sudah dicatat tidak dapat diubah atau dihapus.</p><LedgerFilterControls /><Suspense fallback={<LedgerLoading />}><LedgerResults params={params} /></Suspense></div></AppShell>;
 }

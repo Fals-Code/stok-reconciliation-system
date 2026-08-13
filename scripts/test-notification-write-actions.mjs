@@ -722,7 +722,7 @@ async function main(args) {
     "package.json",
     "scripts/create-demo-admin.mjs",
     "src/app/notifications/actions.ts",
-    "src/app/notifications/page.tsx",
+    "src/app/notifications/operations/page.tsx",
   ];
 
   for (const requiredPath of requiredPaths) {
@@ -915,9 +915,7 @@ async function main(args) {
     `Baseline=${baselineUnread} Current=${afterCreateUnread}`,
   );
 
-  const detailUrl =
-    `${args.baseUrl}/notifications?notificationId=` +
-    `${encodeURIComponent(notificationId)}#detail`;
+  const detailUrl = `${args.baseUrl}/notifications/operations#notification-state`;
 
   let page = await getPage(detailUrl);
 
@@ -932,7 +930,7 @@ async function main(args) {
   );
 
   assertTest(
-    containsText(page.html, "Acknowledge notification"),
+    containsText(page.html, "Tandai sedang ditangani"),
     "Form acknowledge dirender untuk lifecycle OPEN",
   );
 
@@ -945,7 +943,7 @@ async function main(args) {
     fields: {
       notificationId,
       returnTo:
-        `/notifications?notificationId=${notificationId}#detail`,
+        `/notifications/operations#notification-state`,
       readStateCode: "READ",
     },
     baseUrl: args.baseUrl,
@@ -978,7 +976,7 @@ async function main(args) {
     fields: {
       notificationId,
       returnTo:
-        `/notifications?notificationId=${notificationId}#detail`,
+        `/notifications/operations#notification-state`,
       readStateCode: "UNREAD",
     },
     baseUrl: args.baseUrl,
@@ -1011,7 +1009,7 @@ async function main(args) {
     fields: {
       notificationId,
       returnTo:
-        `/notifications?notificationId=${notificationId}#detail`,
+        `/notifications/operations#notification-state`,
       readStateCode: "ARCHIVED_FOR_USER",
     },
     baseUrl: args.baseUrl,
@@ -1064,7 +1062,7 @@ async function main(args) {
     fields: {
       notificationId,
       returnTo:
-        `/notifications?notificationId=${notificationId}#detail`,
+        `/notifications/operations#notification-state`,
       readStateCode: "READ",
     },
     baseUrl: args.baseUrl,
@@ -1093,11 +1091,11 @@ async function main(args) {
   page = await invokeServerActionForm({
     pageUri: detailUrl,
     pageHtml: page.html,
-    marker: "Acknowledge notification",
+    marker: "Tandai sedang ditangani",
     fields: {
       notificationId,
       returnTo:
-        `/notifications?notificationId=${notificationId}#detail`,
+        `/notifications/operations#notification-state`,
       note: acknowledgmentNote,
     },
     baseUrl: args.baseUrl,
@@ -1106,7 +1104,7 @@ async function main(args) {
   assertTest(
     containsText(
       page.html,
-      "Notifikasi berhasil di-acknowledge.",
+      "Notifikasi ditandai sedang ditangani.",
     ),
     "Server Action acknowledge memberi feedback sukses",
   );
@@ -1120,7 +1118,7 @@ async function main(args) {
   );
 
   assertTest(
-    containsText(page.html, "Batalkan acknowledgment"),
+    containsText(page.html, "Batalkan penandaan"),
     "UI beralih ke aksi revoke",
   );
 
@@ -1143,11 +1141,11 @@ async function main(args) {
   page = await invokeServerActionForm({
     pageUri: detailUrl,
     pageHtml: page.html,
-    marker: "Batalkan acknowledgment",
+    marker: "Batalkan penandaan",
     fields: {
       notificationId,
       returnTo:
-        `/notifications?notificationId=${notificationId}#detail`,
+        `/notifications/operations#notification-state`,
       note: revokeNote,
     },
     baseUrl: args.baseUrl,
@@ -1156,7 +1154,7 @@ async function main(args) {
   assertTest(
     containsText(
       page.html,
-      "Acknowledgment berhasil dibatalkan dan notification kembali open.",
+      "Penandaan sedang ditangani dibatalkan.",
     ),
     "Server Action revoke memberi feedback sukses",
   );
@@ -1184,7 +1182,7 @@ async function main(args) {
   );
 
   assertTest(
-    containsText(page.html, "Acknowledge notification"),
+    containsText(page.html, "Tandai sedang ditangani"),
     "UI kembali menawarkan acknowledge setelah revoke",
   );
 

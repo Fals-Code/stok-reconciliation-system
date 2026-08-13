@@ -1,6 +1,8 @@
-import type { ButtonHTMLAttributes } from "react";
+import type {
+  ButtonHTMLAttributes,
+} from "react";
 
-import { cx } from "@/components/ui/class-names";
+import { cx } from "@/components/ui/cx";
 
 export type IconButtonVariant =
   | "ghost"
@@ -31,8 +33,8 @@ export function IconButton({
   label,
   variant = "ghost",
   className,
-  type = "button",
   children,
+  type = "button",
   ...props
 }: IconButtonProps) {
   return (

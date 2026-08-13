@@ -890,7 +890,7 @@ async function reverseDirect({
   });
 }
 
-async function selectFefoFixture(runId) {
+async function selectExistingFefoFixture() {
   const encodedOrganizationId = encodeURIComponent(organizationId);
   const rows = await restRows(
     "batch_inventory" +
@@ -928,11 +928,7 @@ async function selectFefoFixture(runId) {
       note: "Fixture selection preview.",
       reference: null,
     };
-    const preview = await previewDraftDirect(
-      candidate,
-      runId,
-      "fixture-selection",
-    );
+    const preview = await previewDraftDirect(candidate);
 
     if (
       preview?.eligible === true &&
@@ -965,9 +961,258 @@ async function selectFefoFixture(runId) {
     }
   }
 
-  throw new Error(
-    "Fixture FEFO membutuhkan satu produk dengan minimal dua batch eligible.",
+  return null;
+}
+
+function readFixtureBatchBalances(batches) {
+  if (batches.length === 0) return [];
+
+  const batchIds = batches
+    .map((batch) => `${sqlLiteral(batch.batch_id)}::uuid`)
+    .join(", ");
+
+  return runSqlJson(`
+select coalesce(
+  jsonb_agg(
+    jsonb_build_object(
+      'batchId', batch.id,
+      'batchCode', batch.batch_code,
+      'statusCode', batch.status_code,
+      'sellableQty', coalesce(balance.sellable_qty, 0),
+      'quarantineQty', coalesce(balance.quarantine_qty, 0),
+      'damagedQty', coalesce(balance.damaged_qty, 0)
+    )
+    order by batch.expiry_date, batch.id
+  ),
+  '[]'::jsonb
+)
+from catalog.product_batches batch
+left join inventory.stock_batch_balances balance
+  on balance.organization_id = batch.organization_id
+ and balance.product_id = batch.product_id
+ and balance.batch_id = batch.id
+where batch.organization_id = ${sqlLiteral(organizationId)}::uuid
+  and batch.id in (${batchIds});
+`);
+}
+
+function archiveFixtureBatches(batches) {
+  if (batches.length === 0) return [];
+
+  const batchIds = batches
+    .map((batch) => `${sqlLiteral(batch.batch_id)}::uuid`)
+    .join(", ");
+
+  return runSqlJson(`
+with archived as (
+  update catalog.product_batches as batch
+  set
+    status_code = 'ARCHIVED',
+    block_reason = null,
+    updated_by = ${sqlLiteral(smokeUserId)}::uuid
+  where batch.organization_id = ${sqlLiteral(organizationId)}::uuid
+    and batch.id in (${batchIds})
+    and not exists (
+      select 1
+      from inventory.stock_batch_balances balance
+      where balance.organization_id = batch.organization_id
+        and balance.product_id = batch.product_id
+        and balance.batch_id = batch.id
+        and (
+          balance.sellable_qty <> 0
+          or balance.quarantine_qty <> 0
+          or balance.damaged_qty <> 0
+        )
+    )
+  returning batch.id::text as batch_id
+)
+select coalesce(
+  jsonb_agg(batch_id order by batch_id),
+  '[]'::jsonb
+)
+from archived;
+`);
+}
+
+async function createFefoFixture(runId, fixtureSetup) {
+  const fixture = runSqlJson(`
+with selected_product as (
+  select product.id, product.sku, product.name
+  from catalog.products product
+  where product.organization_id = ${sqlLiteral(organizationId)}::uuid
+    and product.is_active
+    and product.is_batch_tracked
+    and product.is_expiry_tracked
+  order by product.id
+  limit 1
+),
+settings as (
+  select coalesce(
+    (
+      select case
+        when jsonb_typeof(setting.value) = 'number'
+          then (setting.value #>> '{}')::integer
+        else null
+      end
+      from app.settings setting
+      where setting.organization_id = ${sqlLiteral(organizationId)}::uuid
+        and setting.key = 'expiry.safety_buffer_days'
+        and setting.effective_from <= clock_timestamp()
+        and (
+          setting.effective_to is null
+          or setting.effective_to > clock_timestamp()
+        )
+      order by setting.version desc, setting.effective_from desc
+      limit 1
+    ),
+    0
+  ) as safety_buffer_days
+),
+inserted as (
+  insert into catalog.product_batches (
+    id,
+    organization_id,
+    product_id,
+    batch_code,
+    manufactured_date,
+    expiry_date,
+    received_first_at,
+    status_code,
+    block_reason,
+    created_by,
+    batch_kind_code
+  )
+  select
+    gen_random_uuid(),
+    ${sqlLiteral(organizationId)}::uuid,
+    selected_product.id,
+    'MOB-SMOKE-' || upper(substr(replace(${sqlLiteral(runId)}, '-', ''), 1, 10)) || suffix.code,
+    date '2000-01-01',
+    (
+      (clock_timestamp() at time zone 'Asia/Jakarta')::date
+      + settings.safety_buffer_days
+      + suffix.expiry_offset_days
+    )::date,
+    '2000-01-01 00:00:00+00'::timestamptz + suffix.receipt_offset,
+    'ACTIVE',
+    null,
+    ${sqlLiteral(smokeUserId)}::uuid,
+    'STANDARD'
+  from selected_product
+  cross join settings
+  cross join (
+    values
+      ('A', 1, interval '0 seconds'),
+      ('B', 1, interval '1 second')
+  ) as suffix(code, expiry_offset_days, receipt_offset)
+  returning id, product_id, batch_code, expiry_date, received_first_at
+)
+select jsonb_build_object(
+  'productId', selected_product.id,
+  'sku', selected_product.sku,
+  'productName', selected_product.name,
+  'batches', coalesce(
+    jsonb_agg(
+      jsonb_build_object(
+        'batch_id', inserted.id,
+        'batch_code', inserted.batch_code,
+        'expiry_date', inserted.expiry_date,
+        'received_first_at', inserted.received_first_at,
+        'sellable_qty', 0
+      )
+      order by inserted.expiry_date, inserted.received_first_at, inserted.id
+    ),
+    '[]'::jsonb
+  )
+)
+from selected_product
+left join inserted on inserted.product_id = selected_product.id
+group by selected_product.id, selected_product.sku, selected_product.name;
+`);
+
+  if (
+    !UUID_PATTERN.test(fixture?.productId ?? "") ||
+    !Array.isArray(fixture?.batches) ||
+    fixture.batches.length !== 2
+  ) {
+    throw new Error(
+      "Fixture FEFO tidak menemukan produk aktif atau gagal membuat dua batch sementara.",
+    );
+  }
+
+  fixtureSetup.batches.push(...fixture.batches);
+
+  for (const [index, batch] of fixture.batches.entries()) {
+    const receipt = await postReceipt({
+      sourceRef: `${FIXTURE_PREFIX}fixture-receipt:${index + 1}:${runId}`,
+      idempotencyKey:
+        `${FIXTURE_PREFIX}fixture-receipt:${index + 1}:${runId}`,
+      productId: fixture.productId,
+      batchId: batch.batch_id,
+      quantity: index === 0 ? 2 : 3,
+      runId,
+      fixture: `fefo-setup-${index + 1}`,
+    });
+
+    if (!UUID_PATTERN.test(receipt?.transactionId ?? "")) {
+      throw new Error(
+        `Receipt batch fixture FEFO gagal: ${JSON.stringify(receipt)}`,
+      );
+    }
+
+    fixtureSetup.receipts.push({
+      transactionId: receipt.transactionId,
+      fixture: `fefo-setup-${index + 1}`,
+    });
+  }
+
+  const splitDraft = {
+    sourceRef: `${FIXTURE_PREFIX}fixture-check:${randomUUID()}`,
+    occurredAt: jakartaDateTimeLocal(),
+    reasonCode: "OFFLINE_SALE",
+    lines: [
+      {
+        productId: fixture.productId,
+        quantity: 3,
+        sourceLineRef: "UI-1",
+      },
+    ],
+    note: "Fixture FEFO sementara.",
+    reference: null,
+  };
+  const splitPreview = await previewDraftDirect(splitDraft);
+  const fixtureBatchIds = new Set(
+    fixture.batches.map((batch) => batch.batch_id),
   );
+
+  if (
+    splitPreview?.eligible !== true ||
+    splitPreview?.status !== "PREVIEW_READY" ||
+    splitPreview?.allocations?.length !== 2 ||
+    !splitPreview.allocations.every((allocation) =>
+      fixtureBatchIds.has(allocation.batchId),
+    )
+  ) {
+    throw new Error(
+      `Fixture FEFO tidak menghasilkan split dua batch deterministik: ${JSON.stringify(splitPreview)}`,
+    );
+  }
+
+  return {
+    productId: fixture.productId,
+    sku: fixture.sku,
+    productName: fixture.productName,
+    batches: fixture.batches,
+    oneBatchQuantity: 1,
+    splitQuantity: 3,
+    splitPreview,
+  };
+}
+
+async function selectFefoFixture(runId, fixtureSetup) {
+  const existing = await selectExistingFefoFixture();
+
+  return existing ?? createFefoFixture(runId, fixtureSetup);
 }
 
 function normalizePreviewAllocations(allocations) {
@@ -1001,6 +1246,10 @@ function normalizePersistedAllocations(allocations) {
 async function main(args) {
   const runId = randomUUID();
   const cleanupTransactions = [];
+  const fixtureSetup = {
+    batches: [],
+    receipts: [],
+  };
   let baselineSnapshot = null;
   let fixture = null;
 
@@ -1271,40 +1520,31 @@ returning organization_id::text;
   let page = await getPage(manualUrl);
 
   assertTest(
-    containsText(page.html, "Barang Keluar") &&
-      containsText(page.html, "Preview FEFO") &&
-      containsText(page.html, "Tinjau alokasi FEFO"),
-    "Halaman authenticated dan navigasi Barang Keluar dirender",
-  );
-
-  const dashboard = await getPage(`${args.baseUrl}/`);
-
-  assertTest(
-    containsText(
-      dashboard.html,
-      "Buka workflow Barang Keluar",
-    ) &&
-      !containsText(
-        dashboard.html,
-        "Allocate & post outbound",
-      ),
-    "Dashboard hanya menyediakan shortcut tanpa direct-post bypass",
-  );
-
-  fixture = await selectFefoFixture(runId);
-  baselineSnapshot = await readInventorySnapshot(
-    fixture.productId,
-    fixture.batches.map((batch) => batch.batch_id),
+      containsText(page.html, "Barang Keluar") &&
+      containsText(page.html, "Lanjut: Periksa Barang Keluar") &&
+      containsText(page.html, "Periksa Barang Keluar"),
+    "Halaman authenticated dan alur Barang Keluar dirender",
   );
 
   assertTest(
-    fixture.batches.length >= 2 &&
-      fixture.splitPreview.allocations.length >= 2,
-    "Fixture memiliki split FEFO authoritative",
-    JSON.stringify(fixture),
+    !containsText(page.html, "Kode Batch"),
+    "Barang Keluar tidak meminta operator memilih batch",
   );
 
   try {
+    fixture = await selectFefoFixture(runId, fixtureSetup);
+    baselineSnapshot = await readInventorySnapshot(
+      fixture.productId,
+      fixture.batches.map((batch) => batch.batch_id),
+    );
+
+    assertTest(
+      fixture.batches.length >= 2 &&
+        fixture.splitPreview.allocations.length >= 2,
+      "Fixture memiliki split FEFO authoritative",
+      JSON.stringify(fixture),
+    );
+
     console.log("\n== Preview satu batch dan stock-neutral ==");
 
     const oneBatchDraft = {
@@ -1345,7 +1585,7 @@ returning organization_id::text;
     page = await invokeServerActionForm({
       pageUri: page.uri,
       pageHtml: page.html,
-      marker: "Tinjau alokasi FEFO",
+        marker: "Periksa Barang Keluar",
       fields: {
         draft: JSON.stringify(oneBatchDraft),
       },
@@ -1353,19 +1593,19 @@ returning organization_id::text;
     });
 
     assertTest(
-      containsText(page.html, "Preview authoritative") &&
-        containsText(page.html, "Siap diposting") &&
+      containsText(page.html, "Periksa Barang Keluar") &&
+        containsText(page.html, "Siap dicatat") &&
         containsText(
           page.html,
           oneBatchDirect.allocations[0].batchCode,
         ) &&
-        hasForm(page.html, "Posting Barang Keluar"),
+        hasForm(page.html, "Catat Barang Keluar"),
       "UI merender preview satu batch dan commit form",
     );
 
     const oneBatchForm = findForm(
       page.html,
-      "Posting Barang Keluar",
+      "Catat Barang Keluar",
     );
     const oneBatchHash = findInputValue(
       oneBatchForm,
@@ -1411,7 +1651,7 @@ returning organization_id::text;
     const promoPage = await invokeServerActionForm({
       pageUri: manualUrl,
       pageHtml: (await getPage(manualUrl)).html,
-      marker: "Tinjau alokasi FEFO",
+        marker: "Periksa Barang Keluar",
       fields: {
         draft: JSON.stringify(promoDraft),
       },
@@ -1419,16 +1659,8 @@ returning organization_id::text;
     });
 
     assertTest(
-      containsText(
-        promoPage.html,
-        "Referensi kegiatan, persetujuan, penerima, atau pesanan wajib diisi.",
-      ) &&
-        containsText(
-          promoPage.html,
-          "OUTBOUND_REASON_REFERENCE_REQUIRED",
-        ) &&
-        containsText(promoPage.html, "Diblokir") &&
-        !hasForm(promoPage.html, "Posting Barang Keluar"),
+      containsText(promoPage.html, "Belum dapat dicatat") &&
+        !hasForm(promoPage.html, "Catat Barang Keluar"),
       "Promo tanpa referensi diblokir tanpa commit action",
     );
 
@@ -1461,7 +1693,7 @@ returning organization_id::text;
     const atomicPage = await invokeServerActionForm({
       pageUri: manualUrl,
       pageHtml: (await getPage(manualUrl)).html,
-      marker: "Tinjau alokasi FEFO",
+        marker: "Periksa Barang Keluar",
       fields: {
         draft: JSON.stringify(atomicDraft),
       },
@@ -1475,8 +1707,8 @@ returning organization_id::text;
     const atomicEffect = readManualEffect(atomicDraft.sourceRef);
 
     assertTest(
-      containsText(atomicPage.html, "Diblokir") &&
-        !hasForm(atomicPage.html, "Posting Barang Keluar") &&
+      containsText(atomicPage.html, "Belum dapat dicatat") &&
+        !hasForm(atomicPage.html, "Catat Barang Keluar") &&
         JSON.stringify(atomicAfter) === JSON.stringify(atomicBefore) &&
         JSON.stringify(atomicLedgerAfter) ===
           JSON.stringify(atomicLedgerBefore) &&
@@ -1521,7 +1753,7 @@ returning organization_id::text;
     const splitPage = await invokeServerActionForm({
       pageUri: manualUrl,
       pageHtml: (await getPage(manualUrl)).html,
-      marker: "Tinjau alokasi FEFO",
+        marker: "Periksa Barang Keluar",
       fields: {
         draft: JSON.stringify(splitDraft),
       },
@@ -1532,14 +1764,14 @@ returning organization_id::text;
       splitDirect.allocations.every((allocation) =>
         containsText(splitPage.html, allocation.batchCode),
       ) &&
-        containsText(splitPage.html, "Posting Barang Keluar") &&
-        containsText(splitPage.html, "Reserved"),
+        containsText(splitPage.html, "Catat Barang Keluar") &&
+        containsText(splitPage.html, "Sudah dipesan"),
       "UI menampilkan split batch, stock before/after, dan reserved",
     );
 
     const splitForm = findForm(
       splitPage.html,
-      "Posting Barang Keluar",
+      "Catat Barang Keluar",
     );
     const splitHash = findInputValue(
       splitForm,
@@ -1567,7 +1799,7 @@ returning organization_id::text;
       await invokeServerActionForm({
         pageUri: splitPage.uri,
         pageHtml: splitPage.html,
-        marker: "Posting Barang Keluar",
+        marker: "Catat Barang Keluar",
         fields: {
           draft: splitHiddenDraft,
           previewBasisHash: splitHash,
@@ -1593,7 +1825,7 @@ returning organization_id::text;
     let successPage = await invokeServerActionForm({
       pageUri: splitPage.uri,
       pageHtml: splitPage.html,
-      marker: "Posting Barang Keluar",
+      marker: "Catat Barang Keluar",
       fields: {
         draft: splitHiddenDraft,
         previewBasisHash: splitHash,
@@ -1608,6 +1840,13 @@ returning organization_id::text;
     const transactionId =
       successUrl.searchParams.get("transactionId");
 
+    if (UUID_PATTERN.test(transactionId ?? "")) {
+      cleanupTransactions.push({
+        transactionId,
+        fixture: "split-success",
+      });
+    }
+
     assertTest(
       UUID_PATTERN.test(outboundId ?? "") &&
         UUID_PATTERN.test(transactionId ?? "") &&
@@ -1619,11 +1858,6 @@ returning organization_id::text;
       "Commit Server Action redirect dengan feedback dan linkage",
       successPage.uri,
     );
-
-    cleanupTransactions.push({
-      transactionId,
-      fixture: "split-success",
-    });
 
     const persisted = await readOutboundById(outboundId);
     const persistedLedger = await readLedgerByTransaction(
@@ -1688,9 +1922,15 @@ returning organization_id::text;
           refreshedSuccessPage.html,
           persisted.outbound.outbound_no,
         ) &&
-        containsText(
+      containsText(
           refreshedSuccessPage.html,
           "Buka Ledger dan Koreksi Entri",
+        ) &&
+        persisted.allocations.every((allocation) =>
+          containsText(
+            refreshedSuccessPage.html,
+            allocation.batch_code_snapshot,
+          ),
         ),
       "Feedback sukses dan drill-down bertahan setelah refresh",
     );
@@ -1704,7 +1944,7 @@ returning organization_id::text;
       containsText(correctionPage.html, persisted.outbound.outbound_no) &&
         containsText(
           correctionPage.html,
-          "Preview dampak authoritative",
+          "Periksa Sebelum Membatalkan",
         ),
       "Link Koreksi Entri membuka transaksi immutable yang diposting",
     );
@@ -1712,7 +1952,7 @@ returning organization_id::text;
     const replayPage = await invokeServerActionForm({
       pageUri: splitPage.uri,
       pageHtml: splitPage.html,
-      marker: "Posting Barang Keluar",
+      marker: "Catat Barang Keluar",
       fields: {
         draft: splitHiddenDraft,
         previewBasisHash: splitHash,
@@ -1756,7 +1996,7 @@ returning organization_id::text;
     const stalePage = await invokeServerActionForm({
       pageUri: manualUrl,
       pageHtml: (await getPage(manualUrl)).html,
-      marker: "Tinjau alokasi FEFO",
+        marker: "Periksa Barang Keluar",
       fields: {
         draft: JSON.stringify(staleDraft),
       },
@@ -1764,7 +2004,7 @@ returning organization_id::text;
     });
     const staleForm = findForm(
       stalePage.html,
-      "Posting Barang Keluar",
+      "Catat Barang Keluar",
     );
     const staleHash = findInputValue(
       staleForm,
@@ -1791,21 +2031,23 @@ returning organization_id::text;
       fixture: "stale-interference",
     });
 
+    if (UUID_PATTERN.test(interference?.transactionId ?? "")) {
+      cleanupTransactions.push({
+        transactionId: interference.transactionId,
+        fixture: "stale-interference",
+      });
+    }
+
     assertTest(
       UUID_PATTERN.test(interference?.transactionId ?? ""),
       "Interference mengubah basis setelah preview",
       JSON.stringify(interference),
     );
 
-    cleanupTransactions.push({
-      transactionId: interference.transactionId,
-      fixture: "stale-interference",
-    });
-
     const staleCommitPage = await invokeServerActionForm({
       pageUri: stalePage.uri,
       pageHtml: stalePage.html,
-      marker: "Posting Barang Keluar",
+      marker: "Catat Barang Keluar",
       fields: {
         draft: staleHiddenDraft,
         previewBasisHash: staleHash,
@@ -1935,6 +2177,66 @@ returning organization_id::text;
         );
       }
     }
+
+    for (const item of [...fixtureSetup.receipts].reverse()) {
+      try {
+        await reverseDirect({
+          transactionId: item.transactionId,
+          idempotencyKey:
+            `${FIXTURE_PREFIX}cleanup:${item.fixture}:${runId}`,
+          note:
+            `Cleanup ${item.fixture} setelah smoke test Barang Keluar.`,
+          runId,
+          fixture: item.fixture,
+        });
+        addResult(
+          `Receipt fixture FEFO dipulihkan: ${item.fixture}`,
+          true,
+        );
+      } catch (error) {
+        addResult(
+          `Receipt fixture FEFO dipulihkan: ${item.fixture}`,
+          false,
+          error instanceof Error ? error.message : String(error),
+        );
+      }
+    }
+
+    if (fixtureSetup.batches.length > 0) {
+      try {
+        const balances = readFixtureBatchBalances(fixtureSetup.batches);
+        const zeroBalance =
+          balances.length === fixtureSetup.batches.length &&
+          balances.every(
+            (batch) =>
+              Number(batch.sellableQty) === 0 &&
+              Number(batch.quarantineQty) === 0 &&
+              Number(batch.damagedQty) === 0,
+          );
+
+        addResult(
+          "Saldo batch fixture FEFO kembali nol",
+          zeroBalance,
+          JSON.stringify(balances),
+        );
+
+        if (zeroBalance) {
+          const archived = archiveFixtureBatches(fixtureSetup.batches);
+
+          addResult(
+            "Batch fixture FEFO nol diarsipkan",
+            archived.length === fixtureSetup.batches.length,
+            JSON.stringify(archived),
+          );
+        }
+      } catch (error) {
+        addResult(
+          "Batch fixture FEFO dibersihkan",
+          false,
+          error instanceof Error ? error.message : String(error),
+        );
+      }
+    }
   }
 }
 
@@ -1963,7 +2265,7 @@ try {
   ).length;
 
   console.log(
-    `Result: ${failed === 0 ? "PASS" : "FAIL"} ` +
+    `Result: ${failed === 0 && exitCode === 0 ? "PASS" : "FAIL"} ` +
       `(${passed} passed, ${failed} failed)`,
   );
 

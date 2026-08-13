@@ -47,6 +47,52 @@ function run(command, args, input) {
   return result.stdout ?? "";
 }
 
+async function runNotificationBrowserSmoke(adminEmail, actionRoute) {
+  const previous = {
+    baseUrl: process.env.PLAYWRIGHT_BASE_URL,
+    email: process.env.PLAYWRIGHT_ADMIN_EMAIL,
+    password: process.env.PLAYWRIGHT_ADMIN_PASSWORD,
+    route: process.env.PLAYWRIGHT_RETURN_NOTIFICATION_ROUTE,
+    externalServer: process.env.PLAYWRIGHT_EXTERNAL_SERVER,
+  };
+
+  process.env.PLAYWRIGHT_BASE_URL = baseUrl;
+  process.env.PLAYWRIGHT_ADMIN_EMAIL = adminEmail;
+  process.env.PLAYWRIGHT_ADMIN_PASSWORD = password;
+  process.env.PLAYWRIGHT_RETURN_NOTIFICATION_ROUTE = actionRoute;
+  process.env.PLAYWRIGHT_EXTERNAL_SERVER = "true";
+
+  try {
+    const output = run(process.execPath, [
+      path.resolve("node_modules/@playwright/test/cli.js"),
+      "test",
+      "tests/e2e/admin-shell.spec.ts",
+      "--grep",
+      "action Retur dari Beranda mempertahankan object context",
+      "--project=desktop-chromium",
+      "--project=mobile-chromium",
+    ]);
+    check("Browser desktop/mobile membuka action notification exact", /2 passed/.test(output), output.slice(-1000));
+  } finally {
+    for (const [key, value] of Object.entries({
+      PLAYWRIGHT_BASE_URL: previous.baseUrl,
+      PLAYWRIGHT_ADMIN_EMAIL: previous.email,
+      PLAYWRIGHT_ADMIN_PASSWORD: previous.password,
+      PLAYWRIGHT_RETURN_NOTIFICATION_ROUTE: previous.route,
+      PLAYWRIGHT_EXTERNAL_SERVER: previous.externalServer,
+    })) {
+      if (value === undefined) delete process.env[key];
+      else process.env[key] = value;
+    }
+  }
+
+  const health = await fetch(`${baseUrl}/login`).catch(() => null);
+  if (health?.status !== 200) {
+    startServer();
+    await waitForServer();
+  }
+}
+
 function sqlLiteral(value) { return `'${String(value).replaceAll("'", "''")}'`; }
 
 function resolveDb() {
@@ -108,10 +154,25 @@ function localDateTime() {
 function cookie() { return `glowlab_access_token=${accessToken}`; }
 
 async function page(uri) {
-  const response = await fetch(`${baseUrl}${uri}`, { headers: { Cookie: cookie() }, redirect: "manual", cache: "no-store" });
-  const html = await response.text();
-  if (!response.ok) throw new Error(`GET ${uri} gagal (${response.status}): ${html.slice(0, 2500)}`);
-  return { uri: `${baseUrl}${uri}`, html, status: response.status };
+  const requestedUrl = new URL(uri, baseUrl);
+  const response = await fetch(requestedUrl, { headers: { Cookie: cookie() }, redirect: "manual", cache: "no-store" });
+  let finalResponse = response;
+  let finalUrl = requestedUrl;
+  let redirectStatus = null;
+  let redirectLocation = null;
+
+  if ([302, 303, 307, 308].includes(response.status)) {
+    redirectStatus = response.status;
+    redirectLocation = response.headers.get("location");
+    if (!redirectLocation) throw new Error(`GET ${uri} redirect tanpa location.`);
+    finalUrl = new URL(redirectLocation, requestedUrl);
+    if (finalUrl.origin !== new URL(baseUrl).origin) throw new Error(`GET ${uri} redirect keluar origin lokal: ${finalUrl}`);
+    finalResponse = await fetch(finalUrl, { headers: { Cookie: cookie() }, redirect: "manual", cache: "no-store" });
+  }
+
+  const html = await finalResponse.text();
+  if (!finalResponse.ok) throw new Error(`GET ${uri} gagal (${finalResponse.status}): ${html.slice(0, 2500)}`);
+  return { uri: finalUrl.toString(), html, status: finalResponse.status, redirectStatus, redirectLocation };
 }
 
 function forms(html) { return html.match(/<form\b[^>]*>.*?<\/form>/gis) ?? []; }
@@ -127,7 +188,7 @@ function actionName(form) {
   return match[1];
 }
 function htmlContains(html, text) { return html.toLowerCase().includes(text.toLowerCase()); }
-async function submitForm({ uri, html, marker, fields, actionId }) {
+async function submitForm({ uri, html, marker, fields, actionId, allowedFinalStatuses = [] }) {
   const form = actionId ? null : formFor(html, marker);
   const body = new FormData();
   body.append(actionId ?? actionName(form), "");
@@ -143,7 +204,7 @@ async function submitForm({ uri, html, marker, fields, actionId }) {
   const redirectUrl = new URL(location, uri);
   const next = await fetch(redirectUrl, { headers: { Cookie: cookie() }, cache: "no-store" });
   const nextHtml = await next.text();
-  check(`Redirect page tersedia: ${marker}`, next.ok, nextHtml.slice(0, 500));
+  check(`Redirect page tersedia: ${marker}`, next.ok || allowedFinalStatuses.includes(next.status), nextHtml.slice(0, 500));
   return {
     uri: redirectUrl.toString(),
     html: nextHtml,
@@ -161,6 +222,26 @@ function startServer() {
   server = spawn(process.execPath, [path.resolve("node_modules/next/dist/bin/next"), "dev", "--hostname", url.hostname, "--port", String(url.port || 3000)], { cwd: process.cwd(), windowsHide: true, stdio: ["ignore", "pipe", "pipe"] });
   server.stdout.on("data", (chunk) => { serverOutput = (serverOutput + chunk.toString()).slice(-30000); });
   server.stderr.on("data", (chunk) => { serverOutput = (serverOutput + chunk.toString()).slice(-30000); });
+}
+
+function stopServer() {
+  if (!server?.pid) return;
+
+  const serverPid = server.pid;
+  server.stdout?.destroy();
+  server.stderr?.destroy();
+  server.unref();
+
+  if (process.platform === "win32") {
+    spawnSync("taskkill", ["/PID", String(serverPid), "/T", "/F"], {
+      windowsHide: true,
+      stdio: "ignore",
+    });
+  } else {
+    server.kill();
+  }
+
+  server = undefined;
 }
 
 async function waitForServer() {
@@ -332,7 +413,7 @@ async function main() {
   const anonymous = await fetch(`${baseUrl}/returns`, { redirect: "manual" });
   check("Anonim diarahkan ke login", [302,303,307,308].includes(anonymous.status) && (anonymous.headers.get("location") ?? "").includes("/login"));
   const initial = await page("/returns");
-  check("Admin membuka /returns", htmlContains(initial.html, "TikTok claim desk"));
+  check("Admin membuka /returns", htmlContains(initial.html, "Retur") && htmlContains(initial.html, "Pantau proses retur, kondisi barang kembali, dan klaim marketplace dalam satu tempat."));
   check("Organization Admin utama terisolasi", runSqlJson(`select json_build_object('organizationId',(select organization_id from app.user_profiles where user_id=${sqlLiteral(smokeUserId)}::uuid))`).organizationId === organizationId);
 
   console.log(`Fixture prefix: ${prefix}`);
@@ -349,15 +430,17 @@ async function main() {
 
   const beforeCreate = stockSnapshot();
   let current = await page(`/returns?returnId=${scenarioA.returnId}#claims`);
-  check("Form create tersedia untuk TikTok lost item", hasForm(current.html, "Buat klaim TikTok"));
-  const invalid = await submitForm({ uri: current.uri, html: current.html, marker: "Buat klaim TikTok", fields: { returnId: scenarioA.returnId, claimTypeCode: "LOST_RETURN", idempotencyKey: `${prefix}:invalid-create`, claimItemId: scenarioA.itemId, [`quantity_${scenarioA.itemId}`]: "0", occurredAt: localDateTime(), confirmation: "on" } });
+  const createForm = formFor(current.html, "Masih dapat diklaim");
+  const createActionId = actionName(createForm);
+  check("Form create tersedia untuk TikTok lost item", createForm.includes('name="claimItemId"') && createForm.includes('name="claimTypeCode"'));
+  const invalid = await submitForm({ uri: current.uri, html: current.html, marker: "Masih dapat diklaim", actionId: createActionId, fields: { returnId: scenarioA.returnId, claimTypeCode: "LOST_RETURN", idempotencyKey: `${prefix}:invalid-create`, claimItemId: scenarioA.itemId, [`quantity_${scenarioA.itemId}`]: "0", occurredAt: localDateTime(), confirmation: "on" } });
   check("Invalid quantity memberi feedback persisten", htmlContains(invalid.html, "bilangan bulat positif") || htmlContains(invalid.html, "quantity klaim"));
   current = await page(`/returns?returnId=${scenarioA.returnId}#claims`);
-  const created = await submitForm({ uri: current.uri, html: current.html, marker: "Buat klaim TikTok", fields: { returnId: scenarioA.returnId, claimTypeCode: "LOST_RETURN", idempotencyKey: `${prefix}:claim-a`, claimItemId: scenarioA.itemId, [`quantity_${scenarioA.itemId}`]: "1", occurredAt: localDateTime(), confirmation: "on" } });
+  const created = await submitForm({ uri: current.uri, html: current.html, marker: "Masih dapat diklaim", actionId: createActionId, fields: { returnId: scenarioA.returnId, claimTypeCode: "LOST_RETURN", idempotencyKey: `${prefix}:claim-a`, claimItemId: scenarioA.itemId, [`quantity_${scenarioA.itemId}`]: "1", occurredAt: localDateTime(), confirmation: "on" } });
   const claimA = await claimFor(scenarioA.returnId);
   check("Create claim valid berhasil dan feedback bertahan", htmlContains(created.html, "Klaim") && created.html.includes(claimA.id));
   assertSnapshotSame(beforeCreate, stockSnapshot(), "Create claim tetap stock-neutral");
-  const replay = await submitForm({ uri: created.uri, html: created.html, marker: "Buat klaim TikTok", fields: { returnId: scenarioA.returnId, claimTypeCode: "LOST_RETURN", idempotencyKey: `${prefix}:claim-a`, claimItemId: scenarioA.itemId, [`quantity_${scenarioA.itemId}`]: "1", occurredAt: localDateTime(), confirmation: "on" } });
+  const replay = await submitForm({ uri: created.uri, html: created.html, marker: "Masih dapat diklaim", actionId: createActionId, fields: { returnId: scenarioA.returnId, claimTypeCode: "LOST_RETURN", idempotencyKey: `${prefix}:claim-a`, claimItemId: scenarioA.itemId, [`quantity_${scenarioA.itemId}`]: "1", occurredAt: localDateTime(), confirmation: "on" } });
   const claimsAfterReplay = await restRows(`return_claim_master?organization_id=eq.${organizationId}&return_id=eq.${scenarioA.returnId}&select=id`);
   check("Replay create tidak menggandakan claim", claimsAfterReplay.length === 1 && htmlContains(replay.html, claimA.id));
   check("Deadline tersimpan tepat 40 hari dari return.created_at", Math.abs(new Date(claimA.deadline_at).getTime() - (new Date(scenarioA.createdAt).getTime() + 40 * 86400000)) < 2000);
@@ -381,65 +464,76 @@ async function main() {
   const notificationRows = await rpc("notification_list", { p_lifecycle_status_code: null, p_severity_code: null, p_category_code: null, p_read_state_code: null, p_include_archived: true, p_limit: 100, p_before_last_seen_at: null, p_before_id: null });
   const notification = (notificationRows ?? []).find((row) => row.entity_id === claimA.id || row.action_route?.includes(claimA.id));
   check("Notification tertaut ke claim dan route exact", Boolean(notification) && notification.action_route === `/returns?returnId=${scenarioA.returnId}&claimId=${claimA.id}#claim-detail`);
-  check("Link kembali ke Notification Center tersedia", current.html.includes(`/notifications?notificationId=${notification?.notification_id}#detail`));
+  const claimDestination = await page(notification.action_route);
+  check("Action notification claim membuka return dan claim exact", new URL(claimDestination.uri).pathname === `/returns/${scenarioA.returnId}` && new URL(claimDestination.uri).searchParams.get("claimId") === claimA.id && new URL(claimDestination.uri).hash === "#claim-detail" && claimDestination.html.includes(scenarioA.returnRef) && claimDestination.html.includes(claimA.id));
+  check("Action notification claim tetap berada di navigasi Pesanan", /<a\b[^>]*href="\/marketplace"[^>]*aria-current="page"[^>]*>/i.test(claimDestination.html) || /<a\b[^>]*aria-current="page"[^>]*href="\/marketplace"[^>]*>/i.test(claimDestination.html));
+  check("Detail claim tidak menautkan kembali ke Notification Center lama", !current.html.includes(`/notifications?notificationId=${notification?.notification_id}#detail`) && !htmlContains(current.html, "Buka Notification Center"));
+  await runNotificationBrowserSmoke(primary.email, notification.action_route);
 
-  const submitRejected = await submitForm({ uri: current.uri, html: current.html, marker: "External claim reference", fields: { claimId: claimA.id, returnId: scenarioA.returnId, externalClaimRef: `${prefix}:CLAIM-A`, occurredAt: localDateTime() } });
+  const submitRejected = await submitForm({ uri: current.uri, html: current.html, marker: "Referensi klaim TikTok", fields: { claimId: claimA.id, returnId: scenarioA.returnId, externalClaimRef: `${prefix}:CLAIM-A`, occurredAt: localDateTime() } });
   check("Submit tanpa confirmation ditolak", htmlContains(submitRejected.html, "Konfirmasi operator"));
   current = await page(`/returns?claimId=${claimA.id}#claim-detail`);
-  const submitted = await submitForm({ uri: current.uri, html: current.html, marker: "External claim reference", fields: { claimId: claimA.id, returnId: scenarioA.returnId, externalClaimRef: `${prefix}:CLAIM-A`, occurredAt: localDateTime(), confirmation: "on" } });
+  const submitted = await submitForm({ uri: current.uri, html: current.html, marker: "Referensi klaim TikTok", fields: { claimId: claimA.id, returnId: scenarioA.returnId, externalClaimRef: `${prefix}:CLAIM-A`, occurredAt: localDateTime(), confirmation: "on" } });
   let claimAAfter = await claimFor(scenarioA.returnId);
-  check("Submit valid menghasilkan SUBMITTED", claimAAfter.status_code === "SUBMITTED" && htmlContains(submitted.html, "SUBMITTED"));
+  check("Submit valid menghasilkan SUBMITTED", claimAAfter.status_code === "SUBMITTED" && htmlContains(submitted.html, "Sudah dikirim"));
   assertSnapshotSame(beforeCreate, stockSnapshot(), "Submit tetap stock-neutral");
   current = await page(`/returns?claimId=${claimA.id}#claim-detail`);
-  const resolved = await submitForm({ uri: current.uri, html: current.html, marker: "Resolution", fields: { claimId: claimA.id, returnId: scenarioA.returnId, resolutionCode: "APPROVED", occurredAt: localDateTime(), confirmation: "on" } });
+  const resolved = await submitForm({ uri: current.uri, html: current.html, marker: "Hasil klaim", fields: { claimId: claimA.id, returnId: scenarioA.returnId, resolutionCode: "APPROVED", occurredAt: localDateTime(), confirmation: "on" } });
   claimAAfter = await claimFor(scenarioA.returnId);
-  check("Resolve valid menghasilkan RESOLVED", claimAAfter.status_code === "RESOLVED" && claimAAfter.resolution_code === "APPROVED" && htmlContains(resolved.html, "RESOLVED"));
+  check("Resolve valid menghasilkan RESOLVED", claimAAfter.status_code === "RESOLVED" && claimAAfter.resolution_code === "APPROVED" && htmlContains(resolved.html, "Selesai"));
+  check("Riwayat immutable klaim tampil", htmlContains(resolved.html, "Riwayat klaim") && htmlContains(resolved.html, "Detail audit"));
   assertSnapshotSame(beforeCreate, stockSnapshot(), "Resolve tetap stock-neutral");
+  const claimResolutionObservedAt = runSqlJson(`select json_build_object('observed_at', (greatest(clock_timestamp(), coalesce((select max(deadline_at) from operations.return_claims where organization_id=${sqlLiteral(organizationId)}::uuid), '-infinity'::timestamptz), coalesce((select max(last_seen_at) from notification.notifications where organization_id=${sqlLiteral(organizationId)}::uuid), '-infinity'::timestamptz)) + interval '1 microsecond')::text);`).observed_at;
+  const claimNotificationResolution = runSqlJson(`select notification.evaluate_tiktok_claim_deadlines(${sqlLiteral(organizationId)}::uuid,${sqlLiteral(`${prefix}:notification:resolve`)},${sqlLiteral(claimResolutionObservedAt)}::timestamptz,'tiktok-return-claim-ui-smoke');`);
+  check("Notification claim resolved setelah pekerjaan selesai", claimNotificationResolution && claimNotificationResolution.action === "COMPLETED" && Number(claimNotificationResolution.resolvedCount) >= 1, JSON.stringify(claimNotificationResolution));
+  const resolvedNotificationRows = await rpc("notification_list", { p_lifecycle_status_code: null, p_severity_code: null, p_category_code: null, p_read_state_code: null, p_include_archived: true, p_limit: 100, p_before_last_seen_at: null, p_before_id: null });
+  check("Episode notification claim tidak lagi aktif", (resolvedNotificationRows ?? []).some((row) => row.notification_id === notification.notification_id && row.lifecycle_status_code === "RESOLVED"));
 
   const lateBefore = stockSnapshot();
   current = await page(`/returns?returnId=${scenarioA.returnId}&claimId=${claimA.id}#claims`);
   const lateLineKey = `${scenarioA.itemId}:${scenarioA.marketplaceShipAllocationId}`;
-  const lateRejected = await submitForm({ uri: current.uri, html: current.html, marker: "Konfirmasi kedatangan terlambat", fields: { returnId: scenarioA.returnId, returnRef: scenarioA.returnRef, lateArrivalReference: `${prefix}:A:LATE`, receiptRef: `${prefix}:A:RECEIPT`, lateReturnLineKey: lateLineKey, [`lateQuantity_${lateLineKey}`]: "2", sourceLineRef: `${prefix}:A:LATE:LINE`, occurredAt: localDateTime(), confirmation: "on" } });
+  const lateRejected = await submitForm({ uri: current.uri, html: current.html, marker: "Catat Kedatangan Terlambat", fields: { returnId: scenarioA.returnId, returnRef: scenarioA.returnRef, lateArrivalReference: `${prefix}:A:LATE`, receiptRef: `${prefix}:A:RECEIPT`, lateReturnLineKey: lateLineKey, [`lateQuantity_${lateLineKey}`]: "2", sourceLineRef: `${prefix}:A:LATE:LINE`, occurredAt: localDateTime(), confirmation: "on" } });
   check("Late arrival over-quantity memberi feedback", htmlContains(lateRejected.html, "melebihi quantity lost") || htmlContains(lateRejected.html, "belum dikoreksi"));
   current = await page(`/returns?returnId=${scenarioA.returnId}&claimId=${claimA.id}#claims`);
-  const lateActionId = actionName(formFor(current.html, "Konfirmasi kedatangan terlambat"));
+  const lateActionId = actionName(formFor(current.html, "Catat Kedatangan Terlambat"));
   const initialLateArrivalFields = { returnId: scenarioA.returnId, returnRef: scenarioA.returnRef, lateArrivalReference: `${prefix}:A:LATE`, receiptRef: `${prefix}:A:RECEIPT`, lateReturnLineKey: lateLineKey, [`lateQuantity_${lateLineKey}`]: "1", sourceLineRef: `${prefix}:A:LATE:LINE`, occurredAt: localDateTime(), note: "UI smoke late arrival", confirmation: "on" };
-  const lateDone = await submitForm({ uri: current.uri, html: current.html, marker: "Konfirmasi kedatangan terlambat", fields: initialLateArrivalFields, actionId: lateActionId });
+  const lateDone = await submitForm({ uri: current.uri, html: current.html, marker: "Catat Kedatangan Terlambat", fields: initialLateArrivalFields, actionId: lateActionId });
   check("Late arrival valid berhasil", htmlContains(lateDone.html, "stock-neutral") || htmlContains(lateDone.html, "berhasil"));
   const lateRows = await restRows(`return_late_arrivals?organization_id=eq.${organizationId}&return_id=eq.${scenarioA.returnId}&select=*&limit=10`);
   check("Late arrival receipt dan claim link terlihat", lateRows.length === 1 && htmlContains(lateDone.html, "Receipt") && htmlContains(lateDone.html, "review"));
+  check("Keterkaitan late arrival tetap terlihat", htmlContains(lateDone.html, "Kedatangan terlambat terkait") && htmlContains(lateDone.html, "Dampak stok"));
   assertSnapshotSame(lateBefore, stockSnapshot(), "Late arrival receipt tetap stock-neutral");
   const lateAfterInitial = stockSnapshot();
   const initialLateArrivalId = lateRows[0]?.late_arrival_id;
-  const replayLate = await submitForm({ uri: current.uri, html: current.html, marker: "Konfirmasi kedatangan terlambat", fields: structuredClone(initialLateArrivalFields), actionId: lateActionId });
+  const replayLate = await submitForm({ uri: current.uri, html: current.html, marker: "Catat Kedatangan Terlambat", fields: structuredClone(initialLateArrivalFields), actionId: lateActionId });
   const lateAgain = await restRows(`return_late_arrivals?organization_id=eq.${organizationId}&return_id=eq.${scenarioA.returnId}&select=late_arrival_id`);
   check("Replay late arrival mempertahankan receipt yang sama", lateAgain.length === 1 && lateAgain[0]?.late_arrival_id === initialLateArrivalId && replayLate.html.includes(initialLateArrivalFields.receiptRef), `expectedLateArrivalId=${initialLateArrivalId} actual=${JSON.stringify(lateAgain)}`);
   assertSnapshotSame(lateAfterInitial, stockSnapshot(), "Replay late arrival tidak menambah stock effect");
   const changedLateArrivalFields = structuredClone(initialLateArrivalFields);
   changedLateArrivalFields.occurredAt = new Date(new Date(initialLateArrivalFields.occurredAt).getTime() + 60_000).toISOString().slice(0, 16);
-  const changedLate = await submitForm({ uri: current.uri, html: current.html, marker: "Konfirmasi kedatangan terlambat", fields: changedLateArrivalFields, actionId: lateActionId });
+  const changedLate = await submitForm({ uri: current.uri, html: current.html, marker: "Catat Kedatangan Terlambat", fields: changedLateArrivalFields, actionId: lateActionId });
   const lateAfterConflict = await restRows(`return_late_arrivals?organization_id=eq.${organizationId}&return_id=eq.${scenarioA.returnId}&select=late_arrival_id`);
   check("Late arrival payload berubah ditolak tanpa effect baru", lateAfterConflict.length === 1 && htmlContains(changedLate.html, "payload berbeda"));
   const changedAllocationFields = structuredClone(initialLateArrivalFields);
   changedAllocationFields.lateReturnLineKey = `${scenarioA.itemId}:UNVERIFIED`;
   changedAllocationFields[`lateQuantity_${scenarioA.itemId}:UNVERIFIED`] = "1";
-  const changedAllocation = await submitForm({ uri: current.uri, html: current.html, marker: "Konfirmasi kedatangan terlambat", fields: changedAllocationFields, actionId: lateActionId });
+  const changedAllocation = await submitForm({ uri: current.uri, html: current.html, marker: "Catat Kedatangan Terlambat", fields: changedAllocationFields, actionId: lateActionId });
   check("Late arrival allocation berubah dengan key sama ditolak", htmlContains(changedAllocation.html, "payload berbeda"));
 
   current = await page(`/returns?returnId=${scenarioSplit.returnId}&claimId=${scenarioSplit.claimId}#actions`);
-  const splitForm = formFor(current.html, "Konfirmasi kedatangan terlambat");
+  const splitForm = formFor(current.html, "Catat Kedatangan Terlambat");
   check("Split-batch form menampilkan dua provenance allocation", scenarioSplit.allocations.every((allocation) => splitForm.includes(`value=\"${scenarioSplit.itemId}:${allocation.marketplaceShipAllocationId}\"`)), `allocationIds=${scenarioSplit.allocations.map((allocation) => allocation.marketplaceShipAllocationId).join(",")} rendered=${(splitForm.match(/lateReturnLineKey[^>]+/g) ?? []).join(" | ")}`);
   const splitActionId = actionName(splitForm);
   const splitFields = { returnId: scenarioSplit.returnId, returnRef: scenarioSplit.returnRef, lateArrivalReference: `${prefix}:E:LATE`, receiptRef: `${prefix}:E:RECEIPT`, lateReturnLineKey: scenarioSplit.allocations.map((allocation) => `${scenarioSplit.itemId}:${allocation.marketplaceShipAllocationId}`), [`lateQuantity_${scenarioSplit.itemId}:${scenarioSplit.allocations[0].marketplaceShipAllocationId}`]: "1", [`lateQuantity_${scenarioSplit.itemId}:${scenarioSplit.allocations[1].marketplaceShipAllocationId}`]: "1", sourceLineRef: `${prefix}:E:LATE:LINE`, occurredAt: localDateTime(), confirmation: "on" };
-  const splitLate = await submitForm({ uri: current.uri, html: current.html, marker: "Konfirmasi kedatangan terlambat", fields: splitFields, actionId: splitActionId });
+  const splitLate = await submitForm({ uri: current.uri, html: current.html, marker: "Catat Kedatangan Terlambat", fields: splitFields, actionId: splitActionId });
   const splitReceiptLines = await restRows(`return_receipt_lines?organization_id=eq.${organizationId}&receipt_ref=eq.${encodeURIComponent(`${prefix}:E:RECEIPT`)}&select=*&order=marketplace_ship_allocation_id.asc`);
   check("Split-batch late arrival menyimpan dua receipt line exact", splitReceiptLines.length === 2 && splitReceiptLines.every((line) => scenarioSplit.allocations.some((allocation) => line.marketplace_ship_allocation_id === allocation.marketplaceShipAllocationId && line.source_batch_id === allocation.sourceBatchId && line.batch_identity_verified === true && Number(line.quantity_received) === 1)) && (htmlContains(splitLate.html, "stock-neutral") || htmlContains(splitLate.html, "berhasil")), JSON.stringify(splitReceiptLines));
-  const splitReplay = await submitForm({ uri: current.uri, html: current.html, marker: "Konfirmasi kedatangan terlambat", fields: structuredClone(splitFields), actionId: splitActionId });
+  const splitReplay = await submitForm({ uri: current.uri, html: current.html, marker: "Catat Kedatangan Terlambat", fields: structuredClone(splitFields), actionId: splitActionId });
   const splitReplayLines = await restRows(`return_receipt_lines?organization_id=eq.${organizationId}&receipt_ref=eq.${encodeURIComponent(`${prefix}:E:RECEIPT`)}&select=receipt_line_id`);
   check("Split-batch exact replay tidak menggandakan effect", splitReplayLines.length === 2 && (htmlContains(splitReplay.html, "E:RECEIPT") || htmlContains(splitReplay.html, "stock-neutral")));
 
   current = await page(`/returns?returnId=${scenarioB.returnId}#claims`);
-  await submitForm({ uri: current.uri, html: current.html, marker: "Buat klaim TikTok", fields: { returnId: scenarioB.returnId, claimTypeCode: "LOST_RETURN", idempotencyKey: `${prefix}:claim-b`, claimItemId: scenarioB.itemId, [`quantity_${scenarioB.itemId}`]: "1", occurredAt: localDateTime(), confirmation: "on" } });
+  await submitForm({ uri: current.uri, html: current.html, marker: "Masih dapat diklaim", actionId: createActionId, fields: { returnId: scenarioB.returnId, claimTypeCode: "LOST_RETURN", idempotencyKey: `${prefix}:claim-b`, claimItemId: scenarioB.itemId, [`quantity_${scenarioB.itemId}`]: "1", occurredAt: localDateTime(), confirmation: "on" } });
   const claimB = await claimFor(scenarioB.returnId);
   check("Claim B berada pada status yang dapat dibatalkan", ["NOT_STARTED", "DUE_SOON", "EXCEPTION"].includes(claimB.status_code), `claimId=${claimB.id} status=${claimB.status_code}`);
   const cancelDetailPage = await page(`/returns?returnId=${scenarioB.returnId}&claimId=${claimB.id}#claim-detail`);
@@ -453,24 +547,34 @@ async function main() {
   current = await page(`/returns?claimId=${claimB.id}#claim-detail`);
   const cancelled = await submitForm({ uri: current.uri, html: current.html, marker: "Alasan pembatalan", fields: { claimId: claimB.id, returnId: scenarioB.returnId, reason: `${prefix}:cancel`, occurredAt: localDateTime(), confirmation: "on" } });
   const claimBAfter = await claimFor(scenarioB.returnId);
-  check("Cancel valid mempertahankan history dan melepas capacity", claimBAfter.status_code === "CANCELLED" && htmlContains(cancelled.html, "CANCELLED"));
+  check("Cancel valid mempertahankan history dan melepas capacity", claimBAfter.status_code === "CANCELLED" && htmlContains(cancelled.html, "Dibatalkan"));
   const cancelledItems = await restRows(`return_claim_items?organization_id=eq.${organizationId}&claim_id=eq.${claimB.id}&select=id`);
   check("Cancelled claim item tetap ada", cancelledItems.length === 1);
 
   for (const [suffix, fixture, mode] of [["SELLABLE", scenarioSellable, "1"], ["DAMAGED", scenarioDamaged, "2"]]) {
     let receiptPage = await page(`/returns?returnId=${fixture.returnId}#actions`);
-    const receiptForm = formFor(receiptPage.html, "Confirm physical receipt");
-    check(`${suffix} receipt form menyediakan field provenance`, receiptForm.includes('name="returnItemId"') && receiptForm.includes('name="marketplaceShipAllocationId"'), `returnId=${fixture.returnId} allocationId=${fixture.marketplaceShipAllocationId}`);
-    const receiptFields = { returnRef: fixture.returnRef, receiptRef: `${prefix}:${suffix}:RECEIPT`, returnItemId: fixture.itemId, marketplaceShipAllocationId: fixture.marketplaceShipAllocationId, quantity: "1", sourceLineRef: `${prefix}:${suffix}:RECEIPT:LINE`, occurredAt: localDateTime(), note: "UI smoke receipt" };
-    const receipt = await submitForm({ uri: receiptPage.uri, html: receiptPage.html, marker: "Confirm physical receipt", fields: receiptFields });
-    check(`${suffix} receipt stock-neutral`, htmlContains(receipt.html, "belum berubah") || htmlContains(receipt.html, "Stok belum berubah"));
+    const receiptForm = formFor(receiptPage.html, "Referensi kedatangan");
+    check(`${suffix} receipt form menyediakan field provenance`, receiptForm.includes('name="receiptLineKey"') && receiptForm.includes(`value="${fixture.itemId}:${fixture.marketplaceShipAllocationId}"`), `returnId=${fixture.returnId} allocationId=${fixture.marketplaceShipAllocationId}`);
+    const receiptLineKey = `${fixture.itemId}:${fixture.marketplaceShipAllocationId}`; const receiptFields = { returnId: fixture.returnId, returnRef: fixture.returnRef, receiptRef: `${prefix}:${suffix}:RECEIPT`, receiptLineKey, [`receiptQuantity_${receiptLineKey}`]: "1", occurredAt: localDateTime(), note: "UI smoke receipt", confirmation: "on" };
+    const receipt = await submitForm({ uri: receiptPage.uri, html: receiptPage.html, marker: "Referensi kedatangan", fields: receiptFields });
+    check(`${suffix} receipt stock-neutral`, htmlContains(receipt.html, "tidak mengubah stok"));
     const receiptLines = await restRows(`return_receipt_lines?organization_id=eq.${organizationId}&receipt_ref=eq.${encodeURIComponent(`${prefix}:${suffix}:RECEIPT`)}&select=*&limit=10`);
     check(`${suffix} receipt line membawa provenance shipment exact`, receiptLines.length === 1 && receiptLines[0].marketplace_ship_allocation_id === fixture.marketplaceShipAllocationId && receiptLines[0].source_batch_id === fixture.sourceBatchId && receiptLines[0].source_batch_code_snapshot === fixture.sourceBatchCode && receiptLines[0].source_expiry_date_snapshot === fixture.sourceExpiryDate && receiptLines[0].batch_identity_verified === true, `expectedAllocation=${fixture.marketplaceShipAllocationId} expectedBatch=${fixture.sourceBatchId} actual=${JSON.stringify(receiptLines)}`);
+    const inspectionObservedAt = runSqlJson(`select json_build_object('observedAt', (greatest(clock_timestamp(), coalesce((select max(last_seen_at) from notification.notifications where organization_id=${sqlLiteral(organizationId)}::uuid and rule_code_snapshot='RETURN_INSPECTION_PENDING'), '-infinity'::timestamptz)) + interval '1 microsecond')::text);`).observedAt;
+    const inspectionEvaluation = runSqlJson(`select notification.evaluate_return_inspection(${sqlLiteral(organizationId)}::uuid,${sqlLiteral(`${prefix}:${suffix}:inspection-notification`)},${sqlLiteral(inspectionObservedAt)}::timestamptz,'MANUAL',gen_random_uuid(),'tiktok-return-claim-ui-smoke');`);
+    check(`${suffix} evaluator inspection selesai`, inspectionEvaluation && inspectionEvaluation.action === "COMPLETED" && inspectionEvaluation.status === "SUCCEEDED", JSON.stringify(inspectionEvaluation));
+    const inspectionNotificationRows = await rpc("notification_list", { p_lifecycle_status_code: null, p_severity_code: null, p_category_code: null, p_read_state_code: null, p_include_archived: true, p_limit: 100, p_before_last_seen_at: null, p_before_id: null });
+    const inspectionNotification = (inspectionNotificationRows ?? []).find((row) => row.action_route === `/returns?returnId=${fixture.returnId}` && row.lifecycle_status_code !== "RESOLVED");
+    check(`${suffix} notification inspection membawa return context exact`, Boolean(inspectionNotification) && inspectionNotification.entity_id === fixture.returnId);
+    const inspectionDestination = await page(inspectionNotification.action_route);
+    check(`${suffix} action notification inspection membuka detail retur exact`, new URL(inspectionDestination.uri).pathname === `/returns/${fixture.returnId}` && inspectionDestination.html.includes(fixture.returnRef));
+    check(`${suffix} action notification inspection tetap berada di navigasi Pesanan`, /<a\b[^>]*href="\/marketplace"[^>]*aria-current="page"[^>]*>/i.test(inspectionDestination.html) || /<a\b[^>]*aria-current="page"[^>]*href="\/marketplace"[^>]*>/i.test(inspectionDestination.html));
+    if (suffix === "SELLABLE") await runNotificationBrowserSmoke(primary.email, inspectionNotification.action_route);
     const inspectionBefore = stockSnapshot();
     const inspectPage = await page(`/returns?returnId=${fixture.returnId}#actions`);
-    const inspectionFields = { returnRef: fixture.returnRef, receiptLineId: receiptLines[0].receipt_line_id, inspectionRef: `${prefix}:${suffix}:INSPECTION`, occurredAt: localDateTime(), sellableQuantity: mode === "1" ? "1" : "0", damagedQuantity: mode === "2" ? "1" : "0", sourceLineRef: `${prefix}:${suffix}:INSPECTION:LINE`, note: "UI smoke inspection" };
-    const inspected = await submitForm({ uri: inspectPage.uri, html: inspectPage.html, marker: "Tetapkan kondisi fisik", fields: inspectionFields });
-    console.log(`[DIAG] ${suffix} inspection POST=${inspected.postStatus} location=${inspected.location} final=${inspected.uri} finalStatus=${inspected.finalStatus} success=${JSON.stringify(inspected.success)} error=${JSON.stringify(inspected.error)} receiptLineId=${inspectionFields.receiptLineId} inspectionRef=${inspectionFields.inspectionRef} fields=${Object.keys(inspectionFields).join(",")}`);
+    const receiptLineId = receiptLines[0].receipt_line_id; const inspectionFields = { returnId: fixture.returnId, returnRef: fixture.returnRef, inspectionReceiptLineId: receiptLineId, inspectionRef: `${prefix}:${suffix}:INSPECTION`, occurredAt: localDateTime(), [`sellableQuantity_${receiptLineId}`]: mode === "1" ? "1" : "0", [`damagedQuantity_${receiptLineId}`]: mode === "2" ? "1" : "0", note: "UI smoke inspection", confirmation: "on" };
+    const inspected = await submitForm({ uri: inspectPage.uri, html: inspectPage.html, marker: "Referensi pemeriksaan", fields: inspectionFields });
+    console.log(`[DIAG] ${suffix} inspection POST=${inspected.postStatus} location=${inspected.location} final=${inspected.uri} finalStatus=${inspected.finalStatus} success=${JSON.stringify(inspected.success)} error=${JSON.stringify(inspected.error)} receiptLineId=${receiptLineId} inspectionRef=${inspectionFields.inspectionRef} fields=${Object.keys(inspectionFields).join(",")}`);
     const transactionCountBefore = Number(inspectionBefore.transactions);
     const after = stockSnapshot();
     if (mode === "1") {
@@ -479,8 +583,11 @@ async function main() {
       check("SELLABLE membuat batch RETURN", returnBatches.length === 1 && returnBatches[0].batch_kind_code === "RETURN");
     } else {
       assertSnapshotSame(inspectionBefore, after, "DAMAGED inspection tidak menambah movement");
-      check("DAMAGED feedback menyatakan tanpa movement stok", htmlContains(inspected.html, "tanpa pergerakan stok"));
+      check("DAMAGED feedback menyatakan tanpa movement stok", htmlContains(inspected.html, "tanpa movement stok tambahan"));
     }
+    const inspectionResolvedAt = runSqlJson(`select json_build_object('observedAt', (greatest(clock_timestamp(), coalesce((select max(last_seen_at) from notification.notifications where organization_id=${sqlLiteral(organizationId)}::uuid and rule_code_snapshot='RETURN_INSPECTION_PENDING'), '-infinity'::timestamptz)) + interval '1 microsecond')::text);`).observedAt;
+    const inspectionResolution = runSqlJson(`select notification.evaluate_return_inspection(${sqlLiteral(organizationId)}::uuid,${sqlLiteral(`${prefix}:${suffix}:inspection-notification-resolve`)},${sqlLiteral(inspectionResolvedAt)}::timestamptz,'MANUAL',gen_random_uuid(),'tiktok-return-claim-ui-smoke');`);
+    check(`${suffix} notification inspection resolved setelah pekerjaan selesai`, inspectionResolution && inspectionResolution.action === "COMPLETED" && inspectionResolution.status === "SUCCEEDED" && Number(inspectionResolution.resolvedCount) >= 1, JSON.stringify(inspectionResolution));
   }
 
   const second = secondary;
@@ -488,17 +595,30 @@ async function main() {
   const firstPage = await page(`/returns?returnId=${scenarioA.returnId}&claimId=${claimA.id}#claim-detail`);
   accessToken = second.token;
   const foreign = await page(`/returns?claimId=${claimA.id}#claim-detail`);
-  check("Foreign claim deep link menjadi blocked/no-result", htmlContains(foreign.html, "tidak ditemukan") && !hasForm(foreign.html, "Buat klaim TikTok"));
-  const forged = await submitForm({ uri: firstPage.uri, html: firstPage.html, marker: "Buat klaim TikTok", fields: { returnId: scenarioA.returnId, claimTypeCode: "LOST_RETURN", idempotencyKey: `${prefix}:foreign`, claimItemId: scenarioA.itemId, [`quantity_${scenarioA.itemId}`]: "1", occurredAt: localDateTime(), confirmation: "on" } });
+  check("Foreign claim deep link menjadi blocked/no-result", htmlContains(foreign.html, "tidak ditemukan") && !hasForm(foreign.html, "Masih dapat diklaim"));
+  const forged = await submitForm({ uri: firstPage.uri, html: firstPage.html, marker: "Masih dapat diklaim", actionId: createActionId, allowedFinalStatuses: [404], fields: { returnId: scenarioA.returnId, claimTypeCode: "LOST_RETURN", idempotencyKey: `${prefix}:foreign`, claimItemId: scenarioA.itemId, [`quantity_${scenarioA.itemId}`]: "1", occurredAt: localDateTime(), confirmation: "on" } });
   check("Foreign Server Action ditolak tanpa detail lintas organisasi", htmlContains(forged.html, "organisasi aktif") || htmlContains(forged.html, "tidak ditemukan"));
   accessToken = firstToken;
   check("Fixture source line memiliki provenance historis", Boolean(scenarioA.marketplaceOrderItemId) && Boolean(scenarioA.sourceLineRef));
   check("Tidak ada error server/hydration relevan", !/(Unhandled Runtime Error|Internal Server Error|Hydration failed|UnhandledPromiseRejection)/i.test(serverOutput));
   console.log(`Smoke fixture sengaja dipertahankan sebagai audit evidence dengan prefix ${prefix}.`);
+  stopServer();
 }
 
-main().catch((error) => {
+let exitCode = 0;
+
+try {
+  await main();
+} catch (error) {
   console.error(`[FAIL] ${error instanceof Error ? error.stack ?? error.message : error}`);
   if (serverOutput) console.error(`\n== Next server output ==\n${serverOutput}`);
-  process.exitCode = 1;
-}).finally(() => { if (server) server.kill(); });
+  exitCode = 1;
+} finally {
+  stopServer();
+}
+
+await Promise.all([
+  new Promise((resolve) => process.stdout.write("", resolve)),
+  new Promise((resolve) => process.stderr.write("", resolve)),
+]);
+process.exit(exitCode);

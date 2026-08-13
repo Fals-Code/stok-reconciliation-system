@@ -121,9 +121,9 @@ function actionDestination(
   kind: FeedbackKind,
   message: string,
 ) {
-  const base = new URL("http://notification.local/notifications");
+  const base = new URL("http://notification.local/notifications/operations");
   const rawReturnTo = String(
-    formData.get("returnTo") ?? "/notifications#detail",
+    formData.get("returnTo") ?? "/notifications/operations#notification-state",
   ).trim();
 
   let destination: URL;
@@ -131,14 +131,14 @@ function actionDestination(
   try {
     destination = new URL(rawReturnTo, base);
   } catch {
-    destination = new URL("/notifications#detail", base);
+    destination = new URL("/notifications/operations#notification-state", base);
   }
 
   if (
     destination.origin !== base.origin ||
-    destination.pathname !== "/notifications"
+    destination.pathname !== "/notifications/operations"
   ) {
-    destination = new URL("/notifications#detail", base);
+    destination = new URL("/notifications/operations#notification-state", base);
   }
 
   destination.searchParams.delete("success");
@@ -146,13 +146,13 @@ function actionDestination(
   destination.searchParams.set(kind, message);
 
   const query = destination.searchParams.toString();
-  const hash = destination.hash || "#detail";
+  const hash = destination.hash || "#notification-state";
 
   return `${destination.pathname}${query ? `?${query}` : ""}${hash}`;
 }
 
 function refreshNotificationUi() {
-  revalidatePath("/notifications");
+  revalidatePath("/notifications/operations");
   revalidatePath("/", "layout");
 }
 
@@ -220,8 +220,8 @@ export async function acknowledgeNotificationAction(formData: FormData) {
 
     message =
       result.action === "ALREADY_ACKNOWLEDGED"
-        ? "Notifikasi sudah acknowledged."
-        : "Notifikasi berhasil di-acknowledge.";
+        ? "Notifikasi sudah ditandai sedang ditangani."
+        : "Notifikasi ditandai sedang ditangani.";
 
     refreshNotificationUi();
   } catch (error) {
@@ -251,7 +251,7 @@ export async function revokeNotificationAcknowledgmentAction(
     message =
       result.action === "ALREADY_OPEN"
         ? "Notifikasi sudah berada pada lifecycle open."
-        : "Acknowledgment berhasil dibatalkan dan notification kembali open.";
+        : "Penandaan sedang ditangani dibatalkan.";
 
     refreshNotificationUi();
   } catch (error) {

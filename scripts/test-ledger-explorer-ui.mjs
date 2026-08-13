@@ -169,6 +169,38 @@ function contains(html, text) {
   return html.replace(/<[^>]+>/g, " ").replace(/\s+/g, " ").toLowerCase().includes(text.toLowerCase());
 }
 
+function pagination(html) {
+  return html.match(/<nav[^>]*data-testid="ledger-pagination"[^>]*>[\s\S]*?<\/nav>/)?.[0] ?? "";
+}
+
+function ledgerTable(html) {
+  return html.match(
+    /<div[^>]*data-testid="ledger-table"[^>]*>[\s\S]*?<\/table>\s*<\/div>/,
+  )?.[0] ?? "";
+}
+
+function hrefForAriaLabel(html, label) {
+  const tag = html.match(new RegExp(`<a\\b[^>]*aria-label="${label}"[^>]*>`, "g"))?.[0] ?? "";
+  return tag.match(/href="([^"]*)"/)?.[1]?.replaceAll("&amp;", "&") ?? "";
+}
+
+function hrefForText(html, text) {
+  const escaped = text.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  return html.match(new RegExp(`<a\\b[^>]*href="([^"]*)"[^>]*>\\s*${escaped}\\s*<\\/a>`))?.[1]?.replaceAll("&amp;", "&") ?? "";
+}
+
+function activePage(html, pageNumber) {
+  return new RegExp(`<span[^>]*aria-current="page"[^>]*>\\s*${pageNumber}\\s*<\\/span>`).test(html);
+}
+
+function numericPageLabels(html) {
+  return [...html.matchAll(/<a\b[^>]*aria-label="Halaman (\d+)"[^>]*>/g)].map((match) => Number(match[1]));
+}
+
+function disabledControl(html, label) {
+  return [...html.matchAll(/<span\b[^>]*>/g)].some((tag) => tag[0].includes(`aria-label="${label}"`) && tag[0].includes('aria-disabled="true"'));
+}
+
 async function serverReady() {
   try { return (await fetch(`${baseUrl}/login`, { redirect: "manual" })).status === 200; } catch { return false; }
 }
@@ -195,6 +227,60 @@ function stopServer() {
 }
 
 async function main() {
+  const liveFilterSource = await readFile(
+    path.resolve(
+      process.cwd(),
+      "src",
+      "app",
+      "ledger",
+      "ledger-filter-controls.tsx",
+    ),
+    "utf8",
+  );
+
+  const sharedLiveFilterSource = await readFile(
+    path.resolve(
+      process.cwd(),
+      "src",
+      "components",
+      "ui",
+      "live-query-controls.tsx",
+    ),
+    "utf8",
+  );
+
+  check(
+    "Ledger live search uses debounced URL replacement",
+    liveFilterSource.includes('"use client"') &&
+      sharedLiveFilterSource.includes("useSearchParams") &&
+      sharedLiveFilterSource.includes("window.setTimeout") &&
+      sharedLiveFilterSource.includes("debounceMs = 300") &&
+      sharedLiveFilterSource.includes("router.replace") &&
+      !sharedLiveFilterSource.includes("router.push"),
+  );
+
+  check(
+    "Live search resets keyset pagination before filtering",
+    sharedLiveFilterSource.includes('resetKeys = ["cursor", "direction", "page"]') &&
+      sharedLiveFilterSource.includes('"cursor"') &&
+      sharedLiveFilterSource.includes('"direction"') &&
+      sharedLiveFilterSource.includes('"page"') &&
+      sharedLiveFilterSource.includes("params.delete(name)"),
+  );
+
+  check(
+    "Live search preserves exact product and batch context",
+    liveFilterSource.includes('contextKeys={["productId", "batchId"]}') &&
+      liveFilterSource.includes('"productId"') &&
+      liveFilterSource.includes('"batchId"') &&
+      sharedLiveFilterSource.includes('type="hidden"'),
+  );
+
+  check(
+    "Ledger live filters contain no domain or network logic",
+    !liveFilterSource.includes("@/lib/") &&
+      !liveFilterSource.includes("fetch("),
+  );
   await loadEnv();
   await login();
   await startServerIfNeeded();
@@ -211,17 +297,82 @@ async function main() {
 
   const ledgerUrl = `${baseUrl}/ledger`;
   const first = await page(ledgerUrl);
-  check("Ledger route renders", first.status === 200 && contains(first.html, "Ledger Explorer"));
-  check("Ledger table renders movement", first.html.includes('data-testid="ledger-table"') && contains(first.html, "Occurred") && contains(first.html, "Recorded"));
-  check("Ledger UI is read-only", !/<form[^>]*data-testid="ledger-filter-form"[^>]*action=/.test(first.html) && contains(first.html, "Read-only"));
-  const nextHref = first.html.match(/href="([^"]*direction=next[^"]*)"/)?.[1]?.replaceAll("&amp;", "&");
-  check("Ledger next pagination link is rendered", Boolean(nextHref));
+  check("Riwayat Stok renders", first.status === 200 && contains(first.html, "Riwayat Stok"));
+  const firstTable = ledgerTable(first.html);
+  check(
+    "Desktop list prioritizes stock history evidence",
+    first.html.includes('data-testid="ledger-table"') &&
+      contains(firstTable, "Waktu") &&
+      contains(firstTable, "Perubahan") &&
+      contains(firstTable, "Produk / Batch") &&
+      contains(firstTable, "Jumlah") &&
+      contains(firstTable, "Referensi") &&
+      contains(firstTable, "No. transaksi") &&
+      !contains(firstTable, "Waktu dicatat") &&
+      !contains(firstTable, "Status") &&
+      !contains(firstTable, "Belum dibatalkan"),
+  );
+  check("Riwayat Stok is read-only", !/<form[^>]*data-testid="ledger-filter-form"[^>]*action=/.test(first.html) && contains(first.html, "tidak dapat diubah atau dihapus"));
+  check(
+    "Ledger filters render as automatic URL controls",
+    first.html.includes(
+      'data-ui-live-query-controls',
+    ) &&
+      contains(
+        first.html,
+        "Hasil diperbarui otomatis",
+      ) &&
+      !contains(
+        first.html,
+        "Terapkan Filter",
+      ),
+  );
+  const firstPagination = pagination(first.html);
+  check("First page renders compact numeric pagination", activePage(firstPagination, 1) && contains(first.html, "20 perubahan per halaman") && !contains(firstPagination, "Lebih baru") && !contains(firstPagination, "Lebih lama"));
+  check("First page disables previous pagination control", disabledControl(firstPagination, "Halaman sebelumnya"));
+  const nextHref = hrefForAriaLabel(firstPagination, "Halaman 2");
+  const nextUrl = new URL(nextHref, baseUrl);
+  check("First page next target has keyset cursor and numeric page state", Boolean(nextHref) && nextUrl.searchParams.get("page") === "2" && nextUrl.searchParams.get("direction") === "next" && Boolean(nextUrl.searchParams.get("cursor")) && !nextUrl.searchParams.has("offset"));
+  check("First page pagination exposes no total or fake numeric targets", !/\btotal\b/i.test(firstPagination) && numericPageLabels(firstPagination).join(",") === "2");
   const nextPage = await page(new URL(nextHref, baseUrl).toString());
-  check("Ledger next pagination keeps the result contract", contains(nextPage.html, "Lebih baru") && contains(nextPage.html, "Ledger Explorer"));
-  const previousHref = nextPage.html.match(/href="([^"]*direction=previous[^"]*)"/)?.[1]?.replaceAll("&amp;", "&");
-  check("Ledger previous pagination link is rendered", Boolean(previousHref));
+  const nextPagination = pagination(nextPage.html);
+  check("Second page keeps numeric active state", activePage(nextPagination, 2) && contains(nextPage.html, "Riwayat Stok"));
+  const numberedDetailHref = nextPage.html.match(/href="(\/ledger\/[0-9a-f-]+\?[^\"]*page=2[^\"]*)"/)?.[1]?.replaceAll("&amp;", "&") ?? "";
+  const numberedDetail = await page(new URL(numberedDetailHref, baseUrl).toString());
+  check("Numbered page detail keeps page and keyset context", Boolean(numberedDetailHref) && new URL(numberedDetail.uri).searchParams.get("page") === "2" && contains(numberedDetail.html, "Detail Transaksi"));
+  const numberedDetailReturn = new URL(hrefForText(numberedDetail.html, "Kembali ke Riwayat Stok"), baseUrl);
+  check("Numbered detail back link keeps page and keyset context", numberedDetailReturn.searchParams.get("page") === "2" && numberedDetailReturn.searchParams.get("direction") === "next" && Boolean(numberedDetailReturn.searchParams.get("cursor")));
+  const previousHref = hrefForAriaLabel(nextPagination, "Halaman 1");
+  const previousUrl = new URL(previousHref, baseUrl);
+  check("Second page prior target returns to cursor-free page one", Boolean(previousHref) && previousUrl.searchParams.get("page") === "1" && !previousUrl.searchParams.has("direction") && !previousUrl.searchParams.has("cursor") && !previousUrl.searchParams.has("offset"));
+  const subsequentHref = hrefForAriaLabel(nextPagination, "Halaman 3");
+  check("Second page only exposes adjacent numeric targets", numericPageLabels(nextPagination).every((pageNumber) => pageNumber === 1 || pageNumber === 3) && (!subsequentHref || (new URL(subsequentHref, baseUrl).searchParams.get("direction") === "next" && Boolean(new URL(subsequentHref, baseUrl).searchParams.get("cursor")))));
   const previousPage = await page(new URL(previousHref, baseUrl).toString());
-  check("Ledger previous pagination returns to a readable page", contains(previousPage.html, "Ledger Explorer") && previousPage.html.includes('data-testid="ledger-table"'));
+  check("Previous keyset target returns to active page one", activePage(pagination(previousPage.html), 1) && previousPage.html.includes('data-testid="ledger-table"'));
+  const refreshedNextPage = await page(nextPage.uri);
+  check("Refreshing a numbered page preserves active page state", activePage(pagination(refreshedNextPage.html), 2));
+
+  const filteredPage = await page(`${ledgerUrl}?occurredFrom=1970-01-01T00%3A00`);
+  const filteredNextHref = hrefForAriaLabel(pagination(filteredPage.html), "Halaman 2");
+  const filteredNextUrl = new URL(filteredNextHref, baseUrl);
+  check("Filtered page target preserves filter and numeric keyset state", Boolean(filteredNextHref) && filteredNextUrl.searchParams.get("occurredFrom") === "1970-01-01T00:00" && filteredNextUrl.searchParams.get("page") === "2" && filteredNextUrl.searchParams.get("direction") === "next" && Boolean(filteredNextUrl.searchParams.get("cursor")));
+
+  const invalidPage = await page(`${ledgerUrl}?page=invalid`);
+  check("Invalid page safely renders active page one", activePage(pagination(invalidPage.html), 1) && new URL(hrefForAriaLabel(pagination(invalidPage.html), "Halaman 2"), baseUrl).searchParams.get("page") === "2");
+
+  const cursorFreePage = await page(`${ledgerUrl}?page=2`);
+  check("Cursor-free non-first page falls back to page one", activePage(pagination(cursorFreePage.html), 1) && new URL(hrefForAriaLabel(pagination(cursorFreePage.html), "Halaman 2"), baseUrl).searchParams.get("page") === "2");
+
+  const cursorFreePreviousPage = await page(`${ledgerUrl}?page=2&direction=previous`);
+  const cursorFreePreviousDetailHref = cursorFreePreviousPage.html.match(/href="(\/ledger\/[0-9a-f-]+\?[^\"]*)"/)?.[1]?.replaceAll("&amp;", "&") ?? "";
+  const cursorFreePreviousDetailUrl = new URL(cursorFreePreviousDetailHref, baseUrl);
+  check("Cursor-free backward state falls back without forwarding invalid context", activePage(pagination(cursorFreePreviousPage.html), 1) && cursorFreePreviousDetailUrl.searchParams.get("page") === "1" && !cursorFreePreviousDetailUrl.searchParams.has("cursor") && !cursorFreePreviousDetailUrl.searchParams.has("direction"));
+  const cursorFreePreviousDetail = await page(cursorFreePreviousDetailUrl.toString());
+  const cursorFreePreviousReturnUrl = new URL(hrefForText(cursorFreePreviousDetail.html, "Kembali ke Riwayat Stok"), baseUrl);
+  check("Normalized detail return does not restore invalid keyset context", cursorFreePreviousReturnUrl.searchParams.get("page") === "1" && !cursorFreePreviousReturnUrl.searchParams.has("cursor") && !cursorFreePreviousReturnUrl.searchParams.has("direction"));
+
+  const malformedCursorPage = await page(`${ledgerUrl}?page=2&cursor=abc&direction=previous`);
+  check("Malformed keyset cursor falls back to page one", activePage(pagination(malformedCursorPage.html), 1));
 
   const sku = String(multi.product_sku_snapshot);
   const filterUrl = `${ledgerUrl}?productSku=${encodeURIComponent(sku)}`;
@@ -230,26 +381,89 @@ async function main() {
   const refreshed = await page(filtered.uri);
   check("Filter survives refresh", refreshed.uri.includes("productSku=") && contains(refreshed.html, sku));
 
-  const productDetail = await page(`${baseUrl}/products/${multi.product_id}`);
-  check("Product entry point opens exact ledger context", contains(productDetail.html, "Lihat Jejak Stok") && contains(productDetail.html, "Stock story read-only"));
-  const batchDetail = await page(`${baseUrl}/products/${multi.product_id}/batches/${multi.batch_id}`);
-  check("Batch entry point opens exact ledger context", contains(batchDetail.html, "Lihat Jejak Batch") && contains(batchDetail.html, "Stock story read-only"));
+  const malformedDetail = await page(`${baseUrl}/ledger/${multi.transaction_id}?page=2&cursor=abc&direction=previous`);
+  const malformedReturnUrl = new URL(hrefForText(malformedDetail.html, "Kembali ke Riwayat Stok"), baseUrl);
+  check("Malformed detail context returns to canonical page one", malformedReturnUrl.searchParams.get("page") === "1" && !malformedReturnUrl.searchParams.has("cursor") && !malformedReturnUrl.searchParams.has("direction"));
+
+  const contextualUrl = `${ledgerUrl}?productId=${encodeURIComponent(multi.product_id)}&batchId=${encodeURIComponent(multi.batch_id)}&sourceType=RECEIPT`;
+  const contextual = await page(contextualUrl);
+  check("Filter form preserves exact product and batch context", contextual.html.includes(`name="productId"`) && contextual.html.includes(`value="${multi.product_id}"`) && contextual.html.includes(`name="batchId"`) && contextual.html.includes(`value="${multi.batch_id}"`));
+  check(
+    "Ledger filters use operational transaction and source codes",
+    contains(contextual.html, "Jenis Perubahan") &&
+      contextual.html.includes('value="DISPOSAL"') &&
+      contains(contextual.html, "Barang Rusak / Kedaluwarsa") &&
+      !contextual.html.includes('value="DISPOSAL_DAMAGED"') &&
+      !contextual.html.includes('value="DISPOSAL_EXPIRED"') &&
+      contains(contextual.html, "Asal transaksi") &&
+      contextual.html.includes('name="sourceType"') &&
+      contextual.html.includes('value="OPENING_BALANCE_CUTOVER"') &&
+      contains(contextual.html, "Saldo Awal") &&
+      !contextual.html.includes('value="OPENING_BALANCE"') &&
+      contextual.html.includes('value="MANUAL_OUTBOUND"') &&
+      contains(contextual.html, "Barang Keluar Manual") &&
+      contextual.html.includes('value="RETURN_RECEIPT"') &&
+      contains(contextual.html, "Penerimaan Retur"),
+  );
+
+  check(
+    "Ledger filters use operator-first stock and reversal wording",
+    contains(contextual.html, "SKU Produk") &&
+      contains(contextual.html, "Referensi") &&
+      contains(contextual.html, "Arah Stok") &&
+      contains(contextual.html, "Stok bertambah") &&
+      contains(contextual.html, "Stok berkurang") &&
+      contains(contextual.html, "Pembatalan") &&
+      contains(contextual.html, "Tanpa pembatalan") &&
+      contains(contextual.html, "Dibatalkan sebagian") &&
+      contains(contextual.html, "Dibatalkan penuh") &&
+      contains(contextual.html, "Baris pembatalan") &&
+      !contains(contextual.html, "Arah Jumlah") &&
+      !contains(contextual.html, "Status Pembatalan"),
+  );
 
   const detail = await page(`${baseUrl}/ledger/${multi.transaction_id}?productSku=${encodeURIComponent(sku)}`);
-  check("Exact transaction detail opens", contains(detail.html, "Exact transaction detail") && contains(detail.html, "Ledger entries"));
+  check("Exact transaction detail opens", contains(detail.html, "Detail Transaksi") && contains(detail.html, "Dampak stok"));
   check("Multi-entry detail renders all rows", (detail.html.match(/data-testid=\"ledger-detail-entries\"/g) ?? []).length === 1 && contains(detail.html, String(multi.transaction_no)));
-  check("Detail shows occurred and recorded timestamps", contains(detail.html, "Occurred at") && contains(detail.html, "Recorded at"));
+  check(
+    "Detail renders expected transaction evidence",
+    contains(detail.html, "Waktu kejadian") &&
+      contains(detail.html, "Waktu dicatat") &&
+      contains(detail.html, "Alasan") &&
+      contains(detail.html, "Kanal") &&
+      contains(detail.html, "Referensi") &&
+      contains(detail.html, "Dilakukan oleh") &&
+      contains(detail.html, String(multi.product_sku_snapshot)) &&
+      contains(detail.html, String(multi.batch_code_snapshot)),
+  );
+  check(
+    "Detail keeps cancellation state secondary",
+    contains(detail.html, "Pembatalan dan koreksi") &&
+      !contains(detail.html, "Belum dibatalkan") &&
+      !contains(detail.html, "Status pembatalan"),
+  );
+
+  const contextualDetail = await page(`${baseUrl}/ledger/${multi.transaction_id}?productId=${encodeURIComponent(multi.product_id)}&batchId=${encodeURIComponent(multi.batch_id)}&sourceType=RECEIPT`);
+  check("Detail and back link retain exact filter context", contextualDetail.html.includes(`productId=${multi.product_id}`) && contextualDetail.html.includes(`batchId=${multi.batch_id}`) && contextualDetail.html.includes("sourceType=RECEIPT"));
 
   if (reversal) {
     const reversalPage = await page(`${baseUrl}/ledger/${reversal.transaction_id}`);
-    check("Reversal detail exposes linkage section", contains(reversalPage.html, "Original") && contains(reversalPage.html, "reversal"));
-    check("Unsupported or exact source is handled honestly", contains(reversalPage.html, "Buka sumber exact") || contains(reversalPage.html, "Detail sumber belum tersedia"));
+    check("Reversal detail exposes human linkage", contains(reversalPage.html, "Pembatalan untuk transaksi") || contains(reversalPage.html, "Transaksi ini telah dibatalkan."));
   } else {
     check("Reversal detail fixture is available", false, "Durable ledger has no reversal row");
   }
 
+  const reversedMulti = rows.find((row, index) => row.reversal_state === "FULLY_REVERSED" && rows.slice(index + 1).some((other) => other.transaction_id === row.transaction_id));
+  const relatedReversal = reversedMulti ? rows.find((row) => row.transaction_type_code === "REVERSAL" && row.source_ref_snapshot === reversedMulti.transaction_no) : null;
+  check("Multi-entry reversal fixture has an exact related transaction", Boolean(reversedMulti && relatedReversal));
+  if (reversedMulti && relatedReversal) {
+    const reversedDetail = await page(`${baseUrl}/ledger/${reversedMulti.transaction_id}`);
+    const relatedHref = new RegExp(`href="/ledger/${relatedReversal.transaction_id}"`, "g");
+    check("Multi-entry reversal renders one human relationship", (reversedDetail.html.match(relatedHref) ?? []).length === 1);
+  }
+
   const invalid = await page(`${baseUrl}/ledger/not-a-uuid`, true);
-  check("Invalid transaction renders safe not-found", contains(invalid.html, "Transaction tidak ditemukan") && !contains(invalid.html, "Ledger entries"));
+  check("Invalid transaction renders safe not-found", contains(invalid.html, "Transaksi tidak ditemukan atau tidak dapat diakses") && !contains(invalid.html, "Dampak stok"));
 
   const after = parseJsonLine(runSql(`select jsonb_build_object('batch',(select coalesce(jsonb_agg(jsonb_build_object('organization_id',balance.organization_id,'batch_id',balance.batch_id,'product_id',balance.product_id,'sellable_qty',balance.sellable_qty,'quarantine_qty',balance.quarantine_qty,'damaged_qty',balance.damaged_qty) order by balance.organization_id,balance.batch_id), '[]'::jsonb) from inventory.stock_batch_balances balance), 'product',(select coalesce(jsonb_agg(jsonb_build_object('organization_id',position.organization_id,'product_id',position.product_id,'sellable_qty',position.sellable_qty,'quarantine_qty',position.quarantine_qty,'damaged_qty',position.damaged_qty,'reserved_qty',position.reserved_qty) order by position.organization_id,position.product_id), '[]'::jsonb) from inventory.stock_product_positions position), 'reservations',(select coalesce(jsonb_agg(jsonb_build_object('organization_id',reservation.organization_id,'id',reservation.id,'reserved_qty',reservation.reserved_qty,'consumed_qty',reservation.consumed_qty,'released_qty',reservation.released_qty,'status_code',reservation.status_code) order by reservation.organization_id,reservation.id), '[]'::jsonb) from inventory.stock_reservations reservation));`));
   check("Read, filter, detail, and refresh preserve stock state", JSON.stringify(after) === JSON.stringify(baseline));

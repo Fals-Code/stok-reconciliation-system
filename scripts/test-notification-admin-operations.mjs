@@ -978,17 +978,17 @@ async function main(args) {
   assertTest(
     containsText(
       page.html,
-      "Kendali evaluator dan outbox",
+      "Status & Diagnostik Sistem",
     ),
     "Halaman Notification Operations dirender",
   );
 
   assertTest(
     [
-      "Jalankan evaluasi Expiry",
-      "Jalankan evaluasi Return inspection",
-      "Jalankan evaluasi Reconciliation",
-      "Jalankan evaluasi Stocktake",
+      "Jalankan pemeriksaan Kedaluwarsa",
+      "Jalankan pemeriksaan Inspeksi Retur",
+      "Jalankan pemeriksaan Rekonsiliasi",
+      "Jalankan pemeriksaan Stok Opname",
     ].every((label) => containsText(page.html, label)),
     "Empat form evaluator manual dirender",
   );
@@ -999,7 +999,7 @@ async function main(args) {
   );
 
   assertTest(
-    containsText(page.html, "Retry event"),
+    containsText(page.html, "Coba kirim lagi"),
     "Form retry dirender untuk FAILED_FINAL",
   );
 
@@ -1011,7 +1011,7 @@ async function main(args) {
   page = await invokeServerActionForm({
     pageUri: page.uri,
     pageHtml: page.html,
-    marker: "Jalankan evaluasi Expiry",
+    marker: "Jalankan pemeriksaan Kedaluwarsa",
     fields: {
       evaluationFamilyCode: "EXPIRY",
       idempotencyKey: evaluationIdempotencyKey,
@@ -1176,7 +1176,7 @@ select jsonb_build_object(
   page = await invokeServerActionForm({
     pageUri: page.uri,
     pageHtml: page.html,
-    marker: "Jalankan evaluasi Expiry",
+    marker: "Jalankan pemeriksaan Kedaluwarsa",
     fields: {
       evaluationFamilyCode: "EXPIRY",
       idempotencyKey: evaluationIdempotencyKey,

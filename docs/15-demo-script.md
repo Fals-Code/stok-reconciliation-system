@@ -606,7 +606,6 @@ pnpm test --run
 supabase db reset
 supabase test db
 npm run test:tiktok-return-claim-ui
-npm run test:notification-write-actions
 npm run test:notification-admin-operations
 pnpm build
 npm run test:demo

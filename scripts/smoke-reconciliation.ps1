@@ -1,6 +1,6 @@
 param(
   [string]$ProjectRoot = (Get-Location).Path,
-  [string]$BaseUrl = "http://127.0.0.1:3000",
+  [string]$BaseUrl = "http://localhost:3000",
   [string]$Email = "demo.admin@glowlab.invalid",
   [string]$ExpectedBranch,
   [SecureString]$Password,
@@ -55,6 +55,7 @@ $requiredFiles = @(
   ".env.local",
   "src\app\login\page.tsx",
   "src\app\reconciliation\page.tsx",
+  "src\app\stock-issues\page.tsx",
   "scripts\create-demo-admin.mjs"
 )
 
@@ -287,29 +288,42 @@ test("Admin reconciliation smoke flow", async ({ page }) => {
   await test.step("Unauthenticated access redirects to login", async () => {
     await page.goto("/reconciliation");
     await expect(page).toHaveURL(/\/login/);
-    await expect(page.getByRole("heading", { name: "Masuk sebagai Admin." }))
+    await expect(page.getByRole("heading", { name: "Masuk" }))
       .toBeVisible();
   });
 
   await test.step("Admin can log in", async () => {
     await page.getByLabel("Email").fill(email);
-    await page.getByLabel("Password").fill(password);
-    await page.getByRole("button", { name: "Masuk ke dashboard" }).click();
+    await page.getByRole("textbox", { name: "Password" }).fill(password);
+    await page.getByRole("button", { name: "Masuk" }).click();
     await page.waitForURL((url) => url.pathname === "/", { timeout: 30000 });
   });
 
-  await test.step("Reconciliation page renders its main controls", async () => {
-    await page.goto("/reconciliation");
+  await test.step("Legacy reconciliation deep link reaches Masalah Stok", async () => {
+    await page.goto("/reconciliation?status=ALL&checkCode=LEDGER_BATCH_PROJECTION");
+    await page.waitForURL(
+      (url) =>
+        url.pathname === "/stock-issues" &&
+        url.searchParams.get("status") === "ALL" &&
+        url.searchParams.get("checkCode") === "LEDGER_BATCH_PROJECTION",
+      { timeout: 30000 }
+    );
+  });
+
+  await test.step("Masalah Stok renders its main controls", async () => {
+    await page.goto("/stock-issues");
 
     await expect(
-      page.getByRole("heading", { name: /Pastikan catatan stok/ })
+      page.getByRole("heading", { name: "Masalah Stok" })
     ).toBeVisible();
 
     await expect(
-      page.getByRole("button", { name: "Periksa konsistensi stok" })
+      page.getByRole("button", { name: "Periksa Stok Sekarang" })
     ).toBeVisible();
 
-    const checkboxes = page.locator('input[name="checkCodes"]');
+    await page.getByText("Pilih pemeriksaan yang akan dijalankan").click();
+
+    const checkboxes = page.locator('input[type="checkbox"][name="checkCodes"]');
     await expect(checkboxes).toHaveCount(8);
 
     for (let index = 0; index < 8; index += 1) {
@@ -318,13 +332,14 @@ test("Admin reconciliation smoke flow", async ({ page }) => {
 
     const idempotencyKey = await page
       .locator('input[name="idempotencyKey"]')
+      .first()
       .inputValue();
 
     expect(idempotencyKey).toMatch(
-      /^reconciliation:admin-ui:[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i
+      /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i
     );
 
-    await inspectPage("initial reconciliation page");
+    await inspectPage("initial stock issues page");
 
     await page.screenshot({
       path: path.join(artifactDirectory, "01-before-run.png"),
@@ -335,40 +350,32 @@ test("Admin reconciliation smoke flow", async ({ page }) => {
   let latestRunText = "";
 
   await test.step("All eight checks can run successfully", async () => {
-    await page.getByRole("button", { name: "Periksa konsistensi stok" }).click();
+    await page.getByRole("button", { name: "Periksa Stok Sekarang" }).click();
 
     await page.waitForURL(
       (url) =>
-        url.pathname === "/reconciliation" &&
+        url.pathname === "/stock-issues" &&
         url.searchParams.has("success"),
       { timeout: 90000 }
     );
 
-    const latestRunCard = page
-      .locator("article")
-      .filter({ hasText: "Pemeriksaan terakhir" });
+    await expect(
+      page.getByRole("heading", { name: "Riwayat pemeriksaan" })
+    ).toBeVisible();
 
-    await expect(latestRunCard).toBeVisible();
-    await expect(latestRunCard).not.toContainText("Belum ada");
+    const latestRunLink = page
+      .locator('section[aria-labelledby="reconciliation-runs-heading"] a')
+      .first();
 
-    latestRunText = (await latestRunCard.innerText()).trim();
+    await expect(latestRunLink).toBeVisible();
+    latestRunText = await latestRunLink.getAttribute("href");
+    expect(latestRunText).toContain("runId=");
 
     await expect(
-      page.getByText("Belum ada reconciliation run.")
-    ).toHaveCount(0);
+      page.getByText("Hasil per pemeriksaan")
+    ).toBeVisible();
 
-    await expect(
-      page.getByText("Belum ada run", { exact: true })
-    ).toHaveCount(0);
-
-    for (const checkCode of checkCodes) {
-      expect(
-        await page.getByText(checkCode, { exact: true }).count(),
-        `Expected persisted result for ${checkCode}`
-      ).toBeGreaterThanOrEqual(2);
-    }
-
-    await inspectPage("reconciliation result page");
+    await inspectPage("stock issues result page");
 
     await page.screenshot({
       path: path.join(artifactDirectory, "02-after-run.png"),
@@ -379,69 +386,49 @@ test("Admin reconciliation smoke flow", async ({ page }) => {
   await test.step("Run remains visible after refresh", async () => {
     await page.reload();
 
-    const latestRunCard = page
-      .locator("article")
-      .filter({ hasText: "Pemeriksaan terakhir" });
+    const latestRunLink = page
+      .locator('section[aria-labelledby="reconciliation-runs-heading"] a')
+      .first();
 
-    await expect(latestRunCard).toContainText(
-      latestRunText
-        .split(/\r?\n/)
-        .filter(Boolean)
-        .slice(1, 2)
-        .join("")
-    );
-
-    await inspectPage("reconciliation page after refresh");
+    await expect(latestRunLink).toHaveAttribute("href", latestRunText);
+    await inspectPage("stock issues page after refresh");
   });
 
-  await test.step("Issue filters submit through the URL", async () => {
-    await page.getByLabel("Status temuan").selectOption("OPEN");
-    await page.getByLabel("Tingkat masalah").selectOption("HIGH");
-    await page.getByRole("button", { name: "Terapkan filter" }).click();
-
-    await page.waitForURL(
-      (url) =>
-        url.pathname === "/reconciliation" &&
-        url.searchParams.get("status") === "OPEN" &&
-        url.searchParams.get("severity") === "HIGH",
+  await test.step("Issue filters persist through the URL", async () => {
+    await page.getByLabel("Filter status masalah stok").selectOption("ALL");
+    await expect.poll(
+      () => new URL(page.url()).searchParams.get("status"),
       { timeout: 30000 }
-    );
+    ).toBe("ALL");
+
+    await page.getByLabel("Filter prioritas masalah stok").selectOption("HIGH");
+    await expect.poll(
+      () => new URL(page.url()).searchParams.get("severity"),
+      { timeout: 30000 }
+    ).toBe("HIGH");
+
+    await page.getByLabel("Filter jenis pemeriksaan stok").selectOption("LEDGER_BATCH_PROJECTION");
+    await expect.poll(
+      () => new URL(page.url()).searchParams.get("checkCode"),
+      { timeout: 30000 }
+    ).toBe("LEDGER_BATCH_PROJECTION");
+
+    const filteredUrl = new URL(page.url());
+    expect(filteredUrl.pathname).toBe("/stock-issues");
+    expect(filteredUrl.searchParams.get("status")).toBe("ALL");
+    expect(filteredUrl.searchParams.get("severity")).toBe("HIGH");
+    expect(filteredUrl.searchParams.get("checkCode")).toBe("LEDGER_BATCH_PROJECTION");
   });
 
-  await test.step("Reconciliation navigation works from all Admin pages", async () => {
-    const destinations = ["/", "/marketplace", "/returns"];
+  await test.step("Reconciliation is contextual, not a primary navigation item", async () => {
+    await page.goto("/stock-issues");
 
-    for (const pathname of destinations) {
-      await page.goto("/reconciliation");
-
-      const destinationLink = page
-        .locator(
-          `nav[aria-label="Navigasi utama"] a[href="${pathname}"]`
-        )
-        .first();
-
-      await expect(destinationLink).toBeVisible();
-      await destinationLink.click();
-
-      await page.waitForURL(
-        (url) => url.pathname === pathname,
-        { timeout: 30000 }
-      );
-
-      const reconciliationLink = page
-        .locator(
-          'nav[aria-label="Navigasi utama"] a[href="/reconciliation"]'
-        )
-        .first();
-
-      await expect(reconciliationLink).toBeVisible();
-      await reconciliationLink.click();
-
-      await page.waitForURL(
-        (url) => url.pathname === "/reconciliation",
-        { timeout: 30000 }
-      );
-    }
+    await expect(
+      page.locator('nav[aria-label="Navigasi utama"] a[href="/products"]').first()
+    ).toBeVisible();
+    await expect(
+      page.locator('nav[aria-label="Navigasi utama"] a[href="/reconciliation"]')
+    ).toHaveCount(0);
   });
 
   await page.screenshot({

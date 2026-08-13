@@ -1,370 +1,378 @@
 import Link from "next/link";
-import PageSectionNav from "@/app/app-shell/page-section-nav";
 
-import {
-  STOCKTAKE_STATUSES,
-  STOCKTAKE_STATUS_META,
-  STOCKTAKE_TYPES,
-  STOCKTAKE_TYPE_LABELS,
-  STOCKTAKE_VISIBILITIES,
-  STOCKTAKE_VISIBILITY_LABELS,
-  isActiveStocktake,
-  stocktakeProgress,
-  type StocktakePillTone,
-} from "@/lib/stocktakes/constants";
+import { AppShell } from "@/app/app-shell/app-shell";
+import { PageHeader } from "@/app/app-shell/page-header";
+import { EmptyState, Select, StatusBadge } from "@/components/ui";
+import { requireAdminSession } from "@/lib/auth";
 import { getStocktakeList } from "@/lib/stocktakes/queries";
 import type {
+  StocktakeListItem,
   StocktakeStatus,
   StocktakeType,
-  StocktakeVisibility,
 } from "@/lib/stocktakes/types";
 
 export const dynamic = "force-dynamic";
 
-const numberFormatter = new Intl.NumberFormat("id-ID");
+const statusLabels: Record<StocktakeStatus, string> = {
+  DRAFT: "Belum Dimulai",
+  READY: "Siap Dihitung",
+  COUNTING: "Sedang Dihitung",
+  REVIEW: "Perlu Diperiksa",
+  APPROVED: "Siap Disimpan",
+  POSTING: "Menyimpan Perubahan",
+  POSTED: "Selesai",
+  CANCELLED: "Dibatalkan",
+  EXCEPTION: "Bermasalah",
+};
 
-function formatNumber(value: number | null) {
-  if (value === null) {
-    return "Tersembunyi";
+const typeLabels: Record<StocktakeType, string> = {
+  FULL: "Seluruh Stok",
+  CYCLE: "Sebagian Stok",
+  AD_HOC: "Hitung Khusus",
+};
+
+function statusTone(status: StocktakeStatus) {
+  if (status === "POSTED") return "selected" as const;
+  if (status === "EXCEPTION" || status === "CANCELLED") return "danger" as const;
+  if (
+    status === "COUNTING" ||
+    status === "REVIEW" ||
+    status === "APPROVED" ||
+    status === "POSTING"
+  ) {
+    return "warning" as const;
   }
-
-  return numberFormatter.format(Number(value));
+  return "neutral" as const;
 }
 
-function formatDate(value: string | null, includeTime = true) {
-  if (!value) return "Belum ditentukan";
-
-  const date = new Date(value);
-  if (Number.isNaN(date.getTime())) return value;
-
-  return new Intl.DateTimeFormat("id-ID", {
-    timeZone: "Asia/Jakarta",
-    day: "2-digit",
-    month: "short",
-    year: "numeric",
-    ...(includeTime
-      ? { hour: "2-digit", minute: "2-digit", hour12: false }
-      : {}),
-  }).format(date);
-}
-
-function Pill({
-  label,
-  tone,
-}: {
-  label: string;
-  tone: StocktakePillTone;
-}) {
-  const tones: Record<StocktakePillTone, string> = {
-    success: "border-emerald-400/25 bg-emerald-400/10 text-emerald-200",
-    warning: "border-amber-400/25 bg-amber-400/10 text-amber-100",
-    danger: "border-rose-400/25 bg-rose-400/10 text-rose-100",
-    neutral: "border-white/10 bg-white/[0.04] text-slate-300",
+function nextAction(stocktake: StocktakeListItem) {
+  const labels: Record<StocktakeStatus, string> = {
+    DRAFT: "Siapkan",
+    READY: "Mulai Menghitung",
+    COUNTING: "Lanjutkan Menghitung",
+    REVIEW: "Periksa Hasil",
+    APPROVED: "Simpan Perubahan",
+    POSTING: "Lihat Status",
+    POSTED: "Lihat Hasil",
+    CANCELLED: "Lihat Riwayat",
+    EXCEPTION: "Periksa Masalah",
   };
 
-  return (
-    <span
-      className={`inline-flex items-center rounded-full border px-2.5 py-1 text-xs font-medium ${tones[tone]}`}
-    >
-      {label}
-    </span>
+  return labels[stocktake.status_code];
+}
+
+function first(
+  params: Record<string, string | string[] | undefined>,
+  key: string,
+) {
+  const value = params[key];
+  return (Array.isArray(value) ? value[0] : value)?.trim() ?? "";
+}
+
+function progress(stocktake: StocktakeListItem) {
+  if (stocktake.line_count <= 0) return 0;
+
+  return Math.min(
+    100,
+    Math.round(
+      (stocktake.counted_line_count / stocktake.line_count) * 100,
+    ),
   );
 }
 
-function ConfigurationError({ message }: { message: string }) {
+function StocktakeCard({
+  returnTo,
+  stocktake,
+}: {
+  returnTo: string;
+  stocktake: StocktakeListItem;
+}) {
+  const countingProgress = progress(stocktake);
+  const showProgress = stocktake.status_code === "COUNTING";
+
   return (
-    <main className="min-h-screen bg-slate-950 px-6 py-16 text-slate-100">
-      <section className="mx-auto max-w-3xl rounded-3xl border border-amber-400/20 bg-amber-400/[0.06] p-8">
-        <p className="font-mono text-xs uppercase tracking-[0.2em] text-amber-300">
-          Stocktake tidak tersedia
-        </p>
-        <h1 className="mt-3 text-3xl font-semibold">
-          Daftar stok opname gagal dimuat.
-        </h1>
-        <p className="mt-4 leading-7 text-slate-300">{message}</p>
-        <Link className="nav-link mt-6 inline-flex" href="/">
-          Kembali ke dashboard
+    <article className="rounded-[var(--ui-radius-lg)] border border-ui-border bg-ui-surface px-5 py-4">
+      <div className="grid gap-4 sm:grid-cols-[minmax(0,1.25fr)_minmax(220px,0.8fr)_auto] sm:items-center">
+        <div className="min-w-0">
+          <div className="flex flex-wrap items-center gap-2">
+            <h3 className="truncate text-base font-semibold text-ui-text">
+              {stocktake.title}
+            </h3>
+            <StatusBadge tone={statusTone(stocktake.status_code)}>
+              {statusLabels[stocktake.status_code]}
+            </StatusBadge>
+          </div>
+
+          <p className="mt-1 text-sm text-ui-text-muted">
+            {typeLabels[stocktake.stocktake_type_code]}
+            {" \u00B7 "}
+            {stocktake.visibility_code === "BLIND"
+              ? "Tanpa lihat catatan"
+              : "Dengan catatan"}
+          </p>
+
+        </div>
+
+        {showProgress ? (
+          <div className="min-w-0">
+            <div className="mb-1.5 flex items-center justify-between gap-3 text-xs text-ui-text-muted">
+              <span>
+                {stocktake.counted_line_count} dari {stocktake.line_count} lokasi
+              </span>
+              <span className="font-semibold text-ui-text">
+                {countingProgress}%
+              </span>
+            </div>
+            <div
+              aria-label={`Kemajuan hitung ${countingProgress}%`}
+              className="h-1.5 overflow-hidden rounded-full bg-ui-border"
+              role="progressbar"
+              aria-valuemin={0}
+              aria-valuemax={100}
+              aria-valuenow={countingProgress}
+            >
+              <div
+                className="h-full rounded-full bg-ui-primary"
+                style={{ width: `${countingProgress}%` }}
+              />
+            </div>
+          </div>
+        ) : (
+          <div />
+        )}
+
+        <Link
+          className="inline-flex min-h-[var(--ui-control-height)] shrink-0 items-center font-semibold text-ui-primary hover:underline"
+          href={`/stocktakes/${encodeURIComponent(stocktake.stocktake_id)}?returnTo=${encodeURIComponent(returnTo)}`}
+        >
+          {nextAction(stocktake)}
         </Link>
-      </section>
-    </main>
+      </div>
+    </article>
   );
-}
-
-function normalizeFilter<T extends string>(
-  value: string | undefined,
-  allowed: readonly T[],
-): "ALL" | T {
-  return value && allowed.includes(value as T) ? (value as T) : "ALL";
 }
 
 export default async function StocktakesPage({
   searchParams,
 }: {
-  searchParams: Promise<{
-    status?: string;
-    type?: string;
-    visibility?: string;
-  }>;
+  searchParams: Promise<
+    Record<string, string | string[] | undefined>
+  >;
 }) {
-  const params = await searchParams;
-  let stocktakes;
+  const [session, params] = await Promise.all([
+    requireAdminSession(),
+    searchParams,
+  ]);
+
+  let stocktakes: StocktakeListItem[];
 
   try {
     stocktakes = await getStocktakeList();
-  } catch (error) {
+  } catch {
     return (
-      <ConfigurationError
-        message={error instanceof Error ? error.message : "Konfigurasi tidak valid."}
-      />
+      <AppShell profile={session.profile}>
+        <div className="mx-auto w-full max-w-[1120px] px-4 py-6 sm:px-6 lg:px-8 lg:py-8">
+          <PageHeader
+            description="Daftar Hitung Stok belum dapat dimuat. Kondisi gagal tidak mengubah stok."
+            title="Hitung Stok"
+          />
+          <div className="mt-6 rounded-[var(--ui-radius-md)] border border-ui-warning bg-ui-warning-subtle p-4 text-sm text-ui-warning">
+            Daftar belum tersedia. Muat ulang halaman sebelum memulai atau
+            melanjutkan pekerjaan.
+          </div>
+        </div>
+      </AppShell>
     );
   }
 
-  const statusFilter = normalizeFilter<StocktakeStatus>(
-    params.status,
-    STOCKTAKE_STATUSES,
+  const status = first(params, "status");
+  const type = first(params, "type");
+  const listContext = new URLSearchParams();
+
+  if (status) listContext.set("status", status);
+  if (type) listContext.set("type", type);
+
+  const returnTo = `/stocktakes${
+    listContext.size ? `?${listContext.toString()}` : ""
+  }`;
+
+  const filtered = stocktakes.filter(
+    (item) =>
+      (!status || item.status_code === status) &&
+      (!type || item.stocktake_type_code === type),
   );
-  const typeFilter = normalizeFilter<StocktakeType>(
-    params.type,
-    STOCKTAKE_TYPES,
+
+  const activeStocktakes = filtered.filter(
+    (item) =>
+      item.status_code !== "POSTED" &&
+      item.status_code !== "CANCELLED",
   );
-  const visibilityFilter = normalizeFilter<StocktakeVisibility>(
-    params.visibility,
-    STOCKTAKE_VISIBILITIES,
+  const historyStocktakes = filtered.filter(
+    (item) =>
+      item.status_code === "POSTED" ||
+      item.status_code === "CANCELLED",
   );
 
-  const filteredStocktakes = stocktakes.filter((stocktake) => {
-    if (
-      statusFilter !== "ALL" &&
-      stocktake.status_code !== statusFilter
-    ) {
-      return false;
-    }
-
-    if (
-      typeFilter !== "ALL" &&
-      stocktake.stocktake_type_code !== typeFilter
-    ) {
-      return false;
-    }
-
-    if (
-      visibilityFilter !== "ALL" &&
-      stocktake.visibility_code !== visibilityFilter
-    ) {
-      return false;
-    }
-
-    return true;
-  });
-
-  const activeCount = stocktakes.filter((stocktake) =>
-    isActiveStocktake(stocktake.status_code),
+  const activeAll = stocktakes.filter(
+    (item) =>
+      item.status_code !== "POSTED" &&
+      item.status_code !== "CANCELLED",
+  );
+  const reviewCount = activeAll.filter(
+    (item) => item.status_code === "REVIEW",
   ).length;
-  const countingCount = stocktakes.filter(
-    (stocktake) => stocktake.status_code === "COUNTING",
-  ).length;
-  const reviewCount = stocktakes.filter(
-    (stocktake) =>
-      stocktake.status_code === "REVIEW" ||
-      stocktake.status_code === "APPROVED",
-  ).length;
-  const postedCount = stocktakes.filter(
-    (stocktake) => stocktake.status_code === "POSTED",
+  const readyToPostCount = activeAll.filter(
+    (item) => item.status_code === "APPROVED",
   ).length;
 
   return (
-    <main className="min-h-screen bg-slate-950 text-slate-100">
-      <PageSectionNav
-        items={[
-          { href: "#overview", label: "Ringkasan" },
-          { href: "#sessions", label: "Sesi" },
-        ]}
-      />
+    <AppShell profile={session.profile}>
+      <div className="mx-auto w-full max-w-[1120px] px-4 py-6 sm:px-6 lg:px-8 lg:py-8">
+        <div className="mb-3">
+          <Link
+            className="inline-flex min-h-[var(--ui-control-height)] items-center text-sm font-semibold text-ui-primary hover:underline"
+            href="/products"
+          >
+            {"\u2190"} Kembali ke Stok
+          </Link>
+        </div>
 
-      <div className="mx-auto max-w-[1500px] px-5 py-8 lg:px-8">
-        <section id="overview" className="scroll-mt-24">
-          <div className="flex flex-col gap-6 xl:flex-row xl:items-end xl:justify-between">
-            <div>
-              <p className="section-kicker">Stok opname</p>
-              <h1 className="mt-3 max-w-4xl text-3xl font-semibold tracking-tight sm:text-4xl">
-                Bandingkan fisik dengan ledger tanpa mengedit saldo langsung.
-              </h1>
-              <p className="mt-3 max-w-3xl text-sm leading-6 text-slate-400 sm:text-base">
-                Kelola lifecycle stocktake dari pembuatan sesi, counting, review,
-                approval immutable, hingga posting adjustment dan audit
-                rekonsiliasi. Semua perubahan stok tetap melalui ledger.
-              </p>
-            </div>
+        <PageHeader
+          action={
+            <Link
+              className="inline-flex min-h-[var(--ui-control-height)] items-center rounded-[var(--ui-radius-md)] border border-ui-primary bg-ui-primary px-4 text-sm font-semibold text-ui-text-on-primary"
+              href="/stocktakes/new"
+            >
+              Mulai Hitung Stok
+            </Link>
+          }
+          description="Bandingkan jumlah fisik dengan catatan sistem. Stok baru berubah setelah hasil diperiksa, disetujui, lalu disimpan."
+          eyebrow="Stok"
+          title="Hitung Stok"
+        />
 
-            <div className="rounded-2xl border border-white/10 bg-white/[0.03] px-4 py-3 text-sm text-slate-400">
-              Mode fase 1: CONTINUOUS
-            </div>
+        <section
+          aria-label="Ringkasan pekerjaan Hitung Stok"
+          className="mt-6 grid gap-3 sm:grid-cols-3"
+        >
+          <div className="rounded-[var(--ui-radius-md)] border border-ui-border bg-ui-surface px-4 py-2.5">
+            <p className="text-sm text-ui-text-muted">Pekerjaan aktif</p>
+            <p className="ui-number mt-0.5 text-lg font-semibold text-ui-text">
+              {activeAll.length}
+            </p>
           </div>
-
-          <div className="mt-7 grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
-            {[
-              ["Sesi aktif", activeCount, "Belum posted atau cancelled"],
-              ["Sedang dihitung", countingCount, "Count atau recount berjalan"],
-              ["Review dan approval", reviewCount, "Menunggu keputusan Admin"],
-              ["Sudah diposting", postedCount, "Adjustment dan audit tersedia"],
-            ].map(([label, value, description]) => (
-              <article key={label} className="metric-card">
-                <p className="text-sm text-slate-400">{label}</p>
-                <p className="mt-3 text-3xl font-semibold text-white">
-                  {formatNumber(Number(value))}
-                </p>
-                <p className="mt-2 text-xs text-slate-500">{description}</p>
-              </article>
-            ))}
+          <div className="rounded-[var(--ui-radius-md)] border border-ui-border bg-ui-surface px-4 py-2.5">
+            <p className="text-sm text-ui-text-muted">Perlu diperiksa</p>
+            <p className="ui-number mt-0.5 text-lg font-semibold text-ui-text">
+              {reviewCount}
+            </p>
+          </div>
+          <div className="rounded-[var(--ui-radius-md)] border border-ui-border bg-ui-surface px-4 py-2.5">
+            <p className="text-sm text-ui-text-muted">Siap disimpan</p>
+            <p className="ui-number mt-0.5 text-lg font-semibold text-ui-text">
+              {readyToPostCount}
+            </p>
           </div>
         </section>
 
-        <section id="sessions" className="mt-10 scroll-mt-24">
-          <div className="mb-5 flex flex-col gap-4 xl:flex-row xl:items-end xl:justify-between">
-            <div>
-              <p className="section-kicker">Daftar sesi</p>
-              <h2 className="section-title">
-                Pantau progres dan status stocktake.
-              </h2>
-            </div>
+        <form
+          className="mt-5 grid gap-3 border-b border-ui-border pb-4 sm:grid-cols-[minmax(0,1fr)_minmax(0,1fr)_auto] sm:items-end"
+          method="get"
+        >
+          <label className="grid min-w-0 gap-2 text-sm font-semibold text-ui-text">
+            Status
+            <Select defaultValue={status} name="status">
+              <option value="">Semua status</option>
+              {Object.entries(statusLabels).map(([value, label]) => (
+                <option key={value} value={value}>
+                  {label}
+                </option>
+              ))}
+            </Select>
+          </label>
 
-            <Link className="primary-button" href="/stocktakes/new">
-              Buat sesi stocktake
-            </Link>
-          </div>
+          <label className="grid min-w-0 gap-2 text-sm font-semibold text-ui-text">
+            Jenis hitung
+            <Select defaultValue={type} name="type">
+              <option value="">Semua jenis</option>
+              {Object.entries(typeLabels).map(([value, label]) => (
+                <option key={value} value={value}>
+                  {label}
+                </option>
+              ))}
+            </Select>
+          </label>
 
-          <form
-            className="mb-5 grid gap-4 rounded-2xl border border-white/10 bg-white/[0.025] p-5 sm:grid-cols-2 xl:grid-cols-4"
-            method="get"
-          >
-            <label className="field-label">
-              Status
-              <select name="status" defaultValue={statusFilter}>
-                <option value="ALL">Semua status</option>
-                {STOCKTAKE_STATUSES.map((status) => (
-                  <option key={status} value={status}>
-                    {STOCKTAKE_STATUS_META[status].label}
-                  </option>
-                ))}
-              </select>
-            </label>
-
-            <label className="field-label">
-              Tipe
-              <select name="type" defaultValue={typeFilter}>
-                <option value="ALL">Semua tipe</option>
-                {STOCKTAKE_TYPES.map((type) => (
-                  <option key={type} value={type}>
-                    {STOCKTAKE_TYPE_LABELS[type]}
-                  </option>
-                ))}
-              </select>
-            </label>
-
-            <label className="field-label">
-              Visibility
-              <select name="visibility" defaultValue={visibilityFilter}>
-                <option value="ALL">Semua visibility</option>
-                {STOCKTAKE_VISIBILITIES.map((visibility) => (
-                  <option key={visibility} value={visibility}>
-                    {STOCKTAKE_VISIBILITY_LABELS[visibility]}
-                  </option>
-                ))}
-              </select>
-            </label>
-
-            <div className="flex items-end gap-3">
-              <button className="primary-button flex-1" type="submit">
-                Terapkan
-              </button>
-              <Link className="nav-link border border-white/10" href="/stocktakes">
+          <div className="flex min-h-[var(--ui-control-height)] items-center gap-2">
+            <button
+              className="inline-flex min-h-[var(--ui-control-height)] items-center rounded-[var(--ui-radius-md)] border border-ui-border bg-ui-surface px-3 text-sm font-semibold text-ui-text hover:bg-ui-surface-subtle"
+              type="submit"
+            >
+              Terapkan Filter
+            </button>
+            {(status || type) ? (
+              <Link
+                className="inline-flex min-h-[var(--ui-control-height)] items-center px-1 text-sm font-semibold text-ui-text-muted hover:text-ui-text"
+                href="/stocktakes"
+              >
                 Reset
               </Link>
-            </div>
-          </form>
+            ) : null}
+          </div>
+        </form>
 
-          {filteredStocktakes.length === 0 ? (
-            <div className="rounded-2xl border border-dashed border-white/10 bg-white/[0.02] px-6 py-12 text-center">
-              <p className="text-lg font-semibold text-white">
-                Tidak ada sesi stocktake.
-              </p>
-              <p className="mt-2 text-sm text-slate-400">
-                Belum ada data atau tidak ada sesi yang cocok dengan filter.
+        {activeStocktakes.length ? (
+          <section className="mt-6">
+            <div>
+              <h2 className="text-lg font-semibold text-ui-text">
+                Perlu dilanjutkan
+              </h2>
+              <p className="mt-1 text-sm text-ui-text-muted">
+                Buka pekerjaan lalu lanjutkan dari tahap terakhir.
               </p>
             </div>
-          ) : (
-            <div className="overflow-x-auto rounded-2xl border border-white/10 bg-white/[0.025]">
-              <table>
-                <thead>
-                  <tr>
-                    <th>Sesi</th>
-                    <th>Status</th>
-                    <th>Tipe</th>
-                    <th>Visibility</th>
-                    <th>Progress</th>
-                    <th>Variance</th>
-                    <th>Rencana</th>
-                    <th>Aktivitas terakhir</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {filteredStocktakes.map((stocktake) => {
-                    const status = STOCKTAKE_STATUS_META[stocktake.status_code];
-                    const progress = stocktakeProgress(stocktake);
 
-                    return (
-                      <tr key={stocktake.stocktake_id}>
-                        <td>
-                          <Link
-                            className="block rounded-lg outline-offset-4"
-                            href={`/stocktakes/${stocktake.stocktake_id}`}
-                          >
-                            <p className="font-semibold text-white">
-                              {stocktake.stocktake_no}
-                            </p>
-                            <p className="mt-1 max-w-72 text-xs text-slate-500">
-                              {stocktake.title}
-                            </p>
-                          </Link>
-                        </td>
-                        <td>
-                          <Pill label={status.label} tone={status.tone} />
-                        </td>
-                        <td>
-                          {STOCKTAKE_TYPE_LABELS[stocktake.stocktake_type_code]}
-                        </td>
-                        <td>
-                          {STOCKTAKE_VISIBILITY_LABELS[stocktake.visibility_code]}
-                        </td>
-                        <td>
-                          <div className="min-w-36">
-                            <div className="flex items-center justify-between gap-3 text-xs">
-                              <span>
-                                {formatNumber(stocktake.counted_line_count)} /{" "}
-                                {formatNumber(stocktake.line_count)}
-                              </span>
-                              <span className="text-slate-500">{progress}%</span>
-                            </div>
-                            <div className="mt-2 h-1.5 overflow-hidden rounded-full bg-white/10">
-                              <div
-                                className="h-full rounded-full bg-emerald-400"
-                                style={{ width: `${progress}%` }}
-                              />
-                            </div>
-                          </div>
-                        </td>
-                        <td>{formatNumber(stocktake.variance_line_count)}</td>
-                        <td>{formatDate(stocktake.planned_at)}</td>
-                        <td>{formatDate(stocktake.updated_at)}</td>
-                      </tr>
-                    );
-                  })}
-                </tbody>
-              </table>
+            <div className="mt-3 grid gap-3">
+              {activeStocktakes.map((stocktake) => (
+                <StocktakeCard
+                  key={stocktake.stocktake_id}
+                  returnTo={returnTo}
+                  stocktake={stocktake}
+                />
+              ))}
             </div>
-          )}
-        </section>
+          </section>
+        ) : (
+          <EmptyState
+            className="mt-6"
+            description="Tidak ada Hitung Stok yang perlu dilanjutkan."
+            title="Pekerjaan aktif kosong"
+          />
+        )}
+
+        {historyStocktakes.length ? (
+          <section className="mt-8 border-t border-ui-border pt-7">
+            <div className="flex items-end justify-between gap-3">
+              <h2 className="text-lg font-semibold text-ui-text">
+                Riwayat Hitung Stok
+              </h2>
+              <span className="text-sm font-medium text-ui-text-muted">
+                {historyStocktakes.length} riwayat
+              </span>
+            </div>
+
+            <div className="mt-3 grid gap-3">
+              {historyStocktakes.map((stocktake) => (
+                <StocktakeCard
+                  key={stocktake.stocktake_id}
+                  returnTo={returnTo}
+                  stocktake={stocktake}
+                />
+              ))}
+            </div>
+          </section>
+        ) : null}
       </div>
-    </main>
+    </AppShell>
   );
 }

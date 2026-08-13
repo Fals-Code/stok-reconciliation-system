@@ -1,6 +1,8 @@
-import type { ButtonHTMLAttributes } from "react";
+import type {
+  ButtonHTMLAttributes,
+} from "react";
 
-import { cx } from "@/components/ui/class-names";
+import { cx } from "@/components/ui/cx";
 
 export type ButtonVariant =
   | "primary"
@@ -15,7 +17,10 @@ export type ButtonProps =
     loadingLabel?: string;
   };
 
-const variantClasses: Record<ButtonVariant, string> = {
+const variantClasses: Record<
+  ButtonVariant,
+  string
+> = {
   primary:
     "border-ui-primary bg-ui-primary text-ui-text-on-primary hover:border-ui-primary-hover hover:bg-ui-primary-hover",
   secondary:
@@ -30,18 +35,21 @@ export function Button({
   variant = "primary",
   loading = false,
   loadingLabel = "Memproses...",
+  disabled,
   className,
   children,
-  disabled,
   type = "button",
   ...props
 }: ButtonProps) {
-  const isDisabled = disabled || loading;
+  const isDisabled =
+    disabled || loading;
 
   return (
     <button
       {...props}
-      aria-busy={loading || undefined}
+      aria-busy={
+        loading || undefined
+      }
       className={cx(
         "relative inline-flex min-h-[var(--ui-control-height)] items-center justify-center rounded-[var(--ui-radius-md)] border px-4 text-sm font-semibold transition-colors motion-reduce:transition-none",
         "focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ui-focus",
@@ -53,8 +61,14 @@ export function Button({
       type={type}
     >
       <span
-        aria-hidden={loading || undefined}
-        className={loading ? "invisible" : undefined}
+        aria-hidden={
+          loading || undefined
+        }
+        className={
+          loading
+            ? "invisible"
+            : undefined
+        }
       >
         {children}
       </span>

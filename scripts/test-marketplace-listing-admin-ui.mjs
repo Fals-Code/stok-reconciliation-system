@@ -998,10 +998,10 @@ returning organization_id::text;
   assertTest(
     containsText(
       page.html,
-      "Kelola mapping listing dan resep bundle versi demi versi.",
+      "Mapping Produk Marketplace",
     ) &&
       containsText(page.html, "Simpan draft mapping") &&
-      containsText(page.html, "Stock-neutral"),
+      containsText(page.html, "Belum mengubah stok"),
     "Halaman Admin listing render tanpa placeholder",
   );
 

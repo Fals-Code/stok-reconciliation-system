@@ -14,7 +14,18 @@ export function proxy(request: NextRequest) {
 
   if (!accessToken) {
     const loginUrl = new URL("/login", request.url);
-    loginUrl.searchParams.set("error", "Sesi Admin diperlukan.");
+    loginUrl.searchParams.set("error", "SESSION_REQUIRED");
+
+    if (
+      request.method === "GET" ||
+      request.method === "HEAD"
+    ) {
+      loginUrl.searchParams.set(
+        "returnTo",
+        `${pathname}${request.nextUrl.search}`,
+      );
+    }
+
     return NextResponse.redirect(loginUrl);
   }
 

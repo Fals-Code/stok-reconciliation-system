@@ -12,6 +12,7 @@ import {
   type MarketplaceCancellationDraft,
 } from "@/app/marketplace/cancellations/draft";
 import { requireAdminSession } from "@/lib/auth";
+import { safeInternalRoute } from "@/lib/safe-internal-route";
 import { postMarketplaceCancellation } from "@/lib/supabase-rest";
 
 const UUID_PATTERN =
@@ -28,32 +29,13 @@ function required(formData: FormData, key: string) {
   return value.trim();
 }
 
-function draftFromForm(formData: FormData) {
-  return parseMarketplaceCancellationDraft(required(formData, "draft"));
+function optionalOrderId(formData: FormData) {
+  const value = String(formData.get("orderId") ?? "").trim();
+  return UUID_PATTERN.test(value) ? value : null;
 }
 
-function previewDestination(
-  draft?: MarketplaceCancellationDraft,
-  error?: string,
-) {
-  const params = new URLSearchParams();
-
-  if (draft) {
-    params.set(
-      "cancellationDraft",
-      serializeMarketplaceCancellationDraft(draft),
-    );
-  }
-
-  if (error) {
-    params.set("error", error);
-  }
-
-  const query = params.toString();
-
-  return `/marketplace/cancellations${query ? `?${query}` : ""}#${
-    error ? "cancellation-draft" : "cancellation-preview"
-  }`;
+function draftFromForm(formData: FormData) {
+  return parseMarketplaceCancellationDraft(required(formData, "draft"));
 }
 
 function resultDestination(
@@ -64,6 +46,8 @@ function resultDestination(
     cancellationId?: string;
     eventId?: string;
     transactionId?: string | null;
+    orderId?: string | null;
+    returnTo?: string;
   } = {},
 ) {
   const params = new URLSearchParams({ [kind]: message });
@@ -87,35 +71,29 @@ function resultDestination(
     params.set("transactionId", options.transactionId);
   }
 
-  return `/marketplace/cancellations?${params.toString()}#${
-    kind === "success" ? "cancellation-history" : "cancellation-preview"
-  }`;
-}
-
-export async function previewMarketplaceCancellationAction(
-  formData: FormData,
-) {
-  await requireAdminSession();
-
-  let destination: string;
-
-  try {
-    const draft = draftFromForm(formData);
-    destination = previewDestination(draft);
-  } catch (error) {
-    destination = previewDestination(
-      undefined,
-      marketplaceCancellationErrorMessage(error),
-    );
+  if (options.returnTo && options.returnTo !== "/marketplace") {
+    params.set("returnTo", options.returnTo);
   }
 
-  redirect(destination);
+  const basePath = options.orderId
+    ? `/marketplace/${encodeURIComponent(options.orderId)}`
+    : "/marketplace";
+
+  return `${basePath}?${params.toString()}#${
+    kind === "success" ? "cancellation-history" : "cancellation-preview"
+  }`;
 }
 
 export async function postMarketplaceCancellationAction(
   formData: FormData,
 ) {
   const session = await requireAdminSession();
+  const orderId = optionalOrderId(formData);
+  const returnTo = safeInternalRoute(
+    String(formData.get("returnTo") ?? ""),
+    "/marketplace",
+    { allowedPathnames: ["/marketplace"] },
+  );
   let draft: MarketplaceCancellationDraft | undefined;
   let destination: string;
 
@@ -165,7 +143,9 @@ export async function postMarketplaceCancellationAction(
 
     revalidatePath("/");
     revalidatePath("/marketplace");
-    revalidatePath("/marketplace/cancellations");
+    if (orderId) {
+      revalidatePath(`/marketplace/${orderId}`);
+    }
     revalidatePath("/returns");
     revalidatePath("/entry-corrections");
     revalidatePath("/notifications");
@@ -173,8 +153,8 @@ export async function postMarketplaceCancellationAction(
 
     const stockEffect =
       result.postShipmentQuantity > 0
-        ? `${result.postShipmentQuantity} unit dipulihkan ke batch shipment asal melalui ${result.reversalTransactionCount} transaksi reversal.`
-        : `${result.preShipmentQuantity} unit dilepas dari reservasi tanpa pergerakan stok fisik.`;
+        ? `${result.postShipmentQuantity} unit dikembalikan ke batch kiriman asal. Sistem mencatat pembalikannya untuk jejak audit.`
+        : `${result.preShipmentQuantity} unit dilepas dari reservasi. Stok fisik tidak berubah.`;
 
     destination = resultDestination(
       "success",
@@ -183,13 +163,15 @@ export async function postMarketplaceCancellationAction(
         cancellationId: result.cancellationId,
         eventId: result.eventId,
         transactionId: result.singleReversalTransactionId,
+        orderId: result.orderId ?? orderId,
+        returnTo,
       },
     );
   } catch (error) {
     destination = resultDestination(
       "error",
       marketplaceCancellationErrorMessage(error),
-      { draft },
+      { draft, orderId, returnTo },
     );
   }
 

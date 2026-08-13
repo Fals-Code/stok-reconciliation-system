@@ -1,64 +1,51 @@
-import type { ReactNode } from "react";
-
-import {
-  Breadcrumb,
-  type BreadcrumbProps,
-} from "@/app/app-shell/breadcrumb";
-
-export type PageHeaderProps = {
-  title: ReactNode;
-  description?: ReactNode;
-  breadcrumb?: BreadcrumbProps["items"];
-  status?: ReactNode;
-  primaryAction?: ReactNode;
-  secondaryAction?: ReactNode;
-};
+import type {
+  ReactNode,
+} from "react";
 
 export function PageHeader({
+  eyebrow,
   title,
   description,
+  action,
+  // Fallback bridge props untuk isolasi kompilasi unit test
   breadcrumb,
   status,
-  primaryAction,
-  secondaryAction,
-}: PageHeaderProps) {
-  const hasTrailingContent = Boolean(
-    status ||
-      primaryAction ||
-      secondaryAction,
-  );
-
+}: {
+  eyebrow?: ReactNode;
+  title: ReactNode;
+  description?: ReactNode;
+  action?: ReactNode;
+  breadcrumb?: ReactNode;
+  status?: ReactNode;
+}) {
   return (
     <header
-      className="flex flex-col gap-4"
+      className="flex flex-col gap-5 border-b border-ui-border pb-5 sm:flex-row sm:items-start sm:justify-between sm:gap-8"
       data-page-header="shared"
     >
-      {breadcrumb &&
-      breadcrumb.length > 0 ? (
-        <Breadcrumb items={breadcrumb} />
-      ) : null}
+      <div className="min-w-0 flex-1">
+        {eyebrow ? (
+          <p className="mb-2 text-xs font-semibold uppercase tracking-[0.08em] text-ui-primary">
+            {eyebrow}
+          </p>
+        ) : null}
 
-      <div className="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
-        <div className="min-w-0">
-          <h1 className="text-3xl font-semibold tracking-tight sm:text-4xl">
-            {title}
-          </h1>
+        <h1 className="text-[1.85rem] font-semibold leading-[1.15] tracking-[-0.025em] text-ui-text sm:text-[2rem]">
+          {title}
+        </h1>
 
-          {description ? (
-            <div className="mt-3 max-w-3xl text-sm leading-6 opacity-70">
-              {description}
-            </div>
-          ) : null}
-        </div>
-
-        {hasTrailingContent ? (
-          <div className="flex shrink-0 flex-wrap items-center gap-3">
-            {status}
-            {secondaryAction}
-            {primaryAction}
-          </div>
+        {description ? (
+          <p className="mt-2 max-w-2xl text-sm leading-6 text-ui-text-muted">
+            {description}
+          </p>
         ) : null}
       </div>
+
+      {action ? (
+        <div className="shrink-0 sm:pt-0.5">
+          {action}
+        </div>
+      ) : null}
     </header>
   );
 }

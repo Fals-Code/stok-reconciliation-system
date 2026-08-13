@@ -2,8 +2,10 @@ import { cancelStocktakeAction } from "@/app/stocktakes/actions";
 import { Alert, Button, Textarea } from "@/components/ui";
 
 export function CancelStocktakePanel({
+  returnTo,
   stocktakeId,
 }: {
+  returnTo: string;
   stocktakeId: string;
 }) {
   return (
@@ -18,6 +20,7 @@ export function CancelStocktakePanel({
       </Alert>
 
       <form action={cancelStocktakeAction} className="mt-4 space-y-4">
+        <input name="returnTo" type="hidden" value={returnTo} />
         <input name="stocktakeId" type="hidden" value={stocktakeId} />
 
         <label className="block">

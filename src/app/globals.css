@@ -1,7 +1,8 @@
 @import "tailwindcss";
 
 :root {
-  /* Light-first redesign tokens. */
+  color-scheme: light;
+
   --ui-canvas: #f7f8f6;
   --ui-surface: #ffffff;
   --ui-surface-subtle: #fcfdfc;
@@ -20,33 +21,23 @@
 
   --ui-warning: #b45309;
   --ui-warning-subtle: #fff4e5;
+
   --ui-danger: #b42318;
   --ui-danger-subtle: #fdecea;
+
   --ui-focus: #2f8075;
 
-  --ui-overlay: rgb(24 32 30 / 0.5);
+  --ui-control-height: 2.75rem;
 
   --ui-radius-sm: 0.5rem;
-  --ui-radius-md: 0.75rem;
-  --ui-radius-lg: 1rem;
+  --ui-radius-md: 0.625rem;
+  --ui-radius-lg: 0.75rem;
 
-  --ui-shadow-sm: 0 1px 2px rgb(24 32 30 / 0.06);
-  --ui-shadow-md: 0 12px 32px rgb(24 32 30 / 0.1);
-
-  --ui-control-height: 2.75rem;
-  --ui-header-height: 4rem;
-  --ui-sidebar-expanded: 17rem;
-  --ui-sidebar-collapsed: 4.5rem;
-
-  /* Legacy bridge until authenticated pages migrate together. */
-  --background: #020617;
-  --foreground: #f8fafc;
+  --ui-shadow-sm: 0 1px 2px rgb(24 32 30 / 0.05);
+  --ui-shadow-md: 0 12px 32px rgb(24 32 30 / 0.08);
 }
 
 @theme inline {
-  --color-background: var(--background);
-  --color-foreground: var(--foreground);
-
   --color-ui-canvas: var(--ui-canvas);
   --color-ui-surface: var(--ui-surface);
   --color-ui-surface-subtle: var(--ui-surface-subtle);
@@ -65,36 +56,59 @@
 
   --color-ui-warning: var(--ui-warning);
   --color-ui-warning-subtle: var(--ui-warning-subtle);
+
   --color-ui-danger: var(--ui-danger);
   --color-ui-danger-subtle: var(--ui-danger-subtle);
+
   --color-ui-focus: var(--ui-focus);
 
-  --font-sans: Arial, Helvetica, sans-serif;
-  --font-mono: "Courier New", Courier, monospace;
+  --font-sans:
+    Inter,
+    ui-sans-serif,
+    system-ui,
+    -apple-system,
+    BlinkMacSystemFont,
+    "Segoe UI",
+    sans-serif;
+
+  --font-mono:
+    "SFMono-Regular",
+    Consolas,
+    "Liberation Mono",
+    Menlo,
+    monospace;
 }
 
-* {
+*,
+*::before,
+*::after {
   box-sizing: border-box;
 }
 
 html {
+  min-width: 320px;
+  min-height: 100%;
+  background: var(--ui-canvas);
   scroll-behavior: smooth;
-  background: var(--background);
 }
 
 body {
   margin: 0;
   min-height: 100vh;
-  background:
-    radial-gradient(circle at 15% 0%, rgb(16 185 129 / 0.08), transparent 28rem),
-    radial-gradient(circle at 100% 15%, rgb(59 130 246 / 0.06), transparent 24rem),
-    var(--background);
-  color: var(--foreground);
-  font-family: Arial, Helvetica, sans-serif;
+  background: var(--ui-canvas);
+  color: var(--ui-text);
+  font-family:
+    Inter,
+    ui-sans-serif,
+    system-ui,
+    -apple-system,
+    BlinkMacSystemFont,
+    "Segoe UI",
+    sans-serif;
+  text-rendering: optimizeLegibility;
 }
 
 button,
-a,
 input,
 select,
 textarea {
@@ -105,220 +119,98 @@ button,
 a,
 input,
 select,
-textarea {
-  outline-color: rgb(52 211 153 / 0.65);
+textarea,
+summary {
+  -webkit-tap-highlight-color: transparent;
 }
 
-.nav-link {
-  border-radius: 999px;
-  padding: 0.5rem 0.8rem;
-  color: rgb(148 163 184);
-  transition: background-color 160ms ease, color 160ms ease;
+a {
+  color: inherit;
 }
 
-.nav-link:hover {
-  background: rgb(255 255 255 / 0.06);
-  color: white;
+::selection {
+  background: var(--ui-primary-subtle);
+  color: var(--ui-text);
 }
 
-.metric-card,
-.panel-card,
-.batch-card {
-  border: 1px solid rgb(255 255 255 / 0.1);
-  background: rgb(255 255 255 / 0.03);
-  box-shadow: 0 24px 80px rgb(0 0 0 / 0.15);
-}
-
-.metric-card {
-  border-radius: 1.1rem;
-  padding: 1.25rem;
-}
-
-.panel-card {
-  border-radius: 1.25rem;
-  padding: 1.35rem;
-}
-
-.batch-card {
-  border-radius: 1.1rem;
-  padding: 1.15rem;
-}
-
-.section-kicker {
-  font-family: "Courier New", Courier, monospace;
-  font-size: 0.72rem;
-  line-height: 1rem;
-  letter-spacing: 0.17em;
-  text-transform: uppercase;
-  color: rgb(110 231 183);
-}
-
-.section-title {
-  margin-top: 0.35rem;
-  font-size: 1.45rem;
-  line-height: 2rem;
-  font-weight: 600;
-  letter-spacing: -0.02em;
-  color: white;
-}
-
-.form-grid {
-  display: grid;
-  gap: 1rem;
-}
-
-.field-label {
-  display: flex;
-  flex-direction: column;
-  gap: 0.5rem;
-  font-size: 0.78rem;
-  font-weight: 600;
-  letter-spacing: 0.02em;
-  color: rgb(148 163 184);
-}
-
-.field-label input,
-.field-label select,
-.field-label textarea {
-  width: 100%;
-  border: 1px solid rgb(255 255 255 / 0.11);
-  border-radius: 0.8rem;
-  background: rgb(2 6 23 / 0.8);
-  padding: 0.75rem 0.85rem;
-  color: rgb(241 245 249);
-  transition: border-color 160ms ease, background-color 160ms ease;
-}
-
-.field-label input:hover,
-.field-label select:hover,
-.field-label textarea:hover {
-  border-color: rgb(255 255 255 / 0.2);
-}
-
-.field-label input:focus,
-.field-label select:focus,
-.field-label textarea:focus {
-  border-color: rgb(52 211 153 / 0.6);
-  background: rgb(2 6 23);
-}
-
-.field-label input::placeholder,
-.field-label textarea::placeholder {
-  color: rgb(71 85 105);
-}
-
-.primary-button {
-  display: inline-flex;
-  min-height: 2.8rem;
-  align-items: center;
-  justify-content: center;
-  border: 1px solid rgb(52 211 153 / 0.3);
-  border-radius: 0.85rem;
-  background: rgb(16 185 129);
-  padding: 0.75rem 1rem;
-  font-size: 0.85rem;
-  font-weight: 700;
-  color: rgb(2 6 23);
-  cursor: pointer;
-  transition: transform 160ms ease, background-color 160ms ease;
-}
-
-.primary-button:hover {
-  background: rgb(52 211 153);
-  transform: translateY(-1px);
-}
-
-.primary-button:active {
-  transform: translateY(0);
-}
-
-table {
-  width: 100%;
-  min-width: 780px;
-  border-collapse: collapse;
-  font-size: 0.82rem;
-}
-
-th {
-  background: rgb(255 255 255 / 0.025);
-  padding: 0.8rem 1rem;
-  text-align: left;
-  font-size: 0.7rem;
-  font-weight: 600;
-  letter-spacing: 0.08em;
-  text-transform: uppercase;
-  color: rgb(100 116 139);
-}
-
-td {
-  border-top: 1px solid rgb(255 255 255 / 0.07);
-  padding: 0.9rem 1rem;
-  color: rgb(203 213 225);
-}
-
-tbody tr {
-  transition: background-color 140ms ease;
-}
-
-tbody tr:hover {
-  background: rgb(255 255 255 / 0.025);
-}
-
-@media (min-width: 640px) {
-  .form-grid {
-    grid-template-columns: repeat(2, minmax(0, 1fr));
-  }
-}
-/* Authenticated Admin shell foundation. */
-.app-shell {
-  color-scheme: light;
-}
-
-.app-shell :focus-visible {
+:focus-visible {
   outline: 3px solid var(--ui-focus);
   outline-offset: 2px;
 }
 
-.app-shell summary {
-  list-style: none;
+/*
+ * Shared form controls manage their own focus indicator.
+ * This prevents the global outline and control border/ring
+ * from stacking on top of each other.
+ */
+[data-ui-control]:focus-visible {
+  outline: none;
+  border-color: var(--ui-primary);
+  box-shadow: 0 0 0 2px var(--ui-focus);
 }
 
-.app-shell summary::-webkit-details-marker {
-  display: none;
+/*
+ * Invalid always wins over the normal focus state.
+ * An invalid focused field must be red only, never red + green.
+ */
+[data-ui-control][aria-invalid="true"] {
+  border-color: var(--ui-danger);
 }
 
-#main-content {
-  scroll-margin-top: var(--ui-header-height);
+[data-ui-control][aria-invalid="true"]:focus-visible {
+  outline: none;
+  border-color: var(--ui-danger);
+  box-shadow: 0 0 0 2px var(--ui-danger);
+}
+
+.ui-number {
+  font-variant-numeric: tabular-nums;
+  font-feature-settings: "tnum" 1;
+}
+
+.ui-code {
+  font-family:
+    "SFMono-Regular",
+    Consolas,
+    "Liberation Mono",
+    Menlo,
+    monospace;
+}
+
+@keyframes ui-panel-enter {
+  from {
+    opacity: 0;
+    transform: translateY(6px);
+  }
+
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.ui-panel-enter {
+  animation: ui-panel-enter 200ms ease-out both;
+}
+
+.ui-panel-enter-delay {
+  animation-delay: 60ms;
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .app-shell *,
-  .app-shell *::before,
-  .app-shell *::after {
-    scroll-behavior: auto !important;
+  html {
+    scroll-behavior: auto;
+  }
+
+  *,
+  *::before,
+  *::after {
     animation-duration: 0.01ms !important;
     animation-iteration-count: 1 !important;
     transition-duration: 0.01ms !important;
   }
-}
-.app-shell details[data-hover-menu]:hover > [data-popover],
-.app-shell details[data-hover-menu]:focus-within > [data-popover],
-.app-shell details[data-hover-menu][open] > [data-popover] {
-  display: block;
-}
-/*
- * Area transparan antara trigger dan popover.
- * Memberi jarak visual tanpa memutus hover.
- */
-.app-shell details[data-hover-menu] > [data-popover-hover-bridge] {
-  position: absolute;
-  top: 100%;
-  right: 0;
-  z-index: 40;
-  height: 0.75rem;
-  pointer-events: none;
-}
 
-.app-shell details[data-hover-menu][open] > [data-popover-hover-bridge] {
-  pointer-events: auto;
+  .ui-panel-enter {
+    animation: none;
+  }
 }

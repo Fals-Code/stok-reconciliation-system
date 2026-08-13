@@ -2,7 +2,7 @@ import type {
   ReactNode,
 } from "react";
 
-import { cx } from "@/components/ui/class-names";
+import { cx } from "@/components/ui/cx";
 
 export type FieldControlProps = {
   id: string;
@@ -16,7 +16,7 @@ export type FieldProps = {
   description?: ReactNode;
   error?: ReactNode;
   children: (
-    controlProps: FieldControlProps,
+    props: FieldControlProps,
   ) => ReactNode;
   className?: string;
 };
@@ -29,12 +29,15 @@ export function Field({
   children,
   className,
 }: FieldProps) {
-  const descriptionId = description
-    ? `${id}-description`
-    : null;
-  const errorId = error
-    ? `${id}-error`
-    : null;
+  const descriptionId =
+    description
+      ? `${id}-description`
+      : undefined;
+
+  const errorId =
+    error
+      ? `${id}-error`
+      : undefined;
 
   const describedBy = [
     descriptionId,
@@ -49,7 +52,7 @@ export function Field({
         "grid gap-2",
         className,
       )}
-      data-field="shared"
+      data-ui-field
     >
       <label
         className="text-sm font-semibold text-ui-text"
@@ -59,30 +62,32 @@ export function Field({
       </label>
 
       {description ? (
-        <p
+        <div
           className="text-xs leading-5 text-ui-text-muted"
-          id={descriptionId ?? undefined}
+          id={descriptionId}
         >
           {description}
-        </p>
+        </div>
       ) : null}
 
       {children({
         id,
-        "aria-describedby": describedBy,
-        "aria-invalid": error
-          ? true
-          : undefined,
+        "aria-describedby":
+          describedBy,
+        "aria-invalid":
+          error
+            ? true
+            : undefined,
       })}
 
       {error ? (
-        <p
+        <div
           className="text-xs font-medium leading-5 text-ui-danger"
-          id={errorId ?? undefined}
+          id={errorId}
           role="alert"
         >
           {error}
-        </p>
+        </div>
       ) : null}
     </div>
   );

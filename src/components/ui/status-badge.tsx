@@ -3,7 +3,7 @@ import type {
   ReactNode,
 } from "react";
 
-import { cx } from "@/components/ui/class-names";
+import { cx } from "@/components/ui/cx";
 
 export type StatusBadgeTone =
   | "neutral"
@@ -45,7 +45,7 @@ export function StatusBadge({
         toneClasses[tone],
         className,
       )}
-      data-status-badge="shared"
+      data-ui-status-badge
       data-tone={tone}
     >
       {children}

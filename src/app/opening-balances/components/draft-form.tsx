@@ -7,6 +7,9 @@ import {
   type OpeningBalanceBucketCode,
   type OpeningBalanceDraftLine,
 } from "@/app/opening-balances/draft";
+import {
+  Button,
+} from "@/components/ui";
 import type {
   BatchInventory,
   ProductBatchMasterRow,
@@ -38,6 +41,7 @@ function dateTimeLocal(value: string) {
     minute: "2-digit",
     hour12: false,
   }).formatToParts(date);
+
   const fields = Object.fromEntries(
     parts.map((part) => [part.type, part.value]),
   );
@@ -52,6 +56,12 @@ function nextSourceRef(lines: OpeningBalanceDraftLine[]) {
   while (used.has(`UI-${index}`)) index += 1;
 
   return `UI-${index}`;
+}
+
+function bucketLabel(code: OpeningBalanceBucketCode) {
+  if (code === "SELLABLE") return "Barang baik";
+  if (code === "QUARANTINE") return "Karantina";
+  return "Rusak";
 }
 
 export default function OpeningBalanceDraftForm({
@@ -79,6 +89,7 @@ export default function OpeningBalanceDraftForm({
       ),
     [batches],
   );
+
   const eligibleBatchOptions = useMemo(
     () =>
       eligibleBatches.map((batch) => ({
@@ -134,7 +145,7 @@ export default function OpeningBalanceDraftForm({
   }
 
   return (
-    <form action={action} className="panel-card">
+    <form action={action}>
       <input name="cutoverId" type="hidden" value={cutoverId} />
       <input name="rowVersion" type="hidden" value={rowVersion} />
       <input
@@ -143,13 +154,24 @@ export default function OpeningBalanceDraftForm({
         value={JSON.stringify(lines)}
       />
 
-      <div className="grid gap-4 lg:grid-cols-3">
-        <label className="space-y-2">
-          <span className="text-sm font-medium text-slate-200">
-            Waktu cutover
+      <p className="text-xs font-semibold uppercase tracking-wide text-ui-primary">
+        Langkah 1 dari 3
+      </p>
+      <h3 className="mt-1 text-base font-semibold text-ui-text">
+        Isi stok awal
+      </h3>
+      <p className="mt-1 max-w-3xl text-sm leading-6 text-ui-text-muted">
+        Pilih batch yang sudah terdaftar. Sistem tidak membuat identitas batch
+        baru dari tebakan operator.
+      </p>
+
+      <div className="mt-5 grid gap-4 sm:grid-cols-2">
+        <label>
+          <span className="text-sm font-medium text-ui-text">
+            Waktu mulai
           </span>
           <input
-            className="w-full rounded-xl border border-white/10 bg-slate-950/60 px-3 py-2.5 text-sm text-white"
+            className="mt-2 min-h-[var(--ui-control-height)] w-full rounded-[var(--ui-radius-md)] border border-ui-border bg-ui-surface px-3 text-sm text-ui-text"
             defaultValue={dateTimeLocal(cutoverAt)}
             name="cutoverAt"
             required
@@ -157,12 +179,12 @@ export default function OpeningBalanceDraftForm({
           />
         </label>
 
-        <label className="space-y-2 lg:col-span-2">
-          <span className="text-sm font-medium text-slate-200">
-            Referensi estimasi / bukti sumber
+        <label>
+          <span className="text-sm font-medium text-ui-text">
+            Referensi estimasi atau bukti
           </span>
           <input
-            className="w-full rounded-xl border border-white/10 bg-slate-950/60 px-3 py-2.5 text-sm text-white"
+            className="mt-2 min-h-[var(--ui-control-height)] w-full rounded-[var(--ui-radius-md)] border border-ui-border bg-ui-surface px-3 text-sm text-ui-text"
             defaultValue={sourceEstimateRef}
             maxLength={200}
             name="sourceEstimateRef"
@@ -170,12 +192,12 @@ export default function OpeningBalanceDraftForm({
           />
         </label>
 
-        <label className="space-y-2 lg:col-span-3">
-          <span className="text-sm font-medium text-slate-200">
-            Catatan dasar saldo awal
+        <label className="sm:col-span-2">
+          <span className="text-sm font-medium text-ui-text">
+            Catatan
           </span>
           <textarea
-            className="min-h-24 w-full rounded-xl border border-white/10 bg-slate-950/60 px-3 py-2.5 text-sm text-white"
+            className="mt-2 min-h-24 w-full rounded-[var(--ui-radius-md)] border border-ui-border bg-ui-surface px-3 py-2 text-sm text-ui-text"
             defaultValue={note}
             maxLength={2000}
             name="note"
@@ -184,44 +206,41 @@ export default function OpeningBalanceDraftForm({
         </label>
       </div>
 
-      <div className="mt-6 flex flex-col gap-3 border-t border-white/10 pt-6 sm:flex-row sm:items-center sm:justify-between">
+      <div className="mt-6 flex flex-col gap-3 border-t border-ui-border pt-5 sm:flex-row sm:items-center sm:justify-between">
         <div>
-          <p className="section-kicker">Baris stok fisik</p>
-          <p className="mt-2 text-sm text-slate-400">
-            Pilih batch yang sudah ada. Sistem tidak membuat identitas batch
-            baru dari tebakan operator.
+          <h4 className="text-sm font-semibold text-ui-text">
+            Barang dan jumlah
+          </h4>
+          <p className="mt-1 text-sm text-ui-text-muted">
+            Tambahkan satu baris untuk setiap kombinasi batch dan kondisi stok.
           </p>
         </div>
-        <button
-          className="rounded-xl border border-sky-400/20 bg-sky-400/[0.06] px-4 py-2 text-sm font-medium text-sky-100 transition hover:bg-sky-400/10"
-          onClick={addLine}
-          type="button"
-        >
-          Tambah baris
-        </button>
+
+        <Button onClick={addLine} type="button" variant="secondary">
+          Tambah Baris
+        </Button>
       </div>
 
-      <div className="mt-5 space-y-4">
+      <div className="mt-4 divide-y divide-ui-border border-y border-ui-border">
         {lines.map((line, index) => {
           const selectedKey =
             line.productId && line.batchId
               ? `${line.productId}:${line.batchId}`
               : "";
+
           const selectedBatch = batchByKey.get(selectedKey);
           const unidentified =
             selectedBatch?.batch_kind_code === "UNIDENTIFIED_RETURN";
 
           return (
-            <article
-              className="rounded-2xl border border-white/10 bg-slate-950/35 p-4"
-              key={`${line.sourceLineRef}-${index}`}
-            >
+            <article className="py-5" key={`${line.sourceLineRef}-${index}`}>
               <div className="flex items-center justify-between gap-3">
-                <p className="font-medium text-white">
+                <p className="text-sm font-semibold text-ui-text">
                   Baris {index + 1}
                 </p>
+
                 <button
-                  className="text-xs text-rose-300 disabled:cursor-not-allowed disabled:text-slate-700"
+                  className="text-sm font-semibold text-ui-danger disabled:cursor-not-allowed disabled:opacity-40"
                   disabled={lines.length === 1}
                   onClick={() => removeLine(index)}
                   type="button"
@@ -230,13 +249,13 @@ export default function OpeningBalanceDraftForm({
                 </button>
               </div>
 
-              <div className="mt-4 grid gap-4 lg:grid-cols-12">
-                <label className="space-y-2 lg:col-span-5">
-                  <span className="text-xs text-slate-400">
+              <div className="mt-4 grid gap-4 sm:grid-cols-2">
+                <label className="sm:col-span-2">
+                  <span className="text-sm font-medium text-ui-text">
                     Produk dan batch
                   </span>
                   <select
-                    className="w-full rounded-xl border border-white/10 bg-slate-950/70 px-3 py-2.5 text-sm text-white"
+                    className="mt-2 min-h-[var(--ui-control-height)] w-full rounded-[var(--ui-radius-md)] border border-ui-border bg-ui-surface px-3 text-sm text-ui-text"
                     onChange={(event) =>
                       selectBatch(index, event.target.value)
                     }
@@ -249,17 +268,20 @@ export default function OpeningBalanceDraftForm({
                         key={batch.batch_id}
                         value={`${batch.product_id}:${batch.batch_id}`}
                       >
-                        {batch.sku} · {batch.batch_code} · exp{" "}
-                        {batch.expiry_date} · {batch.batch_kind_code}
+                        {batch.sku} {"·"} {batch.batch_code} {"·"} kedaluwarsa{" "}
+                        {batch.expiry_date}
                       </option>
                     ))}
                   </select>
                 </label>
 
-                <label className="space-y-2 lg:col-span-2">
-                  <span className="text-xs text-slate-400">Bucket</span>
+                <label>
+                  <span className="text-sm font-medium text-ui-text">
+                    Kondisi stok
+                  </span>
                   <select
-                    className="w-full rounded-xl border border-white/10 bg-slate-950/70 px-3 py-2.5 text-sm text-white"
+                    className="mt-2 min-h-[var(--ui-control-height)] w-full rounded-[var(--ui-radius-md)] border border-ui-border bg-ui-surface px-3 text-sm text-ui-text"
+                    disabled={unidentified}
                     onChange={(event) =>
                       updateLine(index, {
                         bucketCode: event.target
@@ -268,16 +290,22 @@ export default function OpeningBalanceDraftForm({
                     }
                     value={line.bucketCode}
                   >
-                    <option value="SELLABLE">Sellable</option>
-                    <option value="QUARANTINE">Quarantine</option>
-                    <option value="DAMAGED">Damaged</option>
+                    {(["SELLABLE", "QUARANTINE", "DAMAGED"] as const).map(
+                      (code) => (
+                        <option key={code} value={code}>
+                          {bucketLabel(code)}
+                        </option>
+                      ),
+                    )}
                   </select>
                 </label>
 
-                <label className="space-y-2 lg:col-span-2">
-                  <span className="text-xs text-slate-400">Quantity</span>
+                <label>
+                  <span className="text-sm font-medium text-ui-text">
+                    Jumlah
+                  </span>
                   <input
-                    className="w-full rounded-xl border border-white/10 bg-slate-950/70 px-3 py-2.5 text-sm text-white"
+                    className="mt-2 min-h-[var(--ui-control-height)] w-full rounded-[var(--ui-radius-md)] border border-ui-border bg-ui-surface px-3 text-sm text-ui-text"
                     max={999999999}
                     min={0}
                     onChange={(event) =>
@@ -291,12 +319,12 @@ export default function OpeningBalanceDraftForm({
                   />
                 </label>
 
-                <label className="space-y-2 lg:col-span-3">
-                  <span className="text-xs text-slate-400">
+                <label className="sm:col-span-2">
+                  <span className="text-sm font-medium text-ui-text">
                     Referensi baris sumber
                   </span>
                   <input
-                    className="w-full rounded-xl border border-white/10 bg-slate-950/70 px-3 py-2.5 text-sm text-white"
+                    className="mt-2 min-h-[var(--ui-control-height)] w-full rounded-[var(--ui-radius-md)] border border-ui-border bg-ui-surface px-3 text-sm text-ui-text"
                     maxLength={100}
                     onChange={(event) =>
                       updateLine(index, {
@@ -308,49 +336,34 @@ export default function OpeningBalanceDraftForm({
                   />
                 </label>
 
-                <label className="flex items-start gap-3 rounded-xl border border-white/10 bg-white/[0.025] p-3 lg:col-span-4">
-                  <input
-                    checked={line.batchIdentityVerified}
-                    className="mt-1"
-                    disabled={unidentified}
-                    onChange={(event) =>
-                      updateLine(index, {
-                        batchIdentityVerified: event.target.checked,
-                        exceptionReference: event.target.checked
-                          ? null
-                          : line.exceptionReference,
-                      })
-                    }
-                    type="checkbox"
-                  />
-                  <span>
-                    <span className="block text-sm text-slate-200">
-                      Identitas batch terverifikasi
-                    </span>
-                    <span className="mt-1 block text-xs text-slate-500">
-                      Batch tak teridentifikasi wajib quarantine.
-                    </span>
-                  </span>
-                </label>
-
                 {!line.batchIdentityVerified ? (
-                  <label className="space-y-2 lg:col-span-8">
-                    <span className="text-xs text-amber-200">
-                      Referensi pengecualian batch
-                    </span>
-                    <input
-                      className="w-full rounded-xl border border-amber-400/20 bg-amber-400/[0.04] px-3 py-2.5 text-sm text-white"
-                      maxLength={200}
-                      onChange={(event) =>
-                        updateLine(index, {
-                          exceptionReference:
-                            event.target.value.trim() || null,
-                        })
-                      }
-                      required
-                      value={line.exceptionReference ?? ""}
-                    />
-                  </label>
+                  <div className="sm:col-span-2">
+                    <p className="text-sm font-medium text-ui-text">
+                      Batch belum terverifikasi
+                    </p>
+                    <p className="mt-1 text-sm leading-6 text-ui-text-muted">
+                      Batch ini otomatis masuk Karantina sampai identitasnya
+                      dapat dibuktikan.
+                    </p>
+
+                    <label className="mt-3 block">
+                      <span className="text-sm font-medium text-ui-text">
+                        Referensi pengecualian
+                      </span>
+                      <input
+                        className="mt-2 min-h-[var(--ui-control-height)] w-full rounded-[var(--ui-radius-md)] border border-ui-border bg-ui-surface px-3 text-sm text-ui-text"
+                        maxLength={200}
+                        onChange={(event) =>
+                          updateLine(index, {
+                            exceptionReference:
+                              event.target.value.trim() || null,
+                          })
+                        }
+                        required
+                        value={line.exceptionReference ?? ""}
+                      />
+                    </label>
+                  </div>
                 ) : null}
               </div>
             </article>
@@ -358,12 +371,9 @@ export default function OpeningBalanceDraftForm({
         })}
       </div>
 
-      <button
-        className="mt-6 rounded-xl bg-emerald-300 px-4 py-2.5 text-sm font-semibold text-slate-950 transition hover:bg-emerald-200"
-        type="submit"
-      >
-        Simpan draft saldo awal
-      </button>
+      <Button className="mt-5" type="submit" variant="secondary">
+        Simpan Draft
+      </Button>
     </form>
   );
 }

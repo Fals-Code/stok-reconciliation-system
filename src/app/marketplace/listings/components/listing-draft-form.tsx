@@ -1,6 +1,9 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import {
+  useMemo,
+  useState,
+} from "react";
 
 import {
   createMarketplaceListingDraftAction,
@@ -11,7 +14,17 @@ import type {
   MarketplaceListingDraftComponent,
   MarketplaceListingTypeCode,
 } from "@/app/marketplace/listings/draft";
-import type { ProductInventory } from "@/lib/supabase-rest";
+import {
+  Button,
+  Field,
+  Input,
+  Select,
+  StatusBadge,
+  Textarea,
+} from "@/components/ui";
+import type {
+  ProductInventory,
+} from "@/lib/supabase-rest";
 
 type DraftInitialValue = {
   channelCode: MarketplaceListingChannelCode;
@@ -24,17 +37,20 @@ type DraftInitialValue = {
   note: string;
 };
 
-type ComponentRow = MarketplaceListingDraftComponent & {
-  key: string;
-};
+type ComponentRow =
+  MarketplaceListingDraftComponent & {
+    key: string;
+  };
 
 function componentRows(
   components: MarketplaceListingDraftComponent[],
 ): ComponentRow[] {
-  return components.map((component, index) => ({
-    ...component,
-    key: `${component.productId || "empty"}-${index}`,
-  }));
+  return components.map(
+    (component, index) => ({
+      ...component,
+      key: `${component.productId || "empty"}-${index}`,
+    }),
+  );
 }
 
 export default function MarketplaceListingDraftForm({
@@ -57,21 +73,31 @@ export default function MarketplaceListingDraftForm({
   expectedRowVersion?: number;
 }) {
   const [listingType, setListingType] =
-    useState<MarketplaceListingTypeCode>(initial.listingTypeCode);
-  const [rows, setRows] = useState<ComponentRow[]>(() =>
-    componentRows(initial.components),
-  );
+    useState<MarketplaceListingTypeCode>(
+      initial.listingTypeCode,
+    );
 
-  const serializedComponents = useMemo(
-    () =>
-      JSON.stringify(
-        rows.map(({ productId, quantity }) => ({
-          productId,
-          quantity: Number(quantity),
-        })),
-      ),
-    [rows],
-  );
+  const [rows, setRows] =
+    useState<ComponentRow[]>(() =>
+      componentRows(initial.components),
+    );
+
+  const serializedComponents =
+    useMemo(
+      () =>
+        JSON.stringify(
+          rows.map(
+            ({
+              productId,
+              quantity,
+            }) => ({
+              productId,
+              quantity: Number(quantity),
+            }),
+          ),
+        ),
+      [rows],
+    );
 
   const action =
     mode === "create"
@@ -83,7 +109,8 @@ export default function MarketplaceListingDraftForm({
       ...current,
       {
         key: `new-${Date.now()}-${current.length}`,
-        productId: products[0]?.product_id ?? "",
+        productId:
+          products[0]?.product_id ?? "",
         quantity: 1,
       },
     ]);
@@ -94,17 +121,38 @@ export default function MarketplaceListingDraftForm({
     patch: Partial<MarketplaceListingDraftComponent>,
   ) {
     setRows((current) =>
-      current.map((row) => (row.key === key ? { ...row, ...patch } : row)),
+      current.map((row) =>
+        row.key === key
+          ? {
+              ...row,
+              ...patch,
+            }
+          : row,
+      ),
     );
   }
 
-  function removeComponent(key: string) {
-    setRows((current) => current.filter((row) => row.key !== key));
+  function removeComponent(
+    key: string,
+  ) {
+    setRows((current) =>
+      current.filter(
+        (row) => row.key !== key,
+      ),
+    );
   }
 
   return (
-    <form action={action} className="panel-card" id="listing-draft-form">
-      <input name="intentId" type="hidden" value={intentId} />
+    <form
+      action={action}
+      className="rounded-[var(--ui-radius-lg)] border border-ui-border bg-ui-surface p-5 sm:p-6"
+      id="listing-draft-form"
+    >
+      <input
+        name="intentId"
+        type="hidden"
+        value={intentId}
+      />
       <input
         name="components"
         type="hidden"
@@ -112,11 +160,21 @@ export default function MarketplaceListingDraftForm({
       />
 
       {listingId ? (
-        <input name="listingId" type="hidden" value={listingId} />
+        <input
+          name="listingId"
+          type="hidden"
+          value={listingId}
+        />
       ) : null}
+
       {versionId ? (
-        <input name="versionId" type="hidden" value={versionId} />
+        <input
+          name="versionId"
+          type="hidden"
+          value={versionId}
+        />
       ) : null}
+
       {expectedRowVersion ? (
         <input
           name="expectedRowVersion"
@@ -125,26 +183,33 @@ export default function MarketplaceListingDraftForm({
         />
       ) : null}
 
-      <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+      <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
         <div>
-          <p className="section-kicker">
-            {mode === "create" ? "Draft mapping" : "Edit draft"}
-          </p>
-          <h2 className="mt-2 text-xl font-semibold">
+          <p className="text-xs font-semibold uppercase tracking-wide text-ui-text-muted">
             {mode === "create"
-              ? "Buat listing atau versi mapping baru"
-              : "Ubah draft sebelum aktivasi"}
+              ? "Draft mapping"
+              : "Edit draft"}
+          </p>
+
+          <h2 className="mt-1 text-lg font-semibold text-ui-text">
+            {mode === "create"
+              ? "Buat mapping produk"
+              : "Ubah draft mapping"}
           </h2>
-          <p className="mt-2 max-w-3xl text-sm leading-6 text-slate-400">
-            Draft tidak membuat reservasi, batch, transaksi, ledger, atau
-            perubahan saldo. Dampak fisik baru mungkin terjadi setelah event
-            order memakai mapping aktif.
+
+          <p className="mt-2 max-w-3xl text-sm leading-6 text-ui-text-muted">
+            Tentukan produk yang mewakili listing marketplace.
+            Bundle dipecah menjadi produk satuan ketika pesanan
+            diproses. Menyimpan draft belum mengubah stok.
           </p>
         </div>
-        <span className="status-pill status-info">Stock-neutral</span>
+
+        <StatusBadge tone="neutral">
+          Belum mengubah stok
+        </StatusBadge>
       </div>
 
-      <div className="form-grid mt-6">
+      <div className="mt-6 grid gap-5 sm:grid-cols-2">
         {lockedIdentity ? (
           <>
             <input
@@ -155,209 +220,354 @@ export default function MarketplaceListingDraftForm({
             <input
               name="externalListingCode"
               type="hidden"
-              value={initial.externalListingCode}
+              value={
+                initial.externalListingCode
+              }
             />
             <input
               name="listingTypeCode"
               type="hidden"
               value={listingType}
             />
-            <div className="rounded-2xl border border-white/10 bg-white/[0.025] p-4 sm:col-span-2">
-              <p className="text-xs uppercase tracking-[0.16em] text-slate-500">
+
+            <div className="rounded-[var(--ui-radius-md)] border border-ui-border bg-ui-surface-subtle p-4 sm:col-span-2">
+              <p className="text-xs font-semibold uppercase tracking-wide text-ui-text-muted">
                 Identitas listing tetap
               </p>
-              <p className="mt-2 font-mono text-sm text-white">
-                {initial.channelCode} / {initial.externalListingCode} /{" "}
-                {listingType}
+              <p className="mt-2 break-words text-sm font-semibold text-ui-text">
+                {initial.channelCode} /{" "}
+                {initial.externalListingCode} /{" "}
+                {listingType === "BUNDLE"
+                  ? "Bundle"
+                  : "Produk tunggal"}
+              </p>
+              <p className="mt-1 text-xs text-ui-text-muted">
+                Channel, kode listing, dan jenis mapping
+                tidak dapat diganti pada versi yang sama.
               </p>
             </div>
           </>
         ) : (
           <>
-            <label className="field-label">
-              Channel
-              <select
-                defaultValue={initial.channelCode}
-                name="channelCode"
-                required
-              >
-                <option value="SHOPEE">Shopee</option>
-                <option value="TIKTOK_SHOP">TikTok Shop</option>
-              </select>
-            </label>
+            <Field
+              id="listing-channel"
+              label="Marketplace"
+            >
+              {(controlProps) => (
+                <Select
+                  {...controlProps}
+                  defaultValue={
+                    initial.channelCode
+                  }
+                  name="channelCode"
+                  required
+                >
+                  <option value="SHOPEE">
+                    Shopee
+                  </option>
+                  <option value="TIKTOK_SHOP">
+                    TikTok Shop
+                  </option>
+                </Select>
+              )}
+            </Field>
 
-            <label className="field-label">
-              Jenis listing
-              <select
-                name="listingTypeCode"
-                onChange={(event) =>
-                  setListingType(
-                    event.target.value as MarketplaceListingTypeCode,
-                  )
-                }
-                value={listingType}
-              >
-                <option value="SINGLE">Produk tunggal</option>
-                <option value="BUNDLE">Bundle</option>
-              </select>
-            </label>
+            <Field
+              id="listing-type"
+              label="Jenis listing"
+            >
+              {(controlProps) => (
+                <Select
+                  {...controlProps}
+                  name="listingTypeCode"
+                  onChange={(event) =>
+                    setListingType(
+                      event.target
+                        .value as MarketplaceListingTypeCode,
+                    )
+                  }
+                  value={listingType}
+                >
+                  <option value="SINGLE">
+                    Produk tunggal
+                  </option>
+                  <option value="BUNDLE">
+                    Bundle
+                  </option>
+                </Select>
+              )}
+            </Field>
 
-            <label className="field-label sm:col-span-2">
-              Kode listing marketplace
-              <input
-                defaultValue={initial.externalListingCode}
-                maxLength={200}
-                name="externalListingCode"
-                placeholder="SHP-SERUM-BUNDLE-01"
-                required
-              />
-            </label>
+            <Field
+              className="sm:col-span-2"
+              description="Gunakan kode listing yang sama dengan data marketplace."
+              id="external-listing-code"
+              label="Kode listing marketplace"
+            >
+              {(controlProps) => (
+                <Input
+                  {...controlProps}
+                  defaultValue={
+                    initial.externalListingCode
+                  }
+                  maxLength={200}
+                  name="externalListingCode"
+                  placeholder="SHP-SERUM-BUNDLE-01"
+                  required
+                />
+              )}
+            </Field>
           </>
         )}
 
-        <label className="field-label sm:col-span-2">
-          Nama listing
-          <input
-            defaultValue={initial.displayName}
-            maxLength={300}
-            name="displayName"
-            placeholder="Paket Serum dan Cleanser"
-            required
-          />
-        </label>
+        <Field
+          className="sm:col-span-2"
+          id="listing-display-name"
+          label="Nama listing"
+        >
+          {(controlProps) => (
+            <Input
+              {...controlProps}
+              defaultValue={
+                initial.displayName
+              }
+              maxLength={300}
+              name="displayName"
+              placeholder="Paket Serum dan Cleanser"
+              required
+            />
+          )}
+        </Field>
 
-        <label className="field-label">
-          Mulai berlaku
-          <input
-            defaultValue={initial.effectiveFrom}
-            name="effectiveFrom"
-            required
-            type="datetime-local"
-          />
-        </label>
+        <Field
+          description="Waktu mulai mapping ini dapat dipakai untuk pesanan baru."
+          id="listing-effective-from"
+          label="Mulai berlaku"
+        >
+          {(controlProps) => (
+            <Input
+              {...controlProps}
+              defaultValue={
+                initial.effectiveFrom
+              }
+              name="effectiveFrom"
+              required
+              type="datetime-local"
+            />
+          )}
+        </Field>
 
         {listingType === "SINGLE" ? (
-          <label className="field-label">
-            Produk satuan
-            <select
-              defaultValue={initial.productId}
-              name="productId"
-              required
-            >
-              <option value="">Pilih produk aktif</option>
-              {products.map((product) => (
-                <option key={product.product_id} value={product.product_id}>
-                  {product.sku} / {product.name}
+          <Field
+            id="listing-product"
+            label="Produk satuan"
+          >
+            {(controlProps) => (
+              <Select
+                {...controlProps}
+                defaultValue={
+                  initial.productId
+                }
+                name="productId"
+                required
+              >
+                <option value="">
+                  Pilih produk aktif
                 </option>
-              ))}
-            </select>
-          </label>
+
+                {products.map(
+                  (product) => (
+                    <option
+                      key={
+                        product.product_id
+                      }
+                      value={
+                        product.product_id
+                      }
+                    >
+                      {product.sku} /{" "}
+                      {product.name}
+                    </option>
+                  ),
+                )}
+              </Select>
+            )}
+          </Field>
         ) : (
-          <div className="sm:col-span-2">
-            <div className="flex items-center justify-between gap-3">
+          <section className="sm:col-span-2">
+            <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
               <div>
-                <p className="field-label">Komponen resep bundle</p>
-                <p className="mt-1 text-xs leading-5 text-slate-500">
-                  Quantity adalah jumlah produk satuan untuk satu listing
+                <h3 className="text-sm font-semibold text-ui-text">
+                  Isi bundle
+                </h3>
+                <p className="mt-1 text-xs leading-5 text-ui-text-muted">
+                  Tentukan jumlah produk satuan
+                  yang terdapat dalam satu listing
                   bundle.
                 </p>
               </div>
-              <button
-                className="nav-link"
+
+              <Button
                 onClick={addComponent}
                 type="button"
+                variant="secondary"
               >
                 Tambah komponen
-              </button>
+              </Button>
             </div>
 
-            <div className="mt-3 space-y-3">
-              {rows.length === 0 ? (
-                <div className="rounded-2xl border border-amber-400/20 bg-amber-400/[0.055] p-4 text-sm text-amber-100">
-                  Belum ada komponen. Tambahkan minimal satu produk sebelum
-                  menyimpan draft bundle.
-                </div>
-              ) : (
-                rows.map((row, index) => (
-                  <div
-                    className="grid gap-3 rounded-2xl border border-white/10 bg-white/[0.025] p-4 sm:grid-cols-[1fr_140px_auto]"
-                    key={row.key}
-                  >
-                    <label className="field-label">
-                      Produk komponen {index + 1}
-                      <select
-                        onChange={(event) =>
-                          updateComponent(row.key, {
-                            productId: event.target.value,
-                          })
-                        }
-                        required
-                        value={row.productId}
-                      >
-                        <option value="">Pilih produk aktif</option>
-                        {products.map((product) => (
-                          <option
-                            key={product.product_id}
-                            value={product.product_id}
-                          >
-                            {product.sku} / {product.name}
-                          </option>
-                        ))}
-                      </select>
-                    </label>
-
-                    <label className="field-label">
-                      Quantity
-                      <input
-                        min={1}
-                        onChange={(event) =>
-                          updateComponent(row.key, {
-                            quantity: Number(event.target.value),
-                          })
-                        }
-                        required
-                        step={1}
-                        type="number"
-                        value={row.quantity}
-                      />
-                    </label>
-
-                    <button
-                      className="nav-link self-end"
-                      onClick={() => removeComponent(row.key)}
-                      type="button"
+            {rows.length === 0 ? (
+              <div className="mt-4 rounded-[var(--ui-radius-md)] border border-ui-warning bg-ui-warning-subtle p-4 text-sm text-ui-warning">
+                Belum ada komponen. Tambahkan minimal
+                satu produk sebelum menyimpan draft
+                bundle.
+              </div>
+            ) : (
+              <div className="mt-4 space-y-3">
+                {rows.map(
+                  (row, index) => (
+                    <div
+                      className="grid gap-4 rounded-[var(--ui-radius-md)] border border-ui-border bg-ui-surface-subtle p-4 sm:grid-cols-[minmax(0,1fr)_140px_auto] sm:items-end"
+                      key={row.key}
                     >
-                      Hapus
-                    </button>
-                  </div>
-                ))
-              )}
-            </div>
-          </div>
+                      <Field
+                        id={`bundle-product-${row.key}`}
+                        label={`Produk ${index + 1}`}
+                      >
+                        {(controlProps) => (
+                          <Select
+                            {...controlProps}
+                            onChange={(
+                              event,
+                            ) =>
+                              updateComponent(
+                                row.key,
+                                {
+                                  productId:
+                                    event
+                                      .target
+                                      .value,
+                                },
+                              )
+                            }
+                            required
+                            value={
+                              row.productId
+                            }
+                          >
+                            <option value="">
+                              Pilih produk aktif
+                            </option>
+
+                            {products.map(
+                              (product) => (
+                                <option
+                                  key={
+                                    product.product_id
+                                  }
+                                  value={
+                                    product.product_id
+                                  }
+                                >
+                                  {
+                                    product.sku
+                                  }{" "}
+                                  /{" "}
+                                  {
+                                    product.name
+                                  }
+                                </option>
+                              ),
+                            )}
+                          </Select>
+                        )}
+                      </Field>
+
+                      <Field
+                        id={`bundle-quantity-${row.key}`}
+                        label="Jumlah"
+                      >
+                        {(controlProps) => (
+                          <Input
+                            {...controlProps}
+                            min={1}
+                            onChange={(
+                              event,
+                            ) =>
+                              updateComponent(
+                                row.key,
+                                {
+                                  quantity:
+                                    Number(
+                                      event
+                                        .target
+                                        .value,
+                                    ),
+                                },
+                              )
+                            }
+                            required
+                            step={1}
+                            type="number"
+                            value={row.quantity}
+                          />
+                        )}
+                      </Field>
+
+                      <Button
+                        onClick={() =>
+                          removeComponent(
+                            row.key,
+                          )
+                        }
+                        type="button"
+                        variant="ghost"
+                      >
+                        Hapus
+                      </Button>
+                    </div>
+                  ),
+                )}
+              </div>
+            )}
+          </section>
         )}
 
-        <label className="field-label sm:col-span-2">
-          Catatan audit
-          <textarea
-            defaultValue={initial.note}
-            maxLength={2000}
-            name="note"
-            placeholder="Alasan membuat atau mengubah versi mapping."
-            rows={3}
-          />
-        </label>
+        <Field
+          className="sm:col-span-2"
+          description="Opsional. Catatan ini membantu penelusuran alasan perubahan mapping."
+          id="listing-note"
+          label="Catatan"
+        >
+          {(controlProps) => (
+            <Textarea
+              {...controlProps}
+              defaultValue={initial.note}
+              maxLength={2000}
+              name="note"
+              placeholder="Alasan membuat atau mengubah mapping."
+              rows={3}
+            />
+          )}
+        </Field>
       </div>
 
-      <div className="mt-6 flex flex-wrap items-center gap-3">
-        <button
-          className="primary-button"
-          disabled={listingType === "BUNDLE" && rows.length === 0}
+      <div className="mt-6 flex flex-wrap items-center gap-3 border-t border-ui-border pt-5">
+        <Button
+          disabled={
+            listingType === "BUNDLE" &&
+            rows.length === 0
+          }
           type="submit"
         >
-          {mode === "create" ? "Simpan draft mapping" : "Simpan perubahan"}
-        </button>
-        <p className="text-xs leading-5 text-slate-500">
-          Aktivasi dilakukan melalui preview authoritative terpisah.
+          {mode === "create"
+            ? "Simpan draft mapping"
+            : "Simpan perubahan"}
+        </Button>
+
+        <p className="text-xs leading-5 text-ui-text-muted">
+          Draft harus diperiksa melalui preview sebelum
+          dapat diaktifkan.
         </p>
       </div>
     </form>

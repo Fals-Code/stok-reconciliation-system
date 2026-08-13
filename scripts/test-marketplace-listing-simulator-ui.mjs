@@ -18,8 +18,8 @@ const UUID_PATTERN =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 const HASH_PATTERN = /^[0-9a-f]{64}$/i;
 const FIXTURE_PREFIX = "marketplace-listing-simulator-ui-smoke:";
-const DURABLE_RUN_ID = "DURABLE-V1";
-const DURABLE_SHORT_RUN_ID = "DURABLEV1";
+const DURABLE_RUN_ID = "DURABLE-V2";
+const DURABLE_SHORT_RUN_ID = "DURABLEV2";
 const DURABLE_EVENT_CLOCK_BASE = Date.parse("2026-07-01T00:00:00.000Z");
 
 const results = [];
@@ -1006,8 +1006,8 @@ async function main(args) {
     "package.json",
     "scripts/create-demo-admin.mjs",
     "scripts/test-marketplace-listing-simulator-ui.mjs",
-    "src/app/actions.ts",
-    "src/app/marketplace/page.tsx",
+    "src/app/marketplace/simulator/actions.ts",
+    "src/app/marketplace/simulator/page.tsx",
     "src/lib/supabase-rest.ts",
     "supabase/migrations/202607220013_marketplace_listing_recipe_foundation.sql",
     "supabase/migrations/202607220014_marketplace_listing_event_normalization.sql",
@@ -1268,7 +1268,7 @@ returning organization_id::text;
 
   assertTest(serverReady, "Next.js server siap");
 
-  const marketplaceUrl = `${args.baseUrl}/marketplace`;
+  const marketplaceUrl = `${args.baseUrl}/marketplace/simulator`;
   const unauthenticated = await getUnauthenticated(marketplaceUrl);
 
   assertTest(
