@@ -14,7 +14,7 @@ export function OrderWorkspaceTabs({
         aria-current={active === "orders" ? "page" : undefined}
         className={`rounded-[calc(var(--ui-radius-md)-2px)] px-3.5 py-2 text-sm font-semibold transition-colors motion-reduce:transition-none ${
           active === "orders"
-            ? "bg-ui-primary text-white shadow-[var(--ui-shadow-sm)]"
+            ? "bg-ui-primary text-ui-text-on-primary shadow-[var(--ui-shadow-sm)]"
             : "text-ui-text hover:bg-ui-surface hover:text-ui-primary"
         }`}
         href="/marketplace"
@@ -26,7 +26,7 @@ export function OrderWorkspaceTabs({
         aria-current={active === "returns" ? "page" : undefined}
         className={`rounded-[calc(var(--ui-radius-md)-2px)] px-3.5 py-2 text-sm font-semibold transition-colors motion-reduce:transition-none ${
           active === "returns"
-            ? "bg-ui-primary text-white shadow-[var(--ui-shadow-sm)]"
+            ? "bg-ui-primary text-ui-text-on-primary shadow-[var(--ui-shadow-sm)]"
             : "text-ui-text hover:bg-ui-surface hover:text-ui-primary"
         }`}
         href="/returns"

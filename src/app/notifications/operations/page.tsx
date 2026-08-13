@@ -4,6 +4,7 @@ import Link from "next/link";
 
 import { AppShell } from "@/app/app-shell/app-shell";
 import PageSectionNav from "@/app/app-shell/page-section-nav";
+import NotificationStatePanel from "@/app/notifications/operations/notification-state-panel";
 import {
   retryNotificationOutboxEventAction,
   runNotificationEvaluationAction,
@@ -725,6 +726,7 @@ export default async function NotificationOperationsPage({
       <PageSectionNav
         items={[
           { href: "#overview", label: "Ringkasan" },
+          { href: "#notification-state", label: "Status notifikasi" },
           { href: "#evaluations", label: "Evaluasi manual" },
           { href: "#outbox", label: "Outbox" },
         ]}
@@ -748,6 +750,7 @@ export default async function NotificationOperationsPage({
           </div>
         ) : null}
 
+        <NotificationStatePanel />
         <EvaluationSection returnTo={returnTo} />
         <OutboxSection
           events={events}

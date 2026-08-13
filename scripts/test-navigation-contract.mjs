@@ -290,20 +290,81 @@ for (const [file, body] of Object.entries(contextualSources)) {
   assert.ok(body.includes("returnTo"), `${file} harus mempertahankan returnTo`);
 }
 
-// 9. Legacy write UI yang tidak punya consumer tidak boleh tertinggal sebagai action aktif.
+// 9. Notification Center bukan workspace utama, tetapi capability write tetap contextual.
 assert.equal(
   await exists("src/app/notifications/actions.ts"),
-  false,
-  "Legacy Notification Center write actions harus dihapus",
+  true,
+  "Notification write actions tetap tersedia sebagai capability contextual",
 );
 assert.equal(
   await exists("scripts/test-notification-write-actions.mjs"),
-  false,
-  "Test legacy Notification Center write UI harus dihapus",
+  true,
+  "Regression test notification write actions tetap tersedia",
 );
 
 const packageJson = JSON.parse(await source("package.json"));
-assert.equal(packageJson.scripts["test:notification-write-actions"], undefined);
+assert.equal(
+  packageJson.scripts["test:notification-write-actions"],
+  "node scripts/test-notification-write-actions.mjs",
+  "Package script notification write actions tetap tersedia",
+);
+
+const notificationCompatibility = await source(
+  "src/app/notifications/page.tsx",
+);
+assert.match(
+  notificationCompatibility,
+  /redirect\(["']\/["']\)/,
+  "/notifications tetap compatibility redirect ke Beranda",
+);
+assert.doesNotMatch(
+  notificationCompatibility,
+  /acknowledgeNotificationAction|setNotificationReadStateAction|revokeNotificationAcknowledgmentAction/,
+  "/notifications tidak kembali menjadi Notification Center workspace",
+);
+
+const notificationOperations = await source(
+  "src/app/notifications/operations/page.tsx",
+);
+assert.match(
+  notificationOperations,
+  /NotificationStatePanel/,
+  "Diagnostics memasang contextual notification state capability",
+);
+assert.match(
+  notificationOperations,
+  /#notification-state/,
+  "Diagnostics menyediakan navigation anchor untuk status notifikasi",
+);
+
+const notificationStatePanel = await source(
+  "src/app/notifications/operations/notification-state-panel.tsx",
+);
+for (const actionName of [
+  "setNotificationReadStateAction",
+  "acknowledgeNotificationAction",
+  "revokeNotificationAcknowledgmentAction",
+]) {
+  assert.match(
+    notificationStatePanel,
+    new RegExp(actionName),
+    `${actionName} harus reachable melalui Diagnostics`,
+  );
+}
+
+const notificationActions = await source(
+  "src/app/notifications/actions.ts",
+);
+assert.match(
+  notificationActions,
+  /\/notifications\/operations#notification-state/,
+  "Notification mutation kembali ke contextual Diagnostics state",
+);
+assert.match(
+  notificationActions,
+  /destination\.pathname !== "\/notifications\/operations"/,
+  "Notification mutation membatasi return route ke Diagnostics",
+);
 
 const rootActions = await source("src/app/actions.ts");
 for (const legacyAction of [
