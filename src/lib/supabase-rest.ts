@@ -913,6 +913,11 @@ export type ManualOutboundPreview = {
   products: ManualOutboundPreviewProduct[];
   allocations: ManualOutboundPreviewAllocation[];
   blockers: ManualOutboundPreviewBlocker[];
+  promoReference?: {
+    id: string;
+    code: string;
+    name: string;
+  } | null;
 };
 
 export type ManualOutboundMutationAllocation = {
@@ -1011,6 +1016,7 @@ export type ManualOutboundData = {
   selectedOutbound: ManualOutboundHeader | null;
   lines: ManualOutboundLine[];
   allocations: ManualOutboundAllocation[];
+  promos: PromoReferenceRow[];
 };
 
 
@@ -1876,6 +1882,7 @@ export async function getManualOutboundData(
     selectedOutboundRows,
     lines,
     allocations,
+    promos,
   ] = await Promise.all([
     apiFetch<ProductInventory[]>(
       `product_inventory?organization_id=eq.${encodedOrganizationId}&is_active=eq.true&select=*&order=name.asc`,
@@ -1886,6 +1893,7 @@ export async function getManualOutboundData(
     selectedOutboundPromise,
     selectedLinesPromise,
     selectedAllocationsPromise,
+    getPromoReferences(resolvedOrganizationId),
   ]);
 
   const selectedOutbound = selectedOutboundRows[0] ?? null;
@@ -1906,6 +1914,7 @@ export async function getManualOutboundData(
     selectedOutbound,
     lines,
     allocations,
+    promos,
   };
 }
 

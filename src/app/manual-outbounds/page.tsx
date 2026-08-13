@@ -217,22 +217,97 @@ export default async function ManualOutboundsPage({
         ) : null}
 
         {selected ? (
-          <section className="mt-6 rounded-[var(--ui-radius-lg)] border border-ui-border bg-ui-surface p-5 shadow-[var(--ui-shadow-sm)] sm:p-6">
-            <WizardProgress ariaLabel="Tahapan Barang Keluar" current={3} />
-            <div className="mt-6 flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
-              <div><p className="text-sm font-semibold text-ui-primary">Barang keluar berhasil dicatat</p><h2 className="mt-1 text-xl font-semibold text-ui-text">{selected.outbound_no}</h2><p className="mt-1 text-sm text-ui-text-muted">{reasonLabel(selected.reason_code_snapshot)} · {numberFormatter.format(selected.total_quantity)} unit</p></div>
-              <StatusBadge tone="selected">Tersimpan</StatusBadge>
-            </div>
-            <div className="mt-5 grid gap-3 text-sm sm:grid-cols-2"><p><span className="text-ui-text-muted">Referensi</span><br /><span className="font-medium text-ui-text">{safeReference(selected.source_ref)}</span></p><p><span className="text-ui-text-muted">Waktu</span><br /><span className="font-medium text-ui-text">{formatDate(selected.occurred_at)}</span></p></div>
-            {data.allocations.length ? <div className="mt-5"><h3 className="text-sm font-semibold text-ui-text">Alokasi FEFO tersimpan</h3><div className="mt-3 grid gap-3">{data.allocations.map((allocation) => <div className="rounded-[var(--ui-radius-md)] border border-ui-border bg-ui-surface-subtle p-4" key={allocation.allocation_id}><p className="font-semibold text-ui-text">{allocation.product_sku_snapshot} · Kode Batch {allocation.batch_code_snapshot}</p><p className="mt-1 text-sm text-ui-text-muted">Kedaluwarsa {allocation.expiry_date_snapshot} · {numberFormatter.format(allocation.quantity_allocated)} unit keluar</p></div>)}</div></div> : null}
-            <div className="mt-6 flex flex-col gap-3 sm:flex-row">
-              <Link className="inline-flex min-h-[var(--ui-control-height)] items-center justify-center rounded-[var(--ui-radius-md)] bg-ui-primary px-4 text-sm font-semibold text-ui-text-on-primary" href="/manual-outbounds">Catat Barang Keluar Lagi</Link>
-              <Link className="inline-flex min-h-[var(--ui-control-height)] items-center justify-center rounded-[var(--ui-radius-md)] border border-ui-border px-4 text-sm font-semibold text-ui-text" href={`/entry-corrections?transactionId=${encodeURIComponent(selected.transaction_id)}#detail`}>Buka Ledger dan Koreksi Entri</Link>
-            </div>
-          </section>
+          (() => {
+            const promoRef = selected.metadata?.promoReference as { code: string; name: string } | undefined;
+            const isPromo = selected.reason_code_snapshot === "PROMO";
+
+            return (
+              <section className="mt-6 rounded-[var(--ui-radius-lg)] border border-ui-border bg-ui-surface p-5 shadow-[var(--ui-shadow-sm)] sm:p-6">
+                <WizardProgress ariaLabel="Tahapan Barang Keluar" current={3} />
+                <div className="mt-6 flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+                  <div>
+                    <p className="text-sm font-semibold text-ui-primary">Barang keluar berhasil dicatat</p>
+                    <h2 className="mt-1 text-xl font-semibold text-ui-text">{selected.outbound_no}</h2>
+                    <p className="mt-1 text-sm text-ui-text-muted">
+                      {reasonLabel(selected.reason_code_snapshot)} · {numberFormatter.format(selected.total_quantity)} unit
+                    </p>
+                  </div>
+                  <StatusBadge tone="selected">Tersimpan</StatusBadge>
+                </div>
+                <div className="mt-5 grid gap-3 text-sm sm:grid-cols-2">
+                  <p>
+                    <span className="text-ui-text-muted">Referensi</span>
+                    <br />
+                    <span className="font-medium text-ui-text">{safeReference(selected.source_ref)}</span>
+                  </p>
+                  <p>
+                    <span className="text-ui-text-muted">Waktu</span>
+                    <br />
+                    <span className="font-medium text-ui-text">{formatDate(selected.occurred_at)}</span>
+                  </p>
+                  {isPromo ? (
+                    <p className="sm:col-span-2">
+                      <span className="text-ui-text-muted">Referensi Promo</span>
+                      <br />
+                      <span className="font-medium text-ui-text">
+                        {promoRef
+                          ? `${promoRef.code} — ${promoRef.name}`
+                          : (selected.metadata?.reference as string | null) || "Tidak ada referensi"}
+                      </span>
+                    </p>
+                  ) : (
+                    (selected.metadata?.reference as string | null) ? (
+                      <p className="sm:col-span-2">
+                        <span className="text-ui-text-muted">Referensi Kegiatan</span>
+                        <br />
+                        <span className="font-medium text-ui-text">
+                          {selected.metadata.reference as string}
+                        </span>
+                      </p>
+                    ) : null
+                  )}
+                </div>
+                {data.allocations.length ? (
+                  <div className="mt-5">
+                    <h3 className="text-sm font-semibold text-ui-text">Alokasi FEFO tersimpan</h3>
+                    <div className="mt-3 grid gap-3">
+                      {data.allocations.map((allocation) => (
+                        <div className="rounded-[var(--ui-radius-md)] border border-ui-border bg-ui-surface-subtle p-4" key={allocation.allocation_id}>
+                          <p className="font-semibold text-ui-text">
+                            {allocation.product_sku_snapshot} · Kode Batch {allocation.batch_code_snapshot}
+                          </p>
+                          <p className="mt-1 text-sm text-ui-text-muted">
+                            Kedaluwarsa {allocation.expiry_date_snapshot} · {numberFormatter.format(allocation.quantity_allocated)} unit keluar
+                          </p>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                ) : null}
+                <div className="mt-6 flex flex-col gap-3 sm:flex-row">
+                  <Link className="inline-flex min-h-[var(--ui-control-height)] items-center justify-center rounded-[var(--ui-radius-md)] bg-ui-primary px-4 text-sm font-semibold text-ui-text-on-primary" href="/manual-outbounds">Catat Barang Keluar Lagi</Link>
+                  <Link className="inline-flex min-h-[var(--ui-control-height)] items-center justify-center rounded-[var(--ui-radius-md)] border border-ui-border px-4 text-sm font-semibold text-ui-text" href={`/entry-corrections?transactionId=${encodeURIComponent(selected.transaction_id)}#detail`}>Buka Ledger dan Koreksi Entri</Link>
+                </div>
+              </section>
+            );
+          })()
         ) : (
           <section className="mt-6">
-            <ManualOutboundDraftForm contextProductId={contextProductId} initialDraft={draft} initialPreviewDraft={preview ? serializeManualOutboundDraft(draft) : null} intentId={preview?.eligible ? randomUUID() : null} preview={preview} previewError={previewError} products={data.products.map((product) => ({ productId: product.product_id, sku: product.sku, name: product.name, availableQuantity: product.available_qty }))} />
+            <ManualOutboundDraftForm
+              contextProductId={contextProductId}
+              initialDraft={draft}
+              initialPreviewDraft={preview ? serializeManualOutboundDraft(draft) : null}
+              intentId={preview?.eligible ? randomUUID() : null}
+              preview={preview}
+              previewError={previewError}
+              products={data.products.map((product) => ({
+                productId: product.product_id,
+                sku: product.sku,
+                name: product.name,
+                availableQuantity: product.available_qty
+              }))}
+              promos={data.promos}
+            />
           </section>
         )}
       </div>
