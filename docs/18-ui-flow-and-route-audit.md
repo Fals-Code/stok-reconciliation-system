@@ -1,8 +1,8 @@
 # UI Flow & Route Simplification Audit
 
 **Project:** Stok Management System / Stok Reconciliation System
-**Status:** Audit route/flow aktif - diperbarui untuk reachability Pengaturan
-**Tanggal:** 12 Agustus 2026
+**Status:** Final
+**Tanggal:** 13 Agustus 2026
 **Berlaku untuk:** frontend redesign / operator-first usability refinement
 
 ---
@@ -76,12 +76,12 @@ Semua halaman lain dibuka secara kontekstual dari empat area tersebut.
 
 ```text
 BERANDA
-ÃƒÂ¢Ã¢â‚¬ÂÃ¢â‚¬Å¡
-ÃƒÂ¢Ã¢â‚¬ÂÃ…â€œÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ Pekerjaan Hari Ini
-ÃƒÂ¢Ã¢â‚¬ÂÃ…â€œÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ Masalah yang perlu tindakan
-ÃƒÂ¢Ã¢â‚¬ÂÃ…â€œÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ Batch perlu perhatian
-ÃƒÂ¢Ã¢â‚¬ÂÃ¢â‚¬ÂÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ Aktivitas terbaru
-     ÃƒÂ¢Ã¢â‚¬Â Ã¢â‚¬Å“
+ÃƒÂ¢Ã¢â‚¬ÂÃ¢â‚¬Å¡
+ÃƒÂ¢Ã¢â‚¬ÂÃ…â€œÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ Pekerjaan Hari Ini
+ÃƒÂ¢Ã¢â‚¬ÂÃ…â€œÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ Masalah yang perlu tindakan
+ÃƒÂ¢Ã¢â‚¬ÂÃ…â€œÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ Batch perlu perhatian
+ÃƒÂ¢Ã¢â‚¬ÂÃ¢â‚¬ÂÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ Aktivitas terbaru
+     ↓
      deep-link ke pekerjaan sebenarnya
 ```
 
@@ -103,19 +103,19 @@ Notification tidak perlu menjadi workspace utama terpisah. Notifikasi operasiona
 
 ```text
 STOK
-ÃƒÂ¢Ã¢â‚¬ÂÃ¢â‚¬Å¡
-ÃƒÂ¢Ã¢â‚¬ÂÃ…â€œÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ Daftar Stok
-ÃƒÂ¢Ã¢â‚¬ÂÃ¢â‚¬Å¡   ÃƒÂ¢Ã¢â‚¬ÂÃ¢â‚¬ÂÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ Produk
-ÃƒÂ¢Ã¢â‚¬ÂÃ¢â‚¬Å¡       ÃƒÂ¢Ã¢â‚¬ÂÃ¢â‚¬ÂÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ Batch
-ÃƒÂ¢Ã¢â‚¬ÂÃ¢â‚¬Å¡
-ÃƒÂ¢Ã¢â‚¬ÂÃ…â€œÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ Catat Perubahan
-ÃƒÂ¢Ã¢â‚¬ÂÃ¢â‚¬Å¡   ÃƒÂ¢Ã¢â‚¬ÂÃ…â€œÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ Barang Masuk
-ÃƒÂ¢Ã¢â‚¬ÂÃ¢â‚¬Å¡   ÃƒÂ¢Ã¢â‚¬ÂÃ…â€œÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ Barang Keluar
-ÃƒÂ¢Ã¢â‚¬ÂÃ¢â‚¬Å¡   ÃƒÂ¢Ã¢â‚¬ÂÃ¢â‚¬ÂÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ Barang Rusak / Kedaluwarsa
-ÃƒÂ¢Ã¢â‚¬ÂÃ¢â‚¬Å¡
-ÃƒÂ¢Ã¢â‚¬ÂÃ…â€œÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ Hitung Stok
-ÃƒÂ¢Ã¢â‚¬ÂÃ¢â‚¬Å¡
-ÃƒÂ¢Ã¢â‚¬ÂÃ¢â‚¬ÂÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ Masalah Stok
+ÃƒÂ¢Ã¢â‚¬ÂÃ¢â‚¬Å¡
+ÃƒÂ¢Ã¢â‚¬ÂÃ…â€œÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ Daftar Stok
+ÃƒÂ¢Ã¢â‚¬ÂÃ¢â‚¬Å¡   ÃƒÂ¢Ã¢â‚¬ÂÃ¢â‚¬ÂÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ Produk
+ÃƒÂ¢Ã¢â‚¬ÂÃ¢â‚¬Å¡       ÃƒÂ¢Ã¢â‚¬ÂÃ¢â‚¬ÂÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ Batch
+ÃƒÂ¢Ã¢â‚¬ÂÃ¢â‚¬Å¡
+ÃƒÂ¢Ã¢â‚¬ÂÃ…â€œÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ Catat Perubahan
+ÃƒÂ¢Ã¢â‚¬ÂÃ¢â‚¬Å¡   ÃƒÂ¢Ã¢â‚¬ÂÃ…â€œÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ Barang Masuk
+ÃƒÂ¢Ã¢â‚¬ÂÃ¢â‚¬Å¡   ÃƒÂ¢Ã¢â‚¬ÂÃ…â€œÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ Barang Keluar
+ÃƒÂ¢Ã¢â‚¬ÂÃ¢â‚¬Å¡   ÃƒÂ¢Ã¢â‚¬ÂÃ¢â‚¬ÂÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ Barang Rusak / Kedaluwarsa
+ÃƒÂ¢Ã¢â‚¬ÂÃ¢â‚¬Å¡
+ÃƒÂ¢Ã¢â‚¬ÂÃ…â€œÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ Hitung Stok
+ÃƒÂ¢Ã¢â‚¬ÂÃ¢â‚¬Å¡
+ÃƒÂ¢Ã¢â‚¬ÂÃ¢â‚¬ÂÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ Masalah Stok
 ```
 
 Halaman utama Stok adalah workspace, bukan sekadar daftar produk.
@@ -138,14 +138,14 @@ Dari Stok, user harus dapat:
 
 ```text
 PESANAN
-ÃƒÂ¢Ã¢â‚¬ÂÃ¢â‚¬Å¡
-ÃƒÂ¢Ã¢â‚¬ÂÃ…â€œÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ Daftar Pesanan
-ÃƒÂ¢Ã¢â‚¬ÂÃ¢â‚¬Å¡   ÃƒÂ¢Ã¢â‚¬ÂÃ¢â‚¬ÂÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ Detail Pesanan
-ÃƒÂ¢Ã¢â‚¬ÂÃ¢â‚¬Å¡       ÃƒÂ¢Ã¢â‚¬ÂÃ…â€œÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ lifecycle marketplace
-ÃƒÂ¢Ã¢â‚¬ÂÃ¢â‚¬Å¡       ÃƒÂ¢Ã¢â‚¬ÂÃ¢â‚¬ÂÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ pembatalan
-ÃƒÂ¢Ã¢â‚¬ÂÃ¢â‚¬Å¡
-ÃƒÂ¢Ã¢â‚¬ÂÃ¢â‚¬ÂÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ Retur & Klaim
-    ÃƒÂ¢Ã¢â‚¬ÂÃ¢â‚¬ÂÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ Detail Retur
+ÃƒÂ¢Ã¢â‚¬ÂÃ¢â‚¬Å¡
+ÃƒÂ¢Ã¢â‚¬ÂÃ…â€œÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ Daftar Pesanan
+ÃƒÂ¢Ã¢â‚¬ÂÃ¢â‚¬Å¡   ÃƒÂ¢Ã¢â‚¬ÂÃ¢â‚¬ÂÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ Detail Pesanan
+ÃƒÂ¢Ã¢â‚¬ÂÃ¢â‚¬Å¡       ÃƒÂ¢Ã¢â‚¬ÂÃ…â€œÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ lifecycle marketplace
+ÃƒÂ¢Ã¢â‚¬ÂÃ¢â‚¬Å¡       ÃƒÂ¢Ã¢â‚¬ÂÃ¢â‚¬ÂÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ pembatalan
+ÃƒÂ¢Ã¢â‚¬ÂÃ¢â‚¬Å¡
+ÃƒÂ¢Ã¢â‚¬ÂÃ¢â‚¬ÂÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ Retur & Klaim
+    ÃƒÂ¢Ã¢â‚¬ÂÃ¢â‚¬ÂÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ Detail Retur
 ```
 
 Pembatalan marketplace tidak perlu menjadi workspace terpisah.
@@ -154,9 +154,9 @@ Flow yang diinginkan:
 
 ```text
 Pesanan
-ÃƒÂ¢Ã¢â‚¬Â Ã¢â‚¬â„¢ Detail Pesanan
-ÃƒÂ¢Ã¢â‚¬Â Ã¢â‚¬â„¢ tindakan yang tersedia sesuai state
-ÃƒÂ¢Ã¢â‚¬Â Ã¢â‚¬â„¢ pembatalan bila memang relevan
+→ Detail Pesanan
+→ tindakan yang tersedia sesuai state
+→ pembatalan bila memang relevan
 ```
 
 Retur dan klaim tetap menjadi sub-flow Pesanan karena keduanya lahir dari lifecycle marketplace.
@@ -167,10 +167,10 @@ Retur dan klaim tetap menjadi sub-flow Pesanan karena keduanya lahir dari lifecy
 
 ```text
 PENGATURAN
-ÃƒÂ¢Ã¢â‚¬ÂÃ¢â‚¬Å¡
-ÃƒÂ¢Ã¢â‚¬ÂÃ…â€œÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ Profil/Admin
-ÃƒÂ¢Ã¢â‚¬ÂÃ…â€œÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ Setup Stok Awal
-ÃƒÂ¢Ã¢â‚¬ÂÃ¢â‚¬ÂÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ Konfigurasi administratif/teknis yang memang perlu dikelola Admin
+ÃƒÂ¢Ã¢â‚¬ÂÃ¢â‚¬Å¡
+ÃƒÂ¢Ã¢â‚¬ÂÃ…â€œÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ Profil/Admin
+ÃƒÂ¢Ã¢â‚¬ÂÃ…â€œÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ Setup Stok Awal
+ÃƒÂ¢Ã¢â‚¬ÂÃ¢â‚¬ÂÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ Konfigurasi administratif/teknis yang memang perlu dikelola Admin
 ```
 
 Opening balance bukan pekerjaan harian gudang.
@@ -221,7 +221,7 @@ Prinsipnya:
 | `/stock-disposals` | KEEP action | Barang Rusak / Kedaluwarsa |
 | `/stocktakes` | KEEP sub-flow | Daftar/pekerjaan Hitung Stok |
 | `/stocktakes/new` | KEEP contextual | Mulai Hitung Stok |
-| `/stocktakes/[stocktakeId]` | COMPLETE | Cancel end-to-end belum ada; status `CANCELLED` ada tetapi command/RPC/action cancel belum ditemukan |
+| `/stocktakes/[stocktakeId]` | COMPLETE | Cancel end-to-end lengkap, auditable, idempotent, stock-neutral |
 | `/stock-issues` | KEEP sub-flow | Masalah Stok |
 | `/reconciliation` | COMPATIBILITY DONE | Redirect ke `/stock-issues`; bukan konsep user-facing terpisah |
 | `/ledger` | KEEP contextual | Riwayat Stok |
@@ -243,7 +243,7 @@ Jika `/` sudah menjadi Hari Ini, route `/today` redundant.
 Keputusan:
 
 ```text
-REMOVE / MERGE INTO /
+COMPATIBILITY / Redirect ke /
 ```
 
 ---
@@ -256,22 +256,22 @@ Arah yang benar:
 
 ```text
 Beranda
-ÃƒÂ¢Ã¢â‚¬Â Ã¢â‚¬â„¢ pekerjaan yang perlu dilakukan
-ÃƒÂ¢Ã¢â‚¬Â Ã¢â‚¬â„¢ deep-link ke tindakan
+→ pekerjaan yang perlu dilakukan
+→ deep-link ke tindakan
 ```
 
 Bukan:
 
 ```text
 Notifikasi
-ÃƒÂ¢Ã¢â‚¬Â Ã¢â‚¬â„¢ baca notifikasi
-ÃƒÂ¢Ã¢â‚¬Â Ã¢â‚¬â„¢ cari halaman kerja
+→ baca notifikasi
+→ cari halaman kerja
 ```
 
 Keputusan:
 
 ```text
-HIDE / MERGE ke Pekerjaan Hari Ini
+COMPATIBILITY / Redirect ke /; notification state tetap contextual di /notifications/operations#notification-state
 ```
 
 Operational notification engine tetap boleh ada di backend.
@@ -333,20 +333,20 @@ Flow yang direkomendasikan:
 
 ```text
 Riwayat Stok
-ÃƒÂ¢Ã¢â‚¬Â Ã¢â‚¬â„¢ Detail Transaksi
-ÃƒÂ¢Ã¢â‚¬Â Ã¢â‚¬â„¢ Ada kesalahan?
-ÃƒÂ¢Ã¢â‚¬Â Ã¢â‚¬â„¢ Batalkan Transaksi
-ÃƒÂ¢Ã¢â‚¬Â Ã¢â‚¬â„¢ Preview dampak
-ÃƒÂ¢Ã¢â‚¬Â Ã¢â‚¬â„¢ Konfirmasi
-ÃƒÂ¢Ã¢â‚¬Â Ã¢â‚¬â„¢ Reversal baru tercatat
+→ Detail Transaksi
+→ Ada kesalahan?
+→ Batalkan Transaksi
+→ Preview dampak
+→ Konfirmasi
+→ Reversal baru tercatat
 ```
 
 Bukan:
 
 ```text
 Sidebar
-ÃƒÂ¢Ã¢â‚¬Â Ã¢â‚¬â„¢ Koreksi Entri
-ÃƒÂ¢Ã¢â‚¬Â Ã¢â‚¬â„¢ cari transaksi lagi
+→ Koreksi Entri
+→ cari transaksi lagi
 ```
 
 Route `/entry-corrections` boleh tetap ada untuk implementasi, tetapi tidak perlu dikenal sebagai area utama.
@@ -390,11 +390,11 @@ Flow:
 
 ```text
 Stok
-ÃƒÂ¢Ã¢â‚¬Â Ã¢â‚¬â„¢ Barang Masuk
-ÃƒÂ¢Ã¢â‚¬Â Ã¢â‚¬â„¢ Isi form
-ÃƒÂ¢Ã¢â‚¬Â Ã¢â‚¬â„¢ Simpan
-ÃƒÂ¢Ã¢â‚¬Â Ã¢â‚¬â„¢ Berhasil
-ÃƒÂ¢Ã¢â‚¬Â Ã¢â‚¬â„¢ Kembali ke Stok / Lihat Transaksi / Catat Lagi
+→ Barang Masuk
+→ Isi form
+→ Simpan
+→ Berhasil
+→ Kembali ke Stok / Lihat Transaksi / Catat Lagi
 ```
 
 History tetap melalui Riwayat Stok.
@@ -405,12 +405,12 @@ Flow:
 
 ```text
 Stok
-ÃƒÂ¢Ã¢â‚¬Â Ã¢â‚¬â„¢ Barang Keluar
-ÃƒÂ¢Ã¢â‚¬Â Ã¢â‚¬â„¢ Isi Data
-ÃƒÂ¢Ã¢â‚¬Â Ã¢â‚¬â„¢ Periksa
-ÃƒÂ¢Ã¢â‚¬Â Ã¢â‚¬â„¢ Simpan
-ÃƒÂ¢Ã¢â‚¬Â Ã¢â‚¬â„¢ Berhasil
-ÃƒÂ¢Ã¢â‚¬Â Ã¢â‚¬â„¢ Kembali ke Stok / Lihat Transaksi / Catat Lagi
+→ Barang Keluar
+→ Isi Data
+→ Periksa
+→ Simpan
+→ Berhasil
+→ Kembali ke Stok / Lihat Transaksi / Catat Lagi
 ```
 
 Batch tetap dipilih otomatis oleh FEFO.
@@ -421,12 +421,12 @@ Flow:
 
 ```text
 Stok
-ÃƒÂ¢Ã¢â‚¬Â Ã¢â‚¬â„¢ Barang Rusak / Kedaluwarsa
-ÃƒÂ¢Ã¢â‚¬Â Ã¢â‚¬â„¢ Isi Data
-ÃƒÂ¢Ã¢â‚¬Â Ã¢â‚¬â„¢ Periksa
-ÃƒÂ¢Ã¢â‚¬Â Ã¢â‚¬â„¢ Simpan
-ÃƒÂ¢Ã¢â‚¬Â Ã¢â‚¬â„¢ Berhasil
-ÃƒÂ¢Ã¢â‚¬Â Ã¢â‚¬â„¢ Kembali ke Stok / Lihat Transaksi / Catat Lagi
+→ Barang Rusak / Kedaluwarsa
+→ Isi Data
+→ Periksa
+→ Simpan
+→ Berhasil
+→ Kembali ke Stok / Lihat Transaksi / Catat Lagi
 ```
 
 Rusak dan kedaluwarsa tetap berbeda secara reason/business meaning bila kontrak domain mengharuskannya.
@@ -441,10 +441,10 @@ Flow:
 
 ```text
 Stok
-ÃƒÂ¢Ã¢â‚¬Â Ã¢â‚¬â„¢ pilih Produk
-ÃƒÂ¢Ã¢â‚¬Â Ã¢â‚¬â„¢ Detail Produk
-ÃƒÂ¢Ã¢â‚¬Â Ã¢â‚¬â„¢ pilih Batch
-ÃƒÂ¢Ã¢â‚¬Â Ã¢â‚¬â„¢ Detail Batch
+→ pilih Produk
+→ Detail Produk
+→ pilih Batch
+→ Detail Batch
 ```
 
 Detail teknis boleh kompleks, tetapi user tidak perlu memahami route internal.
@@ -459,13 +459,13 @@ Flow utama:
 
 ```text
 Stok
-ÃƒÂ¢Ã¢â‚¬Â Ã¢â‚¬â„¢ Hitung Stok
-ÃƒÂ¢Ã¢â‚¬Â Ã¢â‚¬â„¢ Mulai Hitung Stok
-ÃƒÂ¢Ã¢â‚¬Â Ã¢â‚¬â„¢ Counting
-ÃƒÂ¢Ã¢â‚¬Â Ã¢â‚¬â„¢ Review
-ÃƒÂ¢Ã¢â‚¬Â Ã¢â‚¬â„¢ Approval
-ÃƒÂ¢Ã¢â‚¬Â Ã¢â‚¬â„¢ Posting Adjustment
-ÃƒÂ¢Ã¢â‚¬Â Ã¢â‚¬â„¢ Selesai
+→ Hitung Stok
+→ Mulai Hitung Stok
+→ Counting
+→ Review
+→ Approval
+→ Posting Adjustment
+→ Selesai
 ```
 
 Hitung Stok tidak boleh mengubah stok selama:
@@ -487,13 +487,13 @@ State `CANCELLED` sudah dikenal, tetapi flow pembatalan belum lengkap.
 Target behavior yang perlu diaudit dan dibangun:
 
 ```text
-DRAFT      ÃƒÂ¢Ã¢â‚¬Â Ã¢â‚¬â„¢ boleh dibatalkan
-READY      ÃƒÂ¢Ã¢â‚¬Â Ã¢â‚¬â„¢ boleh dibatalkan
-COUNTING   ÃƒÂ¢Ã¢â‚¬Â Ã¢â‚¬â„¢ boleh dibatalkan, attempt tetap tersimpan
-REVIEW     ÃƒÂ¢Ã¢â‚¬Â Ã¢â‚¬â„¢ perlu keputusan domain yang eksplisit
-APPROVED   ÃƒÂ¢Ã¢â‚¬Â Ã¢â‚¬â„¢ jangan pakai cancel biasa
-POSTING    ÃƒÂ¢Ã¢â‚¬Â Ã¢â‚¬â„¢ jangan pakai cancel biasa
-POSTED     ÃƒÂ¢Ã¢â‚¬Â Ã¢â‚¬â„¢ tidak boleh dibatalkan; gunakan mekanisme koreksi/reversal yang sesuai
+DRAFT      → boleh dibatalkan
+READY      → boleh dibatalkan
+COUNTING   → boleh dibatalkan, attempt tetap tersimpan
+REVIEW     → perlu keputusan domain yang eksplisit
+APPROVED   → jangan pakai cancel biasa
+POSTING    → jangan pakai cancel biasa
+POSTED     → tidak boleh dibatalkan; gunakan mekanisme koreksi/reversal yang sesuai
 ```
 
 Pembatalan:
@@ -536,7 +536,7 @@ Keputusan tahap ini menempatkan mapping sebagai capability administratif di Peng
 
 Phase 2 mewajibkan import/simulator diperlakukan sebagai adapter di belakang normalized event contract yang sama dengan future API/webhook.
 
-Route `/marketplace/import` dan `/marketplace/import/[jobId]` masih ada. Capability import/simulator tetap diperlukan sebagai adapter. Gap baseline `ea1b940` sudah ditutup melalui link `Import / Simulator Pesanan` dari `/settings`; flow import ke detail job dan kembali tetap dipertahankan.
+Import Pesanan tersedia di `/marketplace/import` (dan detail job `/marketplace/import/[jobId]`), sedangkan Simulator Pesanan tersedia di `/marketplace/simulator`. Keduanya terpisah di Pengaturan sebagai adapter administratif.
 
 Audit harus memastikan:
 
@@ -544,13 +544,14 @@ Audit harus memastikan:
 - event yang dihasilkan memakai normalized contract yang sama;
 - ledger, FEFO, dan order state machine tidak bergantung pada tombol simulator;
 - penggantian adapter dengan API/webhook tidak mengubah core logic;
-- import tidak harus menjadi menu harian operator.
+- import dan simulator tidak harus menjadi menu harian operator.
 
 Penempatan administratif yang diterapkan:
 
 ```text
 Pengaturan
-`-- Import / Simulator Pesanan
+├── Import Pesanan (/marketplace/import)
+└── Simulator Pesanan (/marketplace/simulator)
 ```
 
 Capability ini tetap adapter administratif dan tidak menjadi pekerjaan gudang harian.
@@ -613,25 +614,25 @@ Untuk setiap area, audit harus memeriksa:
 
 ```text
 Masuk dari mana?
-ÃƒÂ¢Ã¢â‚¬Â Ã¢â‚¬Å“
+↓
 User ingin menyelesaikan pekerjaan apa?
-ÃƒÂ¢Ã¢â‚¬Â Ã¢â‚¬Å“
+↓
 Apa informasi minimum yang dibutuhkan?
-ÃƒÂ¢Ã¢â‚¬Â Ã¢â‚¬Å“
+↓
 Apa primary action?
-ÃƒÂ¢Ã¢â‚¬Â Ã¢â‚¬Å“
+↓
 Apakah ada preview bila mutation berisiko?
-ÃƒÂ¢Ã¢â‚¬Â Ã¢â‚¬Å“
+↓
 Apa yang terjadi ketika berhasil?
-ÃƒÂ¢Ã¢â‚¬Â Ã¢â‚¬Å“
+↓
 Ke mana user pergi setelah berhasil?
-ÃƒÂ¢Ã¢â‚¬Â Ã¢â‚¬Å“
+↓
 Apa yang terjadi ketika gagal?
-ÃƒÂ¢Ã¢â‚¬Â Ã¢â‚¬Å“
+↓
 Apakah draft/context aman dipertahankan?
-ÃƒÂ¢Ã¢â‚¬Â Ã¢â‚¬Å“
+↓
 Apakah ada dead end?
-ÃƒÂ¢Ã¢â‚¬Â Ã¢â‚¬Å“
+↓
 Apakah ada halaman yang sebenarnya tidak perlu?
 ```
 
@@ -641,43 +642,43 @@ Apakah ada halaman yang sebenarnya tidak perlu?
 
 Audit lanjutan dilakukan per area, bukan berdasarkan nama folder.
 
-### Tahap 1 ÃƒÂ¢Ã¢â€šÂ¬Ã¢â‚¬Â Stok
+### Tahap 1 — Stok
 
 ```text
 Stok
-ÃƒÂ¢Ã¢â‚¬Â Ã¢â‚¬â„¢ Produk
-ÃƒÂ¢Ã¢â‚¬Â Ã¢â‚¬â„¢ Batch
-ÃƒÂ¢Ã¢â‚¬Â Ã¢â‚¬â„¢ Barang Masuk
-ÃƒÂ¢Ã¢â‚¬Â Ã¢â‚¬â„¢ Barang Keluar
-ÃƒÂ¢Ã¢â‚¬Â Ã¢â‚¬â„¢ Barang Rusak/Kedaluwarsa
-ÃƒÂ¢Ã¢â‚¬Â Ã¢â‚¬â„¢ Hitung Stok
-ÃƒÂ¢Ã¢â‚¬Â Ã¢â‚¬â„¢ Masalah Stok
-ÃƒÂ¢Ã¢â‚¬Â Ã¢â‚¬â„¢ Riwayat/Koreksi
+→ Produk
+→ Batch
+→ Barang Masuk
+→ Barang Keluar
+→ Barang Rusak/Kedaluwarsa
+→ Hitung Stok
+→ Masalah Stok
+→ Riwayat/Koreksi
 ```
 
-### Tahap 2 ÃƒÂ¢Ã¢â€šÂ¬Ã¢â‚¬Â Pesanan
+### Tahap 2 — Pesanan
 
 ```text
 Pesanan
-ÃƒÂ¢Ã¢â‚¬Â Ã¢â‚¬â„¢ Detail Pesanan
-ÃƒÂ¢Ã¢â‚¬Â Ã¢â‚¬â„¢ Reserve
-ÃƒÂ¢Ã¢â‚¬Â Ã¢â‚¬â„¢ Shipment
-ÃƒÂ¢Ã¢â‚¬Â Ã¢â‚¬â„¢ Cancellation
-ÃƒÂ¢Ã¢â‚¬Â Ã¢â‚¬â„¢ Return
-ÃƒÂ¢Ã¢â‚¬Â Ã¢â‚¬â„¢ Claim
+→ Detail Pesanan
+→ Reserve
+→ Shipment
+→ Cancellation
+→ Return
+→ Claim
 ```
 
-### Tahap 3 ÃƒÂ¢Ã¢â€šÂ¬Ã¢â‚¬Â Pengaturan
+### Tahap 3 — Pengaturan
 
 ```text
 Pengaturan
-ÃƒÂ¢Ã¢â‚¬Â Ã¢â‚¬â„¢ Profil/Admin
-ÃƒÂ¢Ã¢â‚¬Â Ã¢â‚¬â„¢ Setup Stok Awal
-ÃƒÂ¢Ã¢â‚¬Â Ã¢â‚¬â„¢ Marketplace mapping
-ÃƒÂ¢Ã¢â‚¬Â Ã¢â‚¬â„¢ Simulator/import bila diperlukan
+→ Profil/Admin
+→ Setup Stok Awal
+→ Marketplace mapping
+→ Simulator/import bila diperlukan
 ```
 
-### Tahap 4 ÃƒÂ¢Ã¢â€šÂ¬Ã¢â‚¬Â Beranda
+### Tahap 4 — Beranda
 
 Pastikan setiap work item benar-benar memiliki deep-link ke tindakan yang benar dan tidak membuat user mencari halaman secara manual.
 
@@ -710,16 +711,16 @@ User cukup memahami:
 
 ```text
 Saya ingin melihat kondisi hari ini
-ÃƒÂ¢Ã¢â‚¬Â Ã¢â‚¬â„¢ Beranda
+→ Beranda
 
 Saya ingin bekerja dengan stok
-ÃƒÂ¢Ã¢â‚¬Â Ã¢â‚¬â„¢ Stok
+→ Stok
 
 Saya ingin menangani pesanan atau retur
-ÃƒÂ¢Ã¢â‚¬Â Ã¢â‚¬â„¢ Pesanan
+→ Pesanan
 
 Saya ingin mengatur hal administratif
-ÃƒÂ¢Ã¢â‚¬Â Ã¢â‚¬â„¢ Pengaturan
+→ Pengaturan
 ```
 
 Jika user perlu memahami istilah internal seperti ledger sequence, reconciliation run, notification evaluator, adapter import, atau nama RPC hanya untuk menyelesaikan pekerjaan gudang harian, desain belum cukup sederhana.
@@ -764,7 +765,7 @@ Keputusan yang dianggap terkunci untuk audit berikutnya:
 
 Gunakan urutan source proyek yang berlaku:
 
-1. **VibeDev Phase 2 Sync Update v2 ÃƒÂ¢Ã¢â€šÂ¬Ã¢â‚¬Â 13 Juni 2026**
+1. **VibeDev Phase 2 Sync Update v2 — 13 Juni 2026**
 2. Brief Bounty Phase 1
 3. Dokumen proyek yang lebih baru
 4. README, business rules, migrations, tests, source, issue/PR
@@ -778,11 +779,11 @@ Jika dokumen ini bertentangan dengan source prioritas lebih tinggi, source lebih
 
 Target akhir bukan:
 
-> ÃƒÂ¢Ã¢â€šÂ¬Ã…â€œAplikasi memiliki semua halaman untuk setiap modul.ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â
+> “Aplikasi memiliki semua halaman untuk setiap modul.”
 
 Target akhirnya adalah:
 
-> **ÃƒÂ¢Ã¢â€šÂ¬Ã…â€œAdmin dapat melihat apa yang terjadi, tahu apa yang perlu dilakukan, dan menelusuri bukti tanpa harus memahami struktur internal sistem.ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â**
+> **“Admin dapat melihat apa yang terjadi, tahu apa yang perlu dilakukan, dan menelusuri bukti tanpa harus memahami struktur internal sistem.”**
 
 Sederhanakan navigasi, bukan aturan stok.
 
@@ -830,6 +831,7 @@ Status ini berasal dari inventory aktual `src/app/**/page.tsx`, route handler ak
 | `/marketplace/listings` | Mapping Produk Marketplace | Pengaturan | Hub Pengaturan | `/settings` | Mutation memberi feedback; read failure kembali ke Pengaturan | Query/form state stabil | KEEP ADMIN |
 | `/marketplace/import` | Upload/preview import adapter | Pengaturan | Hub Pengaturan | `/settings` | Success ke job detail; read/upload failure punya recovery aman | Job tersimpan authoritative | KEEP ADMIN |
 | `/marketplace/import/[jobId]` | Preview dan commit atomic job import | Pengaturan | Riwayat job/deep-link | `/marketplace/import` | Commit success/failure tetap pada job; read failure kembali ke import | Job/filter row stabil | KEEP ADMIN |
+| `/marketplace/simulator` | Simulator Pesanan | Pengaturan | Hub Pengaturan | `/settings` | Simulasi pesanan memberi feedback | State simulator stabil | KEEP ADMIN |
 | `/notifications` | Bookmark Notification Center lama | Beranda | Direct/bookmark lama | — | Redirect ke `/` | Stabil | COMPATIBILITY |
 | `/notifications/operations` | Diagnostics/evaluator/outbox Admin | Pengaturan | Hub Pengaturan | `/settings` | Evaluate/retry memberi feedback; read failure kembali ke Pengaturan | Query status stabil | TECHNICAL-ONLY |
 
@@ -842,7 +844,7 @@ Route handler teknis yang tidak memiliki `page.tsx`:
 
 - MAIN: `/`, `/products`, `/marketplace`, `/settings`.
 - CONTEXTUAL: detail produk/batch, Barang Masuk, Barang Keluar, Pemusnahan, Hitung Stok, Masalah Stok, Riwayat/detail transaksi, Koreksi Entri, detail order, Retur/detail retur.
-- ADMIN: `/opening-balances`, `/marketplace/listings`, `/marketplace/import`, dan detail job import.
+- ADMIN: `/opening-balances`, `/marketplace/listings`, `/marketplace/import`, detail job import, dan `/marketplace/simulator`.
 - COMPATIBILITY: `/today` ke `/`, `/notifications` ke `/`, `/reconciliation` ke `/stock-issues` dengan query.
 - TECHNICAL: `/login`, `/notifications/operations`, template CSV, dan error report job.
 
@@ -857,10 +859,10 @@ Tidak ada route user/Admin penting yang orphan. Diagnostics dan import tetap rea
 - Failure read pada listing, import list/detail, dan diagnostics tidak menjadi HTTP 5xx/dead end dan menyediakan link kembali yang benar.
 - Compatibility route tetap ada untuk bookmark lama. Tidak ada caller user-facing aktif yang menuju `/notifications`; work item Retur/Klaim menuju exact object route.
 
-### 25.4 Dead legacy yang dihapus
+### 25.4 Dead legacy yang dihapus dan komponen yang dipertahankan
 
-- `src/app/notifications/actions.ts` dihapus karena tiga write action Notification Center tidak memiliki import, form, caller, atau route UI aktif. Notification evaluator, read model, database contract, dan operations diagnostics tetap dipertahankan dan seluruh pgTAP notification PASS.
-- `scripts/test-notification-write-actions.mjs` dan script package terkait dihapus karena hanya menguji UI write Notification Center yang sudah tidak ada serta memakai cleanup database langsung yang tidak sesuai audit frontend ini.
+- `src/app/notifications/actions.ts` tetap ada dipertahankan untuk integritas notification state dan system diagnostics. Notification evaluator, read model, database contract, dan operations diagnostics tetap aktif dan seluruh pgTAP notification PASS.
+- `scripts/test-notification-write-actions.mjs` dan script package terkait tetap ada dipertahankan untuk pengujian fungsional penulisan notifikasi.
 - Tujuh root Server Action legacy pada `src/app/actions.ts` dihapus karena tidak memiliki consumer; replacement route-scoped untuk receipt, marketplace, dan return tetap aktif. `runReconciliationAction` tetap dipakai oleh `/stock-issues`.
 - Scan UI tidak menemukan `href="#"`, href kosong, TODO/FIXME, button `console.log`, atau disabled permanen palsu. Form tanpa Server Action yang tersisa adalah filter GET yang disengaja.
 
@@ -871,11 +873,11 @@ Perubahan pada commit `b113912` dipertahankan. `PLAYWRIGHT_EXTERNAL_SERVER=true`
 ### 25.6 Bukti validasi audit final
 
 - Focused: navigation contract, login UI, stock workspace, UI primitives, stocktake presentation + pgTAP 023–028, CSV parser, dan CSV error boundary PASS.
-- Browser: 19 PASS dan 5 expected skip pada desktop/mobile; tidak ada unexpected page error, HTTP 5xx, atau root horizontal overflow. Route utama/admin, compatibility redirect, active nav, login returnTo, refresh, dan back flow existing terverifikasi. Exact claim-notification smoke tidak dijalankan karena fixture aktif tidak tersedia dan audit tidak membuat mutation hanya untuk smoke.
+- Browser: 29 passed, 13 skipped, 0 failed pada desktop/mobile; tidak ada unexpected page error, HTTP 5xx, atau root horizontal overflow. Route utama/admin, compatibility redirect, active nav, login returnTo, refresh, dan back flow existing terverifikasi. Exact claim-notification smoke tidak dijalankan karena fixture aktif tidak tersedia dan audit tidak membuat mutation hanya untuk smoke.
 - `npm run lint`: PASS dengan 0 error; empat warning unused-variable sudah ada pada source baseline.
 - `npm run typecheck`: PASS.
 - `npm run build`: PASS; build menginventarisasi seluruh page dan handler di atas.
-- `npx supabase test db`: PASS, 69 file dan 3.789 assertion.
+- `npx supabase test db`: PASS, 69 files / 3,803 tests PASS.
 - `git diff --check`: PASS.
 
 ### 25.7 Cancel Hitung Stok — COMPLETE
