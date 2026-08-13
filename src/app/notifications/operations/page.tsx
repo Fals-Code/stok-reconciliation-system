@@ -3,6 +3,7 @@ import { randomUUID } from "node:crypto";
 import Link from "next/link";
 
 import { AppShell } from "@/app/app-shell/app-shell";
+import { PageHeader } from "@/app/app-shell/page-header";
 import PageSectionNav from "@/app/app-shell/page-section-nav";
 import NotificationStatePanel from "@/app/notifications/operations/notification-state-panel";
 import {
@@ -10,13 +11,22 @@ import {
   runNotificationEvaluationAction,
 } from "@/app/notifications/operations/actions";
 import {
+  Alert,
+  Button,
+  EmptyState,
+  Field,
+  Select,
+  StatusBadge,
+  Textarea,
+} from "@/components/ui";
+import { requireAdminSession } from "@/lib/auth";
+import {
   getNotificationOperationsSummary,
   getNotificationOutboxActionableList,
   type NotificationEvaluationFamilyCode,
   type NotificationOperationsSummary,
   type NotificationOutboxActionableItem,
 } from "@/lib/supabase-rest";
-import { requireAdminSession } from "@/lib/auth";
 
 export const dynamic = "force-dynamic";
 
@@ -26,45 +36,44 @@ type SearchParams = {
   error?: string;
 };
 
-type PillTone =
-  | "success"
+type BadgeTone =
+  | "neutral"
+  | "selected"
   | "warning"
-  | "danger"
-  | "info"
-  | "neutral";
+  | "danger";
 
 const statusOptions = [
-  ["ALL", "Semua actionable"],
-  ["FAILED_FINAL", "Failed final"],
-  ["FAILED_RETRYABLE", "Failed retryable"],
-  ["PROCESSING", "Processing"],
-  ["PENDING", "Pending"],
+  ["ALL", "Semua yang perlu dipantau"],
+  ["FAILED_FINAL", "Gagal dan perlu diperiksa"],
+  ["FAILED_RETRYABLE", "Gagal dan bisa dicoba lagi"],
+  ["PROCESSING", "Sedang diproses"],
+  ["PENDING", "Menunggu diproses"],
 ] as const;
 
 const evaluationFamilies = [
   {
     code: "EXPIRY",
-    title: "Expiry",
+    title: "Kedaluwarsa",
     description:
-      "Evaluasi batch mendekati atau melewati masa kedaluwarsa.",
+      "Periksa ulang batch yang mendekati atau melewati masa kedaluwarsa.",
   },
   {
     code: "RETURN_INSPECTION",
-    title: "Return inspection",
+    title: "Inspeksi Retur",
     description:
-      "Evaluasi retur yang menunggu inspeksi dan tindak lanjut.",
+      "Periksa ulang retur yang masih menunggu inspeksi dan tindak lanjut.",
   },
   {
     code: "RECONCILIATION",
-    title: "Reconciliation",
+    title: "Rekonsiliasi",
     description:
-      "Evaluasi hasil rekonsiliasi dan issue integritas stok.",
+      "Periksa ulang hasil rekonsiliasi dan temuan integritas stok.",
   },
   {
     code: "STOCKTAKE",
-    title: "Stocktake",
+    title: "Stok Opname",
     description:
-      "Evaluasi lifecycle dan hasil proses stok opname.",
+      "Periksa ulang status dan hasil proses stok opname.",
   },
 ] as const satisfies readonly {
   code: NotificationEvaluationFamilyCode;
@@ -73,20 +82,25 @@ const evaluationFamilies = [
 }[];
 
 function normalizeStatus(value: string | undefined) {
-  const normalized = value?.trim().toUpperCase() || "ALL";
+  const normalized =
+    value?.trim().toUpperCase() || "ALL";
 
-  return statusOptions.some(([code]) => code === normalized)
+  return statusOptions.some(
+    ([code]) => code === normalized,
+  )
     ? normalized
     : "ALL";
 }
 
 function formatDate(value: string | null) {
-  if (!value) return "Belum tersedia";
+  if (!value) {
+    return "Waktu belum tersedia";
+  }
 
   const date = new Date(value);
 
   if (Number.isNaN(date.getTime())) {
-    return value;
+    return "Waktu belum tersedia";
   }
 
   return new Intl.DateTimeFormat("id-ID", {
@@ -107,7 +121,8 @@ function labelFromCode(value: string) {
     .split("_")
     .map(
       (part) =>
-        part.charAt(0).toUpperCase() + part.slice(1),
+        part.charAt(0).toUpperCase() +
+        part.slice(1),
     )
     .join(" ");
 }
@@ -120,41 +135,37 @@ function formatJson(value: unknown) {
   }
 }
 
-function statusTone(status: string): PillTone {
-  if (status === "FAILED_FINAL") return "danger";
-  if (status === "FAILED_RETRYABLE") return "warning";
-  if (status === "PROCESSING") return "info";
-  if (status === "PENDING") return "neutral";
-  return "success";
-}
-
-function Pill({
-  label,
-  tone,
-}: {
-  label: string;
-  tone: PillTone;
-}) {
-  const tones: Record<PillTone, string> = {
-    success:
-      "border-emerald-400/25 bg-emerald-400/10 text-emerald-200",
-    warning:
-      "border-amber-400/25 bg-amber-400/10 text-amber-100",
-    danger:
-      "border-rose-400/25 bg-rose-400/10 text-rose-100",
-    info:
-      "border-sky-400/25 bg-sky-400/10 text-sky-100",
-    neutral:
-      "border-white/10 bg-white/[0.035] text-slate-300",
+function statusLabel(status: string) {
+  const labels: Record<string, string> = {
+    FAILED_FINAL: "Gagal — perlu diperiksa",
+    FAILED_RETRYABLE:
+      "Gagal — bisa dicoba lagi",
+    PROCESSING: "Sedang diproses",
+    PENDING: "Menunggu diproses",
   };
 
   return (
-    <span
-      className={`inline-flex rounded-full border px-2.5 py-1 text-xs font-medium ${tones[tone]}`}
-    >
-      {label}
-    </span>
+    labels[status] ??
+    labelFromCode(status)
   );
+}
+
+function statusTone(
+  status: string,
+): BadgeTone {
+  if (status === "FAILED_FINAL") {
+    return "danger";
+  }
+
+  if (status === "FAILED_RETRYABLE") {
+    return "warning";
+  }
+
+  if (status === "PROCESSING") {
+    return "selected";
+  }
+
+  return "neutral";
 }
 
 function MetricCard({
@@ -166,47 +177,81 @@ function MetricCard({
   label: string;
   value: number;
   description: string;
-  tone?: PillTone;
+  tone?: BadgeTone;
 }) {
+  const stateLabel =
+    tone === "danger"
+      ? "Perlu tindakan"
+      : tone === "warning"
+        ? "Perlu dilihat"
+        : tone === "selected"
+          ? "Aman"
+          : "Informasi";
+
   return (
-    <article className="metric-card">
-      <div className="flex items-center justify-between gap-3">
-        <p className="text-sm text-slate-400">{label}</p>
-        <Pill
-          label={tone === "danger" ? "Perlu tindakan" : "Live"}
-          tone={tone}
-        />
+    <article className="rounded-[var(--ui-radius-lg)] border border-ui-border bg-ui-surface p-5">
+      <div className="flex items-start justify-between gap-3">
+        <p className="text-sm font-medium text-ui-text-muted">
+          {label}
+        </p>
+
+        <StatusBadge tone={tone}>
+          {stateLabel}
+        </StatusBadge>
       </div>
-      <p className="mt-3 text-3xl font-semibold text-white">
+
+      <p className="mt-3 text-3xl font-semibold tracking-tight text-ui-text">
         {value.toLocaleString("id-ID")}
       </p>
-      <p className="mt-2 text-xs leading-5 text-slate-500">
+
+      <p className="mt-2 text-xs leading-5 text-ui-text-muted">
         {description}
       </p>
     </article>
   );
 }
 
-function ConfigurationError({ message }: { message: string }) {
+function ConfigurationError({
+  message,
+}: {
+  message: string;
+}) {
   return (
-    <div className="min-h-screen bg-slate-950 px-5 py-10 text-slate-100 lg:px-8">
-      <div className="mx-auto max-w-4xl rounded-3xl border border-rose-400/20 bg-rose-400/[0.06] p-7">
-        <p className="font-mono text-xs uppercase tracking-[0.2em] text-rose-300">
-          Notification operations
+    <div className="mx-auto max-w-[1500px] px-5 py-8 lg:px-8">
+      <Link
+        className="mb-6 inline-flex min-h-10 items-center text-sm font-semibold text-ui-primary hover:underline"
+        href="/settings"
+      >
+        ← Kembali ke Pengaturan
+      </Link>
+
+      <PageHeader
+        description="Halaman diagnostik tidak menampilkan keadaan sistem sebagai aman ketika data operasional gagal dibaca."
+        eyebrow="Pengaturan"
+        title="Status & Diagnostik Sistem"
+      />
+
+      <Alert
+        className="mt-6"
+        title="Diagnostik belum dapat dimuat"
+        tone="danger"
+      >
+        <p>
+          Data operasional tidak berhasil dibaca.
+          Muat ulang halaman setelah memastikan layanan
+          lokal dan koneksi database tersedia.
         </p>
-        <h1 className="mt-3 text-2xl font-semibold">
-          Halaman operasi belum dapat dimuat.
-        </h1>
-        <p className="mt-3 break-words text-sm leading-6 text-rose-100/80">
-          {message}
-        </p>
-        <Link
-          className="mt-6 inline-flex rounded-xl border border-white/10 px-4 py-2 text-sm text-slate-200 hover:bg-white/[0.05]"
-          href="/settings"
-        >
-          Kembali ke Pengaturan
-        </Link>
-      </div>
+
+        <details className="mt-3">
+          <summary className="cursor-pointer font-semibold">
+            Lihat detail teknis
+          </summary>
+
+          <p className="mt-2 break-words text-xs">
+            {message}
+          </p>
+        </details>
+      </Alert>
     </div>
   );
 }
@@ -217,155 +262,212 @@ function SummarySection({
   summary: NotificationOperationsSummary;
 }) {
   return (
-    <section className="scroll-mt-24" id="overview">
-      <div className="flex flex-col gap-5 lg:flex-row lg:items-end lg:justify-between">
+    <section
+      className="scroll-mt-24"
+      id="overview"
+    >
+      <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
         <div>
-          <p className="font-mono text-xs uppercase tracking-[0.2em] text-emerald-300">
-            Notification operations
-          </p>
-          <h1 className="mt-3 text-3xl font-semibold tracking-tight sm:text-4xl">
-            Kendali evaluator dan outbox, tanpa akses tabel mentah.
-          </h1>
-          <p className="mt-3 max-w-3xl text-sm leading-6 text-slate-400 sm:text-base">
-            Jalankan evaluator manual dengan alasan tercatat, pantau
-            kesehatan antrean, dan retry hanya event gagal yang memang
-            dapat ditindaklanjuti.
+          <h2 className="text-lg font-semibold text-ui-text">
+            Ringkasan kondisi saat ini
+          </h2>
+
+          <p className="mt-1 text-sm leading-6 text-ui-text-muted">
+            Fokuskan perhatian pada proses yang gagal,
+            tertahan, atau masih menunggu tindakan.
           </p>
         </div>
-        <div className="flex flex-col items-start gap-2 lg:items-end">
-          <Link
-            className="rounded-xl border border-white/10 px-4 py-2 text-sm text-slate-300 transition hover:bg-white/[0.05] hover:text-white"
-            href="/"
-          >
-            Buka Beranda
-          </Link>
-          <p className="text-xs text-slate-500">
-            Snapshot {formatDate(summary.generatedAt)} WIB
-          </p>
-        </div>
+
+        <p className="text-xs text-ui-text-muted">
+          Snapshot {formatDate(summary.generatedAt)} WIB
+        </p>
       </div>
 
-      <div className="mt-7 grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
+      <div className="mt-5 grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
         <MetricCard
-          description="Event menunggu worker mengambil antrean."
-          label="Pending outbox"
+          description="Pengiriman notifikasi yang masih menunggu worker."
+          label="Menunggu dikirim"
           tone={
             summary.outbox.pendingCount > 0
               ? "warning"
-              : "success"
+              : "selected"
           }
           value={summary.outbox.pendingCount}
         />
+
         <MetricCard
-          description="Event gagal yang dapat atau harus di-retry."
-          label="Failed outbox"
+          description="Pengiriman yang gagal dan membutuhkan pemeriksaan atau percobaan ulang."
+          label="Gagal dikirim"
           tone={
             summary.outbox.failedRetryableCount +
               summary.outbox.failedFinalCount >
             0
               ? "danger"
-              : "success"
+              : "selected"
           }
           value={
             summary.outbox.failedRetryableCount +
             summary.outbox.failedFinalCount
           }
         />
+
         <MetricCard
-          description={`Lock processing lebih lama dari ${summary.staleLockTimeoutSeconds} detik.`}
-          label="Stale processing"
+          description={`Proses terkunci lebih lama dari ${summary.staleLockTimeoutSeconds} detik.`}
+          label="Proses macet"
           tone={
             summary.outbox.staleProcessingCount > 0
               ? "danger"
-              : "success"
+              : "selected"
           }
-          value={summary.outbox.staleProcessingCount}
+          value={
+            summary.outbox.staleProcessingCount
+          }
         />
+
         <MetricCard
-          description="Notifikasi aktif yang belum dibaca akun ini."
-          label="Unread notifications"
+          description="Notifikasi aktif yang belum dibaca oleh akun Admin ini."
+          label="Belum dibaca"
           tone={
             summary.notifications.unreadCount > 0
               ? "warning"
-              : "success"
+              : "selected"
           }
-          value={summary.notifications.unreadCount}
+          value={
+            summary.notifications.unreadCount
+          }
         />
       </div>
 
       <div className="mt-4 grid gap-4 lg:grid-cols-3">
-        <article className="rounded-3xl border border-white/10 bg-white/[0.025] p-5">
-          <p className="section-kicker">Rule runs</p>
+        <article className="rounded-[var(--ui-radius-lg)] border border-ui-border bg-ui-surface p-5">
+          <h3 className="text-sm font-semibold text-ui-text">
+            Pemeriksaan otomatis
+          </h3>
+
           <dl className="mt-4 grid grid-cols-2 gap-4 text-sm">
             <div>
-              <dt className="text-slate-500">Sedang berjalan</dt>
-              <dd className="mt-1 text-xl font-semibold text-white">
+              <dt className="text-ui-text-muted">
+                Sedang berjalan
+              </dt>
+              <dd className="mt-1 text-xl font-semibold text-ui-text">
                 {summary.ruleRuns.startedCount}
               </dd>
             </div>
+
             <div>
-              <dt className="text-slate-500">Sukses 24 jam</dt>
-              <dd className="mt-1 text-xl font-semibold text-emerald-200">
-                {summary.ruleRuns.succeededLast24Hours}
+              <dt className="text-ui-text-muted">
+                Sukses 24 jam
+              </dt>
+              <dd className="mt-1 text-xl font-semibold text-ui-text">
+                {
+                  summary.ruleRuns
+                    .succeededLast24Hours
+                }
               </dd>
             </div>
+
             <div>
-              <dt className="text-slate-500">Parsial gagal</dt>
-              <dd className="mt-1 text-xl font-semibold text-amber-100">
-                {summary.ruleRuns.partiallyFailedLast24Hours}
+              <dt className="text-ui-text-muted">
+                Sebagian gagal
+              </dt>
+              <dd className="mt-1 text-xl font-semibold text-ui-warning">
+                {
+                  summary.ruleRuns
+                    .partiallyFailedLast24Hours
+                }
               </dd>
             </div>
+
             <div>
-              <dt className="text-slate-500">Gagal 24 jam</dt>
-              <dd className="mt-1 text-xl font-semibold text-rose-100">
-                {summary.ruleRuns.failedLast24Hours}
+              <dt className="text-ui-text-muted">
+                Gagal 24 jam
+              </dt>
+              <dd className="mt-1 text-xl font-semibold text-ui-danger">
+                {
+                  summary.ruleRuns
+                    .failedLast24Hours
+                }
               </dd>
             </div>
           </dl>
         </article>
 
-        <article className="rounded-3xl border border-white/10 bg-white/[0.025] p-5">
-          <p className="section-kicker">Lifecycle</p>
+        <article className="rounded-[var(--ui-radius-lg)] border border-ui-border bg-ui-surface p-5">
+          <h3 className="text-sm font-semibold text-ui-text">
+            Penanganan notifikasi
+          </h3>
+
           <dl className="mt-4 grid grid-cols-2 gap-4 text-sm">
             <div>
-              <dt className="text-slate-500">Open</dt>
-              <dd className="mt-1 text-xl font-semibold text-white">
+              <dt className="text-ui-text-muted">
+                Belum ditangani
+              </dt>
+              <dd className="mt-1 text-xl font-semibold text-ui-text">
                 {summary.notifications.openCount}
               </dd>
             </div>
+
             <div>
-              <dt className="text-slate-500">Acknowledged</dt>
-              <dd className="mt-1 text-xl font-semibold text-sky-100">
-                {summary.notifications.acknowledgedCount}
+              <dt className="text-ui-text-muted">
+                Sedang ditangani
+              </dt>
+              <dd className="mt-1 text-xl font-semibold text-ui-primary">
+                {
+                  summary.notifications
+                    .acknowledgedCount
+                }
               </dd>
             </div>
+
             <div>
-              <dt className="text-slate-500">Critical aktif</dt>
-              <dd className="mt-1 text-xl font-semibold text-rose-100">
-                {summary.notifications.criticalActiveCount}
+              <dt className="text-ui-text-muted">
+                Kritis aktif
+              </dt>
+              <dd className="mt-1 text-xl font-semibold text-ui-danger">
+                {
+                  summary.notifications
+                    .criticalActiveCount
+                }
               </dd>
             </div>
+
             <div>
-              <dt className="text-slate-500">High aktif</dt>
-              <dd className="mt-1 text-xl font-semibold text-amber-100">
-                {summary.notifications.highActiveCount}
+              <dt className="text-ui-text-muted">
+                Mendesak aktif
+              </dt>
+              <dd className="mt-1 text-xl font-semibold text-ui-warning">
+                {
+                  summary.notifications
+                    .highActiveCount
+                }
               </dd>
             </div>
           </dl>
         </article>
 
-        <article className="rounded-3xl border border-white/10 bg-white/[0.025] p-5">
-          <p className="section-kicker">Admin commands</p>
+        <article className="rounded-[var(--ui-radius-lg)] border border-ui-border bg-ui-surface p-5">
+          <h3 className="text-sm font-semibold text-ui-text">
+            Tindakan Admin
+          </h3>
+
           <dl className="mt-4 grid grid-cols-2 gap-4 text-sm">
             <div>
-              <dt className="text-slate-500">Retry 24 jam</dt>
-              <dd className="mt-1 text-xl font-semibold text-white">
-                {summary.adminOperations.retryRequestsLast24Hours}
+              <dt className="text-ui-text-muted">
+                Percobaan ulang 24 jam
+              </dt>
+              <dd className="mt-1 text-xl font-semibold text-ui-text">
+                {
+                  summary.adminOperations
+                    .retryRequestsLast24Hours
+                }
               </dd>
             </div>
+
             <div>
-              <dt className="text-slate-500">Evaluasi 24 jam</dt>
-              <dd className="mt-1 text-xl font-semibold text-white">
+              <dt className="text-ui-text-muted">
+                Pemeriksaan 24 jam
+              </dt>
+              <dd className="mt-1 text-xl font-semibold text-ui-text">
                 {
                   summary.adminOperations
                     .evaluationRequestsLast24Hours
@@ -373,10 +475,12 @@ function SummarySection({
               </dd>
             </div>
           </dl>
-          <p className="mt-5 text-xs leading-5 text-slate-500">
-            Permintaan terakhir:{" "}
+
+          <p className="mt-5 text-xs leading-5 text-ui-text-muted">
+            Permintaan terakhir{" "}
             {formatDate(
-              summary.adminOperations.latestRequestedAt,
+              summary.adminOperations
+                .latestRequestedAt,
             )}{" "}
             WIB
           </p>
@@ -386,78 +490,106 @@ function SummarySection({
   );
 }
 
-function EvaluationSection({ returnTo }: { returnTo: string }) {
+function EvaluationSection({
+  returnTo,
+}: {
+  returnTo: string;
+}) {
   return (
-    <section className="mt-12 scroll-mt-24" id="evaluations">
-      <div className="mb-5">
-        <p className="section-kicker">Manual evaluators</p>
-        <h2 className="section-title">
-          Jalankan ulang evaluasi dengan alasan audit.
+    <section
+      className="mt-10 scroll-mt-24"
+      id="evaluations"
+    >
+      <div>
+        <h2 className="text-lg font-semibold text-ui-text">
+          Pemeriksaan sistem
         </h2>
-        <p className="mt-2 max-w-3xl text-sm leading-6 text-slate-500">
-          Perintah hanya membuat event outbox. Evaluator tetap diproses
-          melalui dispatcher yang sama dengan event normal.
+
+        <p className="mt-1 max-w-3xl text-sm leading-6 text-ui-text-muted">
+          Jalankan pemeriksaan ulang hanya ketika
+          diperlukan. Alasan wajib diisi dan permintaan
+          dicatat untuk audit. Proses tetap menggunakan
+          jalur evaluator dan outbox yang sama dengan
+          kejadian normal.
         </p>
       </div>
 
-      <div className="grid gap-5 lg:grid-cols-2">
-        {evaluationFamilies.map((family) => (
-          <article
-            className="rounded-3xl border border-white/10 bg-white/[0.025] p-5"
-            key={family.code}
-          >
-            <div className="flex items-start justify-between gap-4">
-              <div>
-                <h3 className="text-lg font-semibold text-white">
-                  {family.title}
-                </h3>
-                <p className="mt-2 text-sm leading-6 text-slate-500">
-                  {family.description}
-                </p>
-              </div>
-              <Pill
-                label={labelFromCode(family.code)}
-                tone="info"
-              />
-            </div>
+      <div className="mt-4 grid gap-4 lg:grid-cols-2">
+        {evaluationFamilies.map((family) => {
+          const fieldId =
+            `evaluation-reason-${family.code.toLowerCase()}`;
 
-            <form
-              action={runNotificationEvaluationAction}
-              className="mt-5 space-y-4"
+          return (
+            <article
+              className="rounded-[var(--ui-radius-lg)] border border-ui-border bg-ui-surface p-5"
+              key={family.code}
             >
-              <input
-                name="evaluationFamilyCode"
-                type="hidden"
-                value={family.code}
-              />
-              <input
-                name="idempotencyKey"
-                type="hidden"
-                value={randomUUID()}
-              />
-              <input
-                name="returnTo"
-                type="hidden"
-                value={`${returnTo}#evaluations`}
-              />
+              <div className="flex items-start justify-between gap-4">
+                <div>
+                  <h3 className="text-base font-semibold text-ui-text">
+                    {family.title}
+                  </h3>
 
-              <label className="field-label">
-                Alasan evaluasi
-                <textarea
-                  className="min-h-28"
-                  maxLength={2000}
-                  name="reason"
-                  placeholder={`Contoh: verifikasi manual ${family.title.toLowerCase()} setelah koreksi data sumber.`}
-                  required
+                  <p className="mt-1 text-sm leading-6 text-ui-text-muted">
+                    {family.description}
+                  </p>
+                </div>
+
+                <StatusBadge tone="neutral">
+                  Manual
+                </StatusBadge>
+              </div>
+
+              <form
+                action={
+                  runNotificationEvaluationAction
+                }
+                className="mt-5 grid gap-4"
+              >
+                <input
+                  name="evaluationFamilyCode"
+                  type="hidden"
+                  value={family.code}
                 />
-              </label>
 
-              <button className="primary-button w-full" type="submit">
-                Jalankan evaluasi {family.title}
-              </button>
-            </form>
-          </article>
-        ))}
+                <input
+                  name="idempotencyKey"
+                  type="hidden"
+                  value={randomUUID()}
+                />
+
+                <input
+                  name="returnTo"
+                  type="hidden"
+                  value={`${returnTo}#evaluations`}
+                />
+
+                <Field
+                  description="Wajib diisi dan disimpan sebagai alasan tindakan Admin."
+                  id={fieldId}
+                  label="Alasan pemeriksaan"
+                >
+                  {(controlProps) => (
+                    <Textarea
+                      {...controlProps}
+                      maxLength={2000}
+                      name="reason"
+                      placeholder={`Contoh: periksa ulang ${family.title.toLowerCase()} setelah koreksi data sumber.`}
+                      required
+                    />
+                  )}
+                </Field>
+
+                <Button
+                  className="w-full"
+                  type="submit"
+                >
+                  Jalankan pemeriksaan {family.title}
+                </Button>
+              </form>
+            </article>
+          );
+        })}
       </div>
     </section>
   );
@@ -471,125 +603,217 @@ function OutboxCard({
   returnTo: string;
 }) {
   return (
-    <article className="rounded-3xl border border-white/10 bg-white/[0.025] p-5">
+    <article className="rounded-[var(--ui-radius-lg)] border border-ui-border bg-ui-surface p-5">
       <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
         <div className="min-w-0">
           <div className="flex flex-wrap items-center gap-2">
-            <Pill
-              label={labelFromCode(event.status_code)}
-              tone={statusTone(event.status_code)}
-            />
+            <StatusBadge
+              tone={statusTone(
+                event.status_code,
+              )}
+            >
+              {statusLabel(event.status_code)}
+            </StatusBadge>
+
             {event.is_stale_processing ? (
-              <Pill label="Stale lock" tone="danger" />
+              <StatusBadge tone="danger">
+                Proses macet
+              </StatusBadge>
             ) : null}
+
             {event.can_retry ? (
-              <Pill label="Retry tersedia" tone="warning" />
+              <StatusBadge tone="warning">
+                Bisa dicoba lagi
+              </StatusBadge>
             ) : null}
           </div>
 
-          <h3 className="mt-4 break-words text-lg font-semibold text-white">
-            {labelFromCode(event.event_type_code)}
+          <h3 className="mt-3 text-base font-semibold text-ui-text">
+            Pengiriman notifikasi
           </h3>
-          <p className="mt-2 break-all font-mono text-xs text-slate-500">
-            {event.outbox_event_id}
+
+          <p className="mt-1 text-sm text-ui-text-muted">
+            {labelFromCode(
+              event.event_type_code,
+            )}
           </p>
-          <p className="mt-3 break-words text-sm text-slate-400">
-            Source:{" "}
-            <span className="font-mono text-xs text-slate-300">
-              {event.source_event_key}
-            </span>
+
+          <p className="mt-2 break-all text-xs text-ui-text-muted">
+            ID pengiriman:{" "}
+            {event.outbox_event_id}
           </p>
         </div>
 
         <dl className="grid shrink-0 grid-cols-2 gap-x-6 gap-y-3 text-xs">
           <div>
-            <dt className="text-slate-500">Attempt total</dt>
-            <dd className="mt-1 text-slate-200">
+            <dt className="text-ui-text-muted">
+              Total percobaan
+            </dt>
+            <dd className="mt-1 font-semibold text-ui-text">
               {event.attempt_count}
             </dd>
           </div>
+
           <div>
-            <dt className="text-slate-500">Attempt siklus</dt>
-            <dd className="mt-1 text-slate-200">
-              {event.retry_cycle_attempt_count}
+            <dt className="text-ui-text-muted">
+              Percobaan siklus ini
+            </dt>
+            <dd className="mt-1 font-semibold text-ui-text">
+              {
+                event.retry_cycle_attempt_count
+              }
             </dd>
           </div>
+
           <div>
-            <dt className="text-slate-500">Available</dt>
-            <dd className="mt-1 text-slate-200">
+            <dt className="text-ui-text-muted">
+              Siap diproses
+            </dt>
+            <dd className="mt-1 text-ui-text">
               {formatDate(event.available_at)} WIB
             </dd>
           </div>
+
           <div>
-            <dt className="text-slate-500">Occurred</dt>
-            <dd className="mt-1 text-slate-200">
+            <dt className="text-ui-text-muted">
+              Terjadi
+            </dt>
+            <dd className="mt-1 text-ui-text">
               {formatDate(event.occurred_at)} WIB
             </dd>
           </div>
         </dl>
       </div>
 
+      <details className="mt-4 rounded-[var(--ui-radius-md)] border border-ui-border bg-ui-surface-subtle px-4 py-3">
+        <summary className="cursor-pointer text-sm font-semibold text-ui-text">
+          Detail teknis
+        </summary>
+
+        <dl className="mt-3 grid gap-3 text-xs sm:grid-cols-2">
+          <div>
+            <dt className="text-ui-text-muted">
+              Source event
+            </dt>
+            <dd className="mt-1 break-all text-ui-text">
+              {event.source_event_key}
+            </dd>
+          </div>
+
+          <div>
+            <dt className="text-ui-text-muted">
+              Correlation ID
+            </dt>
+            <dd className="mt-1 break-all text-ui-text">
+              {event.correlation_id}
+            </dd>
+          </div>
+
+          <div>
+            <dt className="text-ui-text-muted">
+              Entity
+            </dt>
+            <dd className="mt-1 break-all text-ui-text">
+              {event.entity_type_code}:{" "}
+              {event.entity_id}
+            </dd>
+          </div>
+
+          <div>
+            <dt className="text-ui-text-muted">
+              Retry budget mulai
+            </dt>
+            <dd className="mt-1 text-ui-text">
+              {
+                event.retry_budget_started_at_attempt
+              }
+            </dd>
+          </div>
+        </dl>
+      </details>
+
       {event.last_error_code ? (
-        <div className="mt-5 rounded-2xl border border-rose-400/15 bg-rose-400/[0.045] p-4">
-          <p className="font-mono text-xs font-medium text-rose-200">
-            {event.last_error_code}
+        <Alert
+          className="mt-4"
+          title="Pengiriman terakhir gagal"
+          tone="danger"
+        >
+          <p className="break-words text-xs">
+            Kode: {event.last_error_code}
           </p>
+
           <details className="mt-3">
-            <summary className="cursor-pointer text-xs text-slate-400 hover:text-slate-200">
+            <summary className="cursor-pointer font-semibold">
               Lihat detail error
             </summary>
-            <pre className="mt-3 max-h-72 overflow-auto whitespace-pre-wrap break-words rounded-xl bg-slate-950/70 p-3 text-xs leading-5 text-slate-400">
-              {formatJson(event.last_error_detail)}
+
+            <pre className="mt-3 max-h-72 overflow-auto whitespace-pre-wrap break-words rounded-[var(--ui-radius-md)] border border-ui-border bg-ui-surface p-3 text-xs leading-5 text-ui-text-muted">
+              {formatJson(
+                event.last_error_detail,
+              )}
             </pre>
           </details>
-        </div>
+        </Alert>
       ) : null}
 
       {event.is_stale_processing ? (
-        <p className="mt-5 rounded-2xl border border-amber-400/20 bg-amber-400/[0.055] px-4 py-3 text-sm leading-6 text-amber-100">
-          Lock worker melewati batas lima menit. Event ini tidak dapat
-          di-retry manual sampai mekanisme recovery mengubah statusnya.
-        </p>
+        <Alert
+          className="mt-4"
+          title="Proses terlihat macet"
+          tone="warning"
+        >
+          Lock worker sudah melewati batas aman.
+          Pengiriman ini belum boleh dicoba ulang secara
+          manual sampai mekanisme recovery mengubah
+          statusnya.
+        </Alert>
       ) : null}
 
       {event.can_retry ? (
         <form
-          action={retryNotificationOutboxEventAction}
-          className="mt-5 grid gap-4 lg:grid-cols-[1fr_auto] lg:items-end"
+          action={
+            retryNotificationOutboxEventAction
+          }
+          className="mt-5 grid gap-4 lg:grid-cols-[minmax(0,1fr)_auto] lg:items-end"
         >
           <input
             name="outboxEventId"
             type="hidden"
             value={event.outbox_event_id}
           />
+
           <input
             name="idempotencyKey"
             type="hidden"
             value={randomUUID()}
           />
+
           <input
             name="returnTo"
             type="hidden"
             value={`${returnTo}#outbox`}
           />
 
-          <label className="field-label">
-            Alasan retry
-            <textarea
-              className="min-h-24"
-              maxLength={2000}
-              name="reason"
-              placeholder="Jelaskan diagnosis, koreksi yang sudah dilakukan, dan alasan event aman diproses ulang."
-              required
-            />
-          </label>
-
-          <button
-            className="primary-button min-h-11 px-6"
-            type="submit"
+          <Field
+            description="Jelaskan diagnosis dan alasan pengiriman aman untuk dicoba lagi."
+            id={`retry-reason-${event.outbox_event_id}`}
+            label="Alasan percobaan ulang"
           >
-            Retry event
-          </button>
+            {(controlProps) => (
+              <Textarea
+                {...controlProps}
+                className="min-h-24"
+                maxLength={2000}
+                name="reason"
+                placeholder="Contoh: penyebab kegagalan sudah diperbaiki dan event aman diproses ulang."
+                required
+              />
+            )}
+          </Field>
+
+          <Button type="submit">
+            Coba kirim lagi
+          </Button>
         </form>
       ) : null}
     </article>
@@ -606,46 +830,64 @@ function OutboxSection({
   returnTo: string;
 }) {
   return (
-    <section className="mt-12 scroll-mt-24" id="outbox">
-      <div className="mb-5 flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
+    <section
+      className="mt-10 scroll-mt-24"
+      id="outbox"
+    >
+      <div className="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
         <div>
-          <p className="section-kicker">Actionable outbox</p>
-          <h2 className="section-title">
-            Antrean yang membutuhkan pengamatan atau tindakan.
+          <h2 className="text-lg font-semibold text-ui-text">
+            Pengiriman notifikasi
           </h2>
-          <p className="mt-2 max-w-3xl text-sm leading-6 text-slate-500">
-            Payload sumber tidak ditampilkan. Halaman hanya membuka
-            metadata operasional dan detail error yang diperlukan untuk
-            diagnosis.
+
+          <p className="mt-1 max-w-3xl text-sm leading-6 text-ui-text-muted">
+            Daftar ini hanya menampilkan pengiriman
+            yang masih perlu diamati atau ditindaklanjuti.
+            Payload sumber tetap tersembunyi; detail
+            diagnostik dibuka seperlunya.
           </p>
         </div>
 
         <form
           action="/notifications/operations"
-          className="flex min-w-64 gap-2"
+          className="grid min-w-64 gap-3 sm:grid-cols-[minmax(0,1fr)_auto] sm:items-end"
           method="get"
         >
-          <label className="field-label flex-1">
-            Status
-            <select defaultValue={status} name="status">
-              {statusOptions.map(([value, label]) => (
-                <option key={value} value={value}>
-                  {label}
-                </option>
-              ))}
-            </select>
-          </label>
-          <button
-            className="mt-6 rounded-xl border border-white/10 px-4 text-sm text-slate-200 transition hover:bg-white/[0.05]"
-            type="submit"
+          <Field
+            id="outbox-status-filter"
+            label="Status pengiriman"
           >
-            Filter
-          </button>
+            {(controlProps) => (
+              <Select
+                {...controlProps}
+                defaultValue={status}
+                name="status"
+              >
+                {statusOptions.map(
+                  ([value, label]) => (
+                    <option
+                      key={value}
+                      value={value}
+                    >
+                      {label}
+                    </option>
+                  ),
+                )}
+              </Select>
+            )}
+          </Field>
+
+          <Button
+            type="submit"
+            variant="secondary"
+          >
+            Terapkan filter
+          </Button>
         </form>
       </div>
 
-      {events.length ? (
-        <div className="space-y-4">
+      {events.length > 0 ? (
+        <div className="mt-4 grid gap-4">
           {events.map((event) => (
             <OutboxCard
               event={event}
@@ -655,14 +897,11 @@ function OutboxSection({
           ))}
         </div>
       ) : (
-        <div className="rounded-3xl border border-dashed border-white/10 p-8 text-center">
-          <p className="text-base font-medium text-slate-300">
-            Tidak ada actionable outbox untuk filter ini.
-          </p>
-          <p className="mt-2 text-sm text-slate-500">
-            Untuk sekali ini, tidak adanya pekerjaan memang kabar baik.
-          </p>
-        </div>
+        <EmptyState
+          className="mt-4"
+          description="Tidak ada pengiriman yang membutuhkan pengamatan atau tindakan untuk filter ini."
+          title="Tidak ada pekerjaan diagnostik"
+        />
       )}
     </section>
   );
@@ -673,16 +912,24 @@ export default async function NotificationOperationsPage({
 }: {
   searchParams: Promise<SearchParams>;
 }) {
-  const [params, session] = await Promise.all([
-    searchParams,
-    requireAdminSession(),
-  ]);
-  const status = normalizeStatus(params.status);
+  const [params, session] =
+    await Promise.all([
+      searchParams,
+      requireAdminSession(),
+    ]);
+
+  const status =
+    normalizeStatus(params.status);
+
   const feedbackError =
-    params.error?.trim().slice(0, 500) || null;
+    params.error?.trim().slice(0, 500) ||
+    null;
+
   const feedbackSuccess = feedbackError
     ? null
-    : params.success?.trim().slice(0, 500) || null;
+    : params.success
+        ?.trim()
+        .slice(0, 500) || null;
 
   let summary: NotificationOperationsSummary;
   let events: NotificationOutboxActionableItem[];
@@ -691,7 +938,9 @@ export default async function NotificationOperationsPage({
     [summary, events] = await Promise.all([
       getNotificationOperationsSummary(),
       getNotificationOutboxActionableList(
-        status === "ALL" ? null : status,
+        status === "ALL"
+          ? null
+          : status,
         50,
       ),
     ]);
@@ -702,62 +951,111 @@ export default async function NotificationOperationsPage({
           message={
             error instanceof Error
               ? error.message
-              : "Konfigurasi Notification Operations tidak valid."
+              : "Konfigurasi diagnostik notifikasi tidak valid."
           }
         />
       </AppShell>
     );
   }
 
-  const returnParams = new URLSearchParams();
+  const returnParams =
+    new URLSearchParams();
 
   if (status !== "ALL") {
-    returnParams.set("status", status);
+    returnParams.set(
+      "status",
+      status,
+    );
   }
 
-  const returnQuery = returnParams.toString();
-  const returnTo = `/notifications/operations${
-    returnQuery ? `?${returnQuery}` : ""
-  }`;
+  const returnQuery =
+    returnParams.toString();
+
+  const returnTo =
+    `/notifications/operations${
+      returnQuery
+        ? `?${returnQuery}`
+        : ""
+    }`;
 
   return (
     <AppShell profile={session.profile}>
-      <div className="min-h-screen bg-slate-950 text-slate-100">
       <PageSectionNav
         items={[
-          { href: "#overview", label: "Ringkasan" },
-          { href: "#notification-state", label: "Status notifikasi" },
-          { href: "#evaluations", label: "Evaluasi manual" },
-          { href: "#outbox", label: "Outbox" },
+          {
+            href: "#overview",
+            label: "Ringkasan",
+          },
+          {
+            href: "#notification-state",
+            label: "Status notifikasi",
+          },
+          {
+            href: "#evaluations",
+            label: "Pemeriksaan sistem",
+          },
+          {
+            href: "#outbox",
+            label: "Pengiriman notifikasi",
+          },
         ]}
       />
 
       <div className="mx-auto max-w-[1500px] px-5 py-8 lg:px-8">
-        <Link className="nav-link mb-6 inline-flex" href="/settings">
-          Kembali ke Pengaturan
+        <Link
+          className="mb-6 inline-flex min-h-10 items-center text-sm font-semibold text-ui-primary hover:underline"
+          href="/settings"
+        >
+          ← Kembali ke Pengaturan
         </Link>
-        <SummarySection summary={summary} />
+
+        <PageHeader
+          action={
+            <Link
+              className="inline-flex min-h-[var(--ui-control-height)] items-center justify-center rounded-[var(--ui-radius-md)] border border-ui-border bg-ui-surface px-4 text-sm font-semibold text-ui-text transition-colors hover:border-ui-border-strong hover:bg-ui-surface-subtle"
+              href="/"
+            >
+              Buka Beranda
+            </Link>
+          }
+          description="Pantau status notifikasi, pemeriksaan sistem, dan pengiriman yang membutuhkan tindakan Admin. Detail teknis tetap tersedia untuk audit tanpa memenuhi tampilan utama."
+          eyebrow="Pengaturan"
+          title="Status & Diagnostik Sistem"
+        />
+
+        <div className="mt-6">
+          <SummarySection summary={summary} />
+        </div>
 
         {feedbackSuccess ? (
-          <div className="mt-6 rounded-2xl border border-emerald-400/20 bg-emerald-400/10 px-5 py-4 text-sm text-emerald-100">
+          <Alert
+            className="mt-6"
+            tone="success"
+          >
             {feedbackSuccess}
-          </div>
+          </Alert>
         ) : null}
 
         {feedbackError ? (
-          <div className="mt-6 rounded-2xl border border-rose-400/20 bg-rose-400/10 px-5 py-4 text-sm text-rose-100">
+          <Alert
+            className="mt-6"
+            tone="danger"
+          >
             {feedbackError}
-          </div>
+          </Alert>
         ) : null}
 
         <NotificationStatePanel />
-        <EvaluationSection returnTo={returnTo} />
+
+        <EvaluationSection
+          returnTo={returnTo}
+        />
+
         <OutboxSection
           events={events}
           returnTo={returnTo}
           status={status}
         />
-      </div>
       </div>
     </AppShell>
   );
