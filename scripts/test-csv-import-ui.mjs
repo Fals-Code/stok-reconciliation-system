@@ -28,7 +28,7 @@ async function main() {
   await login(config);
   const listingResponse = await fetch(`${config.NEXT_PUBLIC_SUPABASE_URL}/rest/v1/marketplace_listing_catalog?organization_id=eq.${profile.organization_id}&status_code=eq.ACTIVE&mapping_readiness_code=eq.PUBLISHED&select=channel_code,external_listing_code&order=external_listing_code.asc&limit=1`, { headers: { apikey: key, Authorization: `Bearer ${token}`, "Accept-Profile": "api" } });
   const listing = (await listingResponse.json())[0]; pass("listing canonical tersedia", Boolean(listing));
-  const importPage = await page("/marketplace/import"); pass("route import dapat dibuka", importPage.response.status === 200); pass("navigation Import CSV tampil", importPage.html.includes("Import CSV")); pass("template link tampil", importPage.html.includes("marketplace/import/template")); pass("upload form tampil", importPage.html.includes("Unggah untuk preview"));
+  const importPage = await page("/marketplace/import"); pass("route import dapat dibuka", importPage.response.status === 200); pass("judul Import Pesanan tampil", importPage.html.includes("Import Pesanan")); pass("template link tampil", importPage.html.includes("marketplace/import/template")); pass("upload form tampil", importPage.html.includes("Unggah untuk preview"));
   const template = await fetch(`${baseUrl}/marketplace/import/template`, { headers: { Cookie: cookie() } }); pass("template download private", template.status === 200 && (template.headers.get("content-disposition") ?? "").includes("marketplace-reservation-v1-template.csv"));
   const existingEventResponse = await fetch(`${config.NEXT_PUBLIC_SUPABASE_URL}/rest/v1/marketplace_events?organization_id=eq.${profile.organization_id}&external_event_ref=eq.CSV-UI-SMOKE-V1&select=event_id,event_type_code,transaction_id&limit=2`, { headers: { apikey: key, Authorization: `Bearer ${token}`, "Accept-Profile": "api" } });
   const existingEvents = await existingEventResponse.json();
@@ -42,16 +42,16 @@ async function main() {
   pass("upload mengarah ke detail job", Boolean(location?.includes("/marketplace/import/") && !location.includes("?error=")), location ?? "no location");
   let detail = await page(new URL(location, baseUrl).pathname + new URL(location, baseUrl).search);
   if (detail.html.includes("CSV_IMPORT_COMMIT")) throw new Error(detail.html);
-  pass("preview row/error tampil", detail.response.status === 200 && detail.html.includes("Rows dan error per baris")); pass("canonical preview tampil", detail.html.includes("Canonical") || detail.html.includes("mapping"));
+  pass("preview row/error tampil", detail.response.status === 200 && detail.html.includes("Baris dan masalah per data")); pass("canonical preview tampil", detail.html.includes("Pemetaan produk"));
   const errorReport = await fetch(`${baseUrl}${new URL(location, baseUrl).pathname}/errors`, { headers: { Cookie: cookie() } }); pass("error report route authorized", errorReport.status === 200 && (errorReport.headers.get("content-type") ?? "").includes("text/csv"));
-  if (detail.html.includes("Commit result") || detail.html.includes("COMPLETED")) {
-    pass("durable exact replay mempertahankan hasil commit", detail.html.includes("Commit result") || detail.html.includes("COMPLETED"));
+  if (detail.html.includes("Hasil pemrosesan") || detail.html.includes("Selesai")) {
+    pass("durable exact replay mempertahankan hasil commit", detail.html.includes("Hasil pemrosesan") || detail.html.includes("Selesai"));
     console.log(`CSV UI smoke PASS: ${results.length} checks (durable replay)`);
     return;
   }
-  pass("explicit confirmation tersedia", detail.html.includes("Konfirmasi posting atomic"));
-  const commitLocation = await postAction(new URL(location, baseUrl).pathname, detail.html, "Konfirmasi dan proses", { jobId: new URL(location, baseUrl).pathname.split("/").at(-1), commitKey: hidden(detail.html, "commitKey"), confirmation: "on" });
-  pass("commit action redirect", Boolean(commitLocation)); detail = await page(new URL(commitLocation, baseUrl).pathname + new URL(commitLocation, baseUrl).search); pass("commit result atau failure aman tampil", detail.response.status === 200 && (detail.html.includes("Commit result") || detail.html.includes("Commit belum selesai")));
+  pass("explicit confirmation tersedia", detail.html.includes("Periksa sebelum memproses"));
+  const commitLocation = await postAction(new URL(location, baseUrl).pathname, detail.html, "Proses semua pesanan", { jobId: new URL(location, baseUrl).pathname.split("/").at(-1), commitKey: hidden(detail.html, "commitKey"), confirmation: "on" });
+  pass("commit action redirect", Boolean(commitLocation)); detail = await page(new URL(commitLocation, baseUrl).pathname + new URL(commitLocation, baseUrl).search); pass("commit result atau failure aman tampil", detail.response.status === 200 && (detail.html.includes("Hasil pemrosesan") || detail.html.includes("Pemrosesan belum selesai")));
   console.log(`CSV UI smoke PASS: ${results.length} checks`);
 }
 main().catch((error) => { console.error(error); process.exitCode = 1; }).finally(() => { if (server?.pid) spawnSync("taskkill", ["/PID", String(server.pid), "/T", "/F"], { windowsHide: true, stdio: "ignore" }); });
