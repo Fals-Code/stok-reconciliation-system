@@ -291,6 +291,11 @@ function runSqlJson(sql) {
 
 function removeStaleOperationFixtures() {
   runSql(`
+delete from scheduler.job_runs
+where summary ->> 'fixture' = 'notification-admin-operations-smoke';
+`);
+
+  runSql(`
 begin;
 set local session_replication_role = replica;
 
@@ -352,6 +357,71 @@ where user_id = ${sqlLiteral(smokeUserId)}::uuid;
 `);
 }
 
+function createSchedulerFixtures() {
+  runSql(`
+insert into scheduler.job_runs (
+  id, job_code, scope_code, scope_key, organization_id,
+  scheduled_slot, status_code, started_at, completed_at,
+  summary, error_code, error_summary
+) values
+  (
+    ${sqlLiteral(randomUUID())}::uuid,
+    'NOTIFICATION_OUTBOX',
+    'GLOBAL',
+    'GLOBAL',
+    null,
+    '2099-01-01 00:00:00+00'::timestamptz,
+    'SUCCEEDED',
+    clock_timestamp(),
+    clock_timestamp(),
+    '{"fixture":"notification-admin-operations-smoke"}'::jsonb,
+    null,
+    null
+  ),
+  (
+    ${sqlLiteral(randomUUID())}::uuid,
+    'CLAIM_DEADLINE',
+    'ORGANIZATION',
+    ${sqlLiteral(organizationId)},
+    ${sqlLiteral(organizationId)}::uuid,
+    '2099-01-01 01:00:00+00'::timestamptz,
+    'FAILED',
+    clock_timestamp(),
+    clock_timestamp(),
+    '{"fixture":"notification-admin-operations-smoke"}'::jsonb,
+    'SCHEDULER_DELEGATE_FAILED',
+    'Operasi terjadwal gagal dan perlu diperiksa.'
+  ),
+  (
+    ${sqlLiteral(randomUUID())}::uuid,
+    'EXPIRY_DAILY',
+    'ORGANIZATION',
+    ${sqlLiteral(organizationId)},
+    ${sqlLiteral(organizationId)}::uuid,
+    '2000-01-01 17:00:00+00'::timestamptz,
+    'SUCCEEDED',
+    '2000-01-01 17:00:00+00'::timestamptz,
+    '2000-01-01 17:00:00+00'::timestamptz,
+    '{"fixture":"notification-admin-operations-smoke"}'::jsonb,
+    null,
+    null
+  ),
+  (
+    ${sqlLiteral(randomUUID())}::uuid,
+    'RECONCILIATION_DAILY',
+    'ORGANIZATION',
+    ${sqlLiteral(organizationId)},
+    ${sqlLiteral(organizationId)}::uuid,
+    '2099-01-01 17:00:00+00'::timestamptz,
+    'SUCCEEDED',
+    clock_timestamp(),
+    clock_timestamp(),
+    '{"fixture":"notification-admin-operations-smoke"}'::jsonb,
+    null,
+    null
+  );
+`);
+}
 function createRetryFixture() {
   const eventId = randomUUID();
   const correlationId = randomUUID();
@@ -950,6 +1020,7 @@ async function main(args) {
   retryIdempotencyKey =
     `${FIXTURE_PREFIX}retry:${runId}`;
   retryOutboxEventId = createRetryFixture();
+  createSchedulerFixtures();
 
   assertTest(
     UUID_PATTERN.test(retryOutboxEventId),
@@ -981,6 +1052,23 @@ async function main(args) {
       "Status & Diagnostik Sistem",
     ),
     "Halaman Notification Operations dirender",
+  );
+
+  assertTest(
+    [
+      "Operasi Sistem Terjadwal",
+      "Pemrosesan Notifikasi",
+      "Pengingat Klaim",
+      "Pemeriksaan Kedaluwarsa",
+      "Rekonsiliasi Harian",
+      "Sehat",
+      "Gagal",
+      "Terlambat",
+      "Operasi terjadwal gagal dan perlu diperiksa.",
+    ].every((label) => containsText(page.html, label)) &&
+      !containsText(page.html, "scheduler.run_") &&
+      !containsText(page.html, "cron.schedule"),
+    "Halaman Operations merender kesehatan scheduler dengan bahasa Admin tanpa jargon internal",
   );
 
   assertTest(

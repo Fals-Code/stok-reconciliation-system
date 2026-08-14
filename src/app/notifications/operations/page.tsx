@@ -23,9 +23,12 @@ import { requireAdminSession } from "@/lib/auth";
 import {
   getNotificationOperationsSummary,
   getNotificationOutboxActionableList,
+  getSchedulerOperationsSummary,
   type NotificationEvaluationFamilyCode,
   type NotificationOperationsSummary,
   type NotificationOutboxActionableItem,
+  type SchedulerJobHealthCode,
+  type SchedulerOperationsSummary,
 } from "@/lib/supabase-rest";
 
 export const dynamic = "force-dynamic";
@@ -168,6 +171,93 @@ function statusTone(
   return "neutral";
 }
 
+const schedulerJobLabels: Record<
+  SchedulerOperationsSummary["jobs"][number]["jobCode"],
+  string
+> = {
+  NOTIFICATION_OUTBOX: "Pemrosesan Notifikasi",
+  CLAIM_DEADLINE: "Pengingat Klaim",
+  EXPIRY_DAILY: "Pemeriksaan Kedaluwarsa",
+  RECONCILIATION_DAILY: "Rekonsiliasi Harian",
+};
+
+function schedulerHealthLabel(value: SchedulerJobHealthCode) {
+  const labels: Record<SchedulerJobHealthCode, string> = {
+    HEALTHY: "Sehat",
+    FAILED: "Gagal",
+    STALE: "Terlambat",
+    NEVER_RUN: "Belum Pernah Berjalan",
+  };
+
+  return labels[value];
+}
+
+function schedulerHealthTone(value: SchedulerJobHealthCode): BadgeTone {
+  if (value === "FAILED") return "danger";
+  if (value === "STALE") return "warning";
+  if (value === "HEALTHY") return "selected";
+  return "neutral";
+}
+
+function ScheduledOperationsSection({
+  summary,
+}: {
+  summary: SchedulerOperationsSummary;
+}) {
+  return (
+    <section
+      className="mt-10 scroll-mt-24"
+      id="scheduled-operations"
+    >
+      <div>
+        <h2 className="text-lg font-semibold text-ui-text">
+          Operasi Sistem Terjadwal
+        </h2>
+
+        <p className="mt-1 max-w-3xl text-sm leading-6 text-ui-text-muted">
+          Pantau pemeriksaan otomatis. Proses ini hanya
+          membaca kondisi operasional dan membuat catatan
+          pemeriksaan atau notifikasi; tidak mengubah stok.
+        </p>
+      </div>
+
+      <div className="mt-4 grid gap-4 lg:grid-cols-2">
+        {summary.jobs.map((job) => (
+          <article
+            className="rounded-[var(--ui-radius-lg)] border border-ui-border bg-ui-surface p-5"
+            key={job.jobCode}
+          >
+            <div className="flex items-start justify-between gap-4">
+              <div>
+                <h3 className="text-base font-semibold text-ui-text">
+                  {schedulerJobLabels[job.jobCode]}
+                </h3>
+
+                <p className="mt-1 text-sm text-ui-text-muted">
+                  Terakhir selesai: {formatDate(job.lastCompletedAt)} WIB
+                </p>
+              </div>
+
+              <StatusBadge tone={schedulerHealthTone(job.healthCode)}>
+                {schedulerHealthLabel(job.healthCode)}
+              </StatusBadge>
+            </div>
+
+            {job.lastFailureSummary ? (
+              <Alert
+                className="mt-4"
+                title="Perlu pemeriksaan"
+                tone="danger"
+              >
+                {job.lastFailureSummary}
+              </Alert>
+            ) : null}
+          </article>
+        ))}
+      </div>
+    </section>
+  );
+}
 function MetricCard({
   label,
   value,
@@ -933,9 +1023,10 @@ export default async function NotificationOperationsPage({
 
   let summary: NotificationOperationsSummary;
   let events: NotificationOutboxActionableItem[];
+  let scheduler: SchedulerOperationsSummary;
 
   try {
-    [summary, events] = await Promise.all([
+    [summary, events, scheduler] = await Promise.all([
       getNotificationOperationsSummary(),
       getNotificationOutboxActionableList(
         status === "ALL"
@@ -943,6 +1034,7 @@ export default async function NotificationOperationsPage({
           : status,
         50,
       ),
+      getSchedulerOperationsSummary(),
     ]);
   } catch (error) {
     return (
@@ -985,6 +1077,10 @@ export default async function NotificationOperationsPage({
           {
             href: "#overview",
             label: "Ringkasan",
+          },
+          {
+            href: "#scheduled-operations",
+            label: "Operasi Terjadwal",
           },
           {
             href: "#notification-state",
@@ -1044,6 +1140,8 @@ export default async function NotificationOperationsPage({
             {feedbackError}
           </Alert>
         ) : null}
+
+        <ScheduledOperationsSection summary={scheduler} />
 
         <NotificationStatePanel />
 
