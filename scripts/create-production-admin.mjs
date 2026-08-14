@@ -65,7 +65,7 @@ const supabaseUrl = requireProductionTarget(String(env.NEXT_PUBLIC_SUPABASE_URL 
 const secretKey = String(env.SUPABASE_SECRET_KEY ?? "");
 if (!secretKey || secretKey.includes("REPLACE_ME")) throw new Error("SUPABASE_SECRET_KEY server-side belum dikonfigurasi.");
 
-const headers = { apikey: secretKey, Authorization: `Bearer ${secretKey}`, "Content-Type": "application/json" };
+const headers = { apikey: secretKey, "Content-Type": "application/json" };
 const listResponse = await fetch(`${supabaseUrl}/auth/v1/admin/users?page=1&per_page=1000`, { headers });
 const listPayload = await parseResponse(listResponse);
 if (!listResponse.ok) throw new Error(errorMessage(listPayload, listResponse));

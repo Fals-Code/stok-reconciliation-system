@@ -32,10 +32,11 @@ function snapshot() {
 
 async function config() {
   const raw = await readFile(".env.local", "utf8");
-  return Object.fromEntries(raw.split(/\r?\n/).flatMap((line) => {
+  const fileConfig = Object.fromEntries(raw.split(/\r?\n/).flatMap((line) => {
     const index = line.indexOf("=");
     return index <= 0 || line.trimStart().startsWith("#") ? [] : [[line.slice(0, index).trim(), line.slice(index + 1).trim().replace(/^['"]|['"]$/g, "")]];
   }));
+  return { ...fileConfig, ...process.env };
 }
 
 async function alive(baseUrl) {
@@ -72,6 +73,8 @@ async function request(baseUrl, pathname) {
 }
 
 async function main() {
+  const readinessSource = await readFile("src/lib/health-readiness.ts", "utf8");
+  check("Readiness memakai project secret hanya sebagai apikey", /apikey:\s*config\.secret/.test(readinessSource) && !/Authorization:\s*`Bearer \$\{config\.secret\}`/.test(readinessSource));
   const local = await config();
   const secret = local.SUPABASE_SECRET_KEY ?? "";
   check("Konfigurasi server-only readiness tersedia", Boolean(secret && !secret.includes("REPLACE_ME")));

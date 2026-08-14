@@ -7,9 +7,12 @@ function check(name, condition) {
   console.log(`[PASS] ${name}`);
 }
 
-const [migration, script] = await Promise.all([
+const [migration, script, demoScript, csvServer, auth] = await Promise.all([
   readFile("supabase/migrations/20260814130812_production_reference_admin_bootstrap.sql", "utf8"),
   readFile("scripts/create-production-admin.mjs", "utf8"),
+  readFile("scripts/create-demo-admin.mjs", "utf8"),
+  readFile("src/lib/csv-import/server.ts", "utf8"),
+  readFile("src/lib/auth.ts", "utf8"),
 ]);
 
 check("Bootstrap Admin tidak menerima organisasi atau role dari pemanggil", /function api\.bootstrap_admin\(\s*p_user_id uuid,\s*p_email text,\s*p_display_name text default 'Admin'\s*\)/s.test(migration));
@@ -20,4 +23,7 @@ check("Script memakai password hanya dari environment proses", /process\.env\.PR
 check("Script menolak target lokal dan placeholder serta mewajibkan Supabase Cloud HTTPS", /url\.protocol !== "https:"/.test(script) && /endsWith\("\.supabase\.co"\)/.test(script) && /includes\("replace_me"\)/.test(script) && /includes\("placeholder"\)/.test(script));
 check("Script mewajibkan APP_ENV production dan memanggil bootstrap netral", /env\.APP_ENV !== "production"/.test(script) && /rpc\/bootstrap_admin/.test(script));
 check("Script tidak mencetak secret atau password", !/console\.log\([^\n]*(secretKey|password)/.test(script));
+check("Bootstrap produksi memakai project secret hanya sebagai apikey", /apikey:\s*secretKey/.test(script) && !/Authorization:\s*`Bearer \$\{secretKey\}`/.test(script));
+check("Bootstrap demo dan CSV trusted tidak mengirim project secret sebagai Bearer", !/Authorization:\s*`Bearer \$\{serviceKey\}`/.test(demoScript) && !/Authorization:\s*`Bearer \$\{secretKey\}`/.test(csvServer) && /apikey:\s*secretKey/.test(csvServer));
+check("Auth pengguna tetap memakai access token sebagai Bearer", /Authorization:\s*`Bearer \$\{accessToken\}`/.test(auth));
 console.log(`Production Admin bootstrap source test PASS (${checks.length} checks)`);

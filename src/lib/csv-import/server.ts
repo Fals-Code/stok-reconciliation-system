@@ -44,17 +44,18 @@ async function responseError(response: Response) {
   }
 }
 
-async function rpc<T>(name: string, body: RpcEnvelope, token: string, key: string) {
+async function rpc<T>(name: string, body: RpcEnvelope, token: string | null, key: string) {
   const { url } = config();
+  const headers: Record<string, string> = {
+    apikey: key,
+    "Content-Type": "application/json",
+    "Accept-Profile": "api",
+    "Content-Profile": "api",
+  };
+  if (token) headers.Authorization = `Bearer ${token}`;
   const response = await fetch(`${url}/rest/v1/rpc/${name}`, {
     method: "POST",
-    headers: {
-      apikey: key,
-      Authorization: `Bearer ${token}`,
-      "Content-Type": "application/json",
-      "Accept-Profile": "api",
-      "Content-Profile": "api",
-    },
+    headers,
     body: JSON.stringify(body),
     cache: "no-store",
   });
@@ -81,13 +82,12 @@ function objectPathSegments(path: string) {
   return path.split("/").map((segment) => encodeURIComponent(segment)).join("/");
 }
 
-async function storageUpload(path: string, bytes: Uint8Array, mime: string, token: string, upsert = false) {
+async function storageUpload(path: string, bytes: Uint8Array, mime: string, upsert = false) {
   const { url, secretKey } = config();
   const response = await fetch(`${url}/storage/v1/object/imports/${objectPathSegments(path)}`, {
     method: "POST",
     headers: {
       apikey: secretKey,
-      Authorization: `Bearer ${secretKey}`,
       "Content-Type": mime,
       "x-upsert": upsert ? "true" : "false",
       "cache-control": "no-store",
@@ -95,14 +95,13 @@ async function storageUpload(path: string, bytes: Uint8Array, mime: string, toke
     body: Buffer.from(bytes),
   });
   if (!response.ok) throw new Error(await responseError(response));
-  void token;
 }
 
 async function storageDelete(path: string) {
   const { url, secretKey } = config();
   await fetch(`${url}/storage/v1/object/imports/${objectPathSegments(path)}`, {
     method: "DELETE",
-    headers: { apikey: secretKey, Authorization: `Bearer ${secretKey}` },
+    headers: { apikey: secretKey },
     cache: "no-store",
   }).catch(() => undefined);
 }
@@ -175,7 +174,7 @@ export async function uploadAndValidateMarketplaceCsv(file: File): Promise<CsvIm
   let uploaded = false;
   const ownsObject = created.status === "CREATED";
   try {
-    await storageUpload(created.objectPath, bytes, parsed.detectedMime, session.accessToken, created.status === "EXACT_REPLAY");
+    await storageUpload(created.objectPath, bytes, parsed.detectedMime, created.status === "EXACT_REPLAY");
     uploaded = true;
     const summary = await rpc<Record<string, unknown>>(
       "validate_marketplace_csv_import_job_trusted",
@@ -186,7 +185,7 @@ export async function uploadAndValidateMarketplaceCsv(file: File): Promise<CsvIm
         p_rows: parsed.rows,
         p_parse_errors: parsed.errors,
       },
-      serviceRoleKey,
+      null,
       serviceRoleKey,
     );
     return { status: String(summary.status ?? "VALIDATION_FAILED"), jobId: created.jobId, parse: parsed, summary };
@@ -253,7 +252,7 @@ export async function commitMarketplaceCsvImportJob(
         p_commit_idempotency_key: commitIdempotencyKey,
         p_confirmation: true,
       },
-      serviceRoleKey,
+      null,
       serviceRoleKey,
     );
   } catch (error) {
