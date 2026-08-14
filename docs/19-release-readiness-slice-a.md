@@ -19,7 +19,9 @@ Workflow tidak memakai URL, database, atau kredensial production. Browser harnes
 - `npm run build`: PASS.
 - `git diff --check`: PASS.
 
-Workflow GitHub Actions belum pernah berjalan secara remote karena masih belum di-commit dan di-push. Bukti di atas adalah validasi lokal, bukan klaim readiness production.
+PR #92 telah dibuat dari `agent/release-readiness` ke `main`. GitHub Actions `Phase 2 CI` run #1 (`31781466281`) benar-benar berjalan pada GitHub-hosted runner melalui trigger `pull_request` untuk head commit `769153a2314a0480f7dbf65af4e134f023297e27`, dengan status akhir `completed` dan conclusion `success`.
+
+Seluruh step `Validate` berhasil: checkout, setup Node, `npm ci`, Supabase CLI, start isolated Supabase, konfigurasi environment local-only, lint, typecheck, build, smoke health/readiness yang stock-neutral, dan full pgTAP. Keberhasilan CI ini bukan deployment production; scheduler belum diimplementasikan pada Slice A dan Issue #91 belum selesai.
 
 ## Endpoint deployment
 
