@@ -1,0 +1,72 @@
+name: Phase 2 CI
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: phase2-ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  validate:
+    name: Validate
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      - name: Install dependencies from lockfile
+        run: npm ci
+
+      - uses: supabase/setup-cli@v1
+        with:
+          version: latest
+
+      - name: Start isolated Supabase stack
+        run: supabase start
+
+      - name: Configure local-only application environment
+        shell: bash
+        run: |
+          set -euo pipefail
+          supabase status -o env > .supabase-status.env
+          {
+            echo "APP_ENV=ci"
+            echo "APP_BASE_URL=http://127.0.0.1:3000"
+            echo "NEXT_PUBLIC_APP_NAME=Sistem Rekonsiliasi Stok"
+            echo "NEXT_PUBLIC_APP_MODE=CI"
+            echo "NEXT_PUBLIC_APP_VERSION=ci"
+            echo "NEXT_PUBLIC_TIMEZONE=Asia/Jakarta"
+            sed -n 's/^API_URL=/NEXT_PUBLIC_SUPABASE_URL=/p' .supabase-status.env
+            if grep -q '^PUBLISHABLE_KEY=.' .supabase-status.env; then
+              sed -n 's/^PUBLISHABLE_KEY=/NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY=/p' .supabase-status.env
+            elif grep -q '^ANON_KEY=.' .supabase-status.env; then
+              sed -n 's/^ANON_KEY=/NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY=/p' .supabase-status.env
+            else
+              echo "Supabase status did not provide PUBLISHABLE_KEY or ANON_KEY." >&2
+              exit 1
+            fi
+            sed -n -E 's/^(SERVICE_ROLE_KEY|SECRET_KEY)=/SUPABASE_SECRET_KEY=/p' .supabase-status.env | head -n 1
+            echo "MARKETPLACE_SIMULATOR_ENABLED=true"
+          } > .env.local
+          rm .supabase-status.env
+          test -s .env.local
+
+      - run: npm run lint
+      - run: npm run typecheck
+      - run: npm run build
+      - name: Verify health/readiness is non-mutating
+        run: node scripts/test-health-readiness.mjs
+      - name: Run full pgTAP suite
+        run: supabase test db
