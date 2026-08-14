@@ -21,7 +21,6 @@ export async function isSupabaseReady() {
       {
         headers: {
           apikey: config.secret,
-          Authorization: `Bearer ${config.secret}`,
           "Accept-Profile": "api",
         },
         cache: "no-store",

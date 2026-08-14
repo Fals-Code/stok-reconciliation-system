@@ -103,7 +103,6 @@ if (!serviceKey || serviceKey.includes("REPLACE_ME")) {
 
 const adminHeaders = {
   apikey: serviceKey,
-  Authorization: `Bearer ${serviceKey}`,
   "Content-Type": "application/json",
 };
 
