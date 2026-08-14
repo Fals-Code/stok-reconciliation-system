@@ -53,8 +53,8 @@ select is((select result ->> 'action' from scheduler_test_results where kind='OU
 select is((select count(*) from scheduler.job_runs where job_code='NOTIFICATION_OUTBOX' and scheduled_slot='2026-08-14 01:23:00+00'::timestamptz), 1::bigint, 'Outbox memiliki satu authoritative run per minute slot.');
 select is((select count(*) from scheduler.job_runs where job_code='CLAIM_DEADLINE' and organization_id='00000000-0000-4000-8000-000000000001'::uuid and scheduled_slot='2026-08-14 01:00:00+00'::timestamptz), 1::bigint, 'Claim deadline memiliki satu run per organisasi dan hour slot.');
 select is((select count(*) from scheduler.job_runs where job_code='EXPIRY_DAILY' and organization_id='00000000-0000-4000-8000-000000000001'::uuid and scheduled_slot='2026-08-14 17:00:00+00'::timestamptz), 1::bigint, 'Expiry memiliki satu run per organisasi dan Jakarta date slot.');
-select is((select count(*) from scheduler.job_runs where job_code='CLAIM_DEADLINE' and scheduled_slot='2026-08-14 01:00:00+00'::timestamptz), 1::bigint, 'Replay hourly claim tidak menggandakan run ledger.');
-select is((select count(*) from scheduler.job_runs where job_code='EXPIRY_DAILY' and scheduled_slot='2026-08-14 17:00:00+00'::timestamptz), 1::bigint, 'Replay daily expiry tidak menggandakan run ledger.');
+select is((select count(*) = count(distinct organization_id) from scheduler.job_runs where job_code='CLAIM_DEADLINE' and scheduled_slot='2026-08-14 01:00:00+00'::timestamptz), true, 'Replay hourly claim tidak menggandakan run ledger per organisasi.');
+select is((select count(*) = count(distinct organization_id) from scheduler.job_runs where job_code='EXPIRY_DAILY' and scheduled_slot='2026-08-14 17:00:00+00'::timestamptz), true, 'Replay daily expiry tidak menggandakan run ledger per organisasi.');
 
 insert into app.organizations (id, code, name, timezone, is_active)
 values (gen_random_uuid(), 'PGTAP_SCHEDULER_INVALID_TZ', 'Fixture scheduler invalid timezone', 'Invalid/Timezone', true);

@@ -12,6 +12,8 @@
     "lint": "eslint .",
     "typecheck": "tsc --noEmit",
     "demo:admin": "node scripts/create-demo-admin.mjs",
+    "production:admin": "node scripts/create-production-admin.mjs",
+    "test:production-admin-bootstrap": "node scripts/test-production-admin-bootstrap-source.mjs",
     "test:notification-admin-operations": "node scripts/test-notification-admin-operations.mjs",
     "test:notification-write-actions": "node scripts/test-notification-write-actions.mjs",
     "test:entry-correction-ui": "node scripts/test-entry-correction-ui.mjs",
