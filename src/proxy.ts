@@ -6,6 +6,10 @@ const ACCESS_TOKEN_COOKIE = "glowlab_access_token";
 export function proxy(request: NextRequest) {
   const { pathname } = request.nextUrl;
 
+  if (pathname === "/api/health/live" || pathname === "/api/health/ready") {
+    return NextResponse.next();
+  }
+
   if (pathname === "/login") {
     return NextResponse.next();
   }
