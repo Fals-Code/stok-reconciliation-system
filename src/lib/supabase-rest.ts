@@ -704,6 +704,26 @@ export type NotificationOperationsSummary = {
   };
 };
 
+export type SchedulerJobHealthCode =
+  | "HEALTHY"
+  | "FAILED"
+  | "STALE"
+  | "NEVER_RUN";
+
+export type SchedulerOperationsSummary = {
+  generatedAt: string;
+  jobs: Array<{
+    jobCode:
+      | "NOTIFICATION_OUTBOX"
+      | "CLAIM_DEADLINE"
+      | "EXPIRY_DAILY"
+      | "RECONCILIATION_DAILY";
+    healthCode: SchedulerJobHealthCode;
+    lastScheduledSlot: string | null;
+    lastCompletedAt: string | null;
+    lastFailureSummary: string | null;
+  }>;
+};
 export type NotificationOutboxActionableItem = {
   outbox_event_id: string;
   event_type_code: string;
@@ -2886,6 +2906,12 @@ export async function getNotificationOperationsSummary() {
   );
 }
 
+export async function getSchedulerOperationsSummary() {
+  return callRpc<SchedulerOperationsSummary>(
+    "scheduler_operations_summary",
+    {},
+  );
+}
 export async function getNotificationOutboxActionableList(
   statusCode: string | null = null,
   limit = 50,
