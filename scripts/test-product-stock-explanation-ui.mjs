@@ -105,13 +105,13 @@ async function main() {
   }
 
   const success = await page(`/products/${successProductId}?explainStock=1`);
-  check("SUCCESS merender Ringkasan Jelaskan Stok", success.response.ok && success.html.includes("Jelaskan Stok") && success.html.includes("Layak Dijual") && success.html.includes("Batas ledger: urutan #"));
-  check("SUCCESS menampilkan grouped movement dan status match", success.html.includes("Buka bukti ledger") && success.html.includes("Sama"));
-  const drillDownHref = success.html.match(/href="(\/ledger\?[^\"]*productId=[^\"]*)"[^>]*>Buka bukti ledger/)?.[1]?.replaceAll("&amp;", "&") ?? "";
+  check("SUCCESS merender Ringkasan Jelaskan Stok", success.response.ok && success.html.includes("Jelaskan Stok") && success.html.includes("Layak Dijual") && success.html.includes("Total Stok Fisik"));
+  check("SUCCESS menampilkan grouped movement dan status match", success.html.includes("Lihat rinciannya") && success.html.includes("Sama"));
+  const drillDownHref = success.html.match(/href="(\/ledger\?[^\"]*productId=[^\"]*)"[^>]*>Lihat rinciannya/)?.[1]?.replaceAll("&amp;", "&") ?? "";
   const drillDown = drillDownHref ? await page(drillDownHref) : { response: new Response(), html: "" };
   check("Drill-down membuka Ledger terfilter tanpa UUID input", Boolean(drillDownHref) && drillDown.response.ok && drillDown.html.includes("Riwayat Stok") && drillDown.html.includes(successProductId));
   const refreshed = await page(`/products/${successProductId}?explainStock=1`);
-  check("Refresh mempertahankan explanation dari state database", refreshed.response.ok && refreshed.html.includes("Batas ledger: urutan #"));
+  check("Refresh mempertahankan explanation dari state database", refreshed.response.ok && refreshed.html.includes("Total Stok Fisik"));
 
   const zero = await page(`/products/${zeroProductId}?explainStock=1`);
   check("ZERO HISTORY dengan projection nol adalah empty normal", zero.response.ok && zero.html.includes("Belum ada bukti pergerakan") && zero.html.includes("Sama"));

@@ -105,7 +105,14 @@ function explanationHref(summaryHref: string) {
 }
 
 function movementLabel(code: string) {
+  if (code === "UNCLASSIFIED_LEDGER_ENTRY") return "Catatan stok belum terklasifikasi";
   return transactionLabel(code);
+}
+
+function movementContextLabel(group: ProductStockExplanation["groupedMovements"][number]) {
+  if (group.transactionTypeCode === "UNCLASSIFIED_LEDGER_ENTRY") return "Detail transaksi belum tersedia; jumlah stok fisik tetap dihitung.";
+  const channel = group.channelCode === "SHOPEE" ? "Shopee" : group.channelCode === "TIKTOK_SHOP" ? "TikTok Shop" : group.channelCode === "MANUAL" ? "Catatan manual" : group.channelCode === "SYSTEM" ? "Sistem" : "Catatan stok";
+  return channel;
 }
 
 function groupHref(productId: string, group: ProductStockExplanation["groupedMovements"][number]) {
@@ -218,7 +225,7 @@ export function ProductSummary({
           <div>
             <h2 className="text-lg font-semibold text-ui-text" id="stock-explanation">Jelaskan Stok</h2>
             <p className="mt-1 max-w-3xl text-sm leading-6 text-ui-text-muted">
-              Bukti ini menjumlahkan ledger immutable sampai batas yang sama, lalu membandingkannya dengan posisi stok saat ini. Membuka bukti tidak mengubah stok.
+              Bukti dihitung sampai perubahan terakhir, lalu dibandingkan dengan posisi sistem. Membuka rincian tidak mengubah stok.
             </p>
           </div>
           {!explainStock ? (
@@ -236,7 +243,7 @@ export function ProductSummary({
 
         {stockExplanation ? (
           <div className="mt-4 grid gap-4">
-            <p className="text-sm text-ui-text-muted">Batas ledger: urutan #{quantity(stockExplanation.ledgerBoundarySeq)}. Sudah Dipesan tidak dihitung sebagai pergerakan fisik.</p>
+            <p className="text-sm text-ui-text-muted">Sudah Dipesan tidak dihitung sebagai pergerakan fisik.</p>
             <dl className="grid gap-3 sm:grid-cols-3">
               {[
                 ["Layak Dijual", stockExplanation.ledger.sellableQty, stockExplanation.projection.sellableQty, stockExplanation.comparison.sellableMatches],
@@ -245,20 +252,20 @@ export function ProductSummary({
               ].map(([label, ledger, projection, matches]) => (
                 <div className="rounded-[var(--ui-radius-md)] bg-ui-surface-subtle p-3" key={String(label)}>
                   <dt className="text-sm font-semibold text-ui-text">{label}</dt>
-                  <dd className="mt-1 text-sm text-ui-text-muted">Ledger {quantity(Number(ledger))} · Posisi {quantity(Number(projection))}</dd>
+                  <dd className="mt-1 text-sm text-ui-text-muted">Catatan Stok {quantity(Number(ledger))} · Posisi Sistem {quantity(Number(projection))}</dd>
                   <p className={matches ? "mt-1 text-xs text-ui-text-muted" : "mt-1 text-xs font-semibold text-ui-danger"}>{matches ? "Sama" : "Selisih — perlu ditelusuri"}</p>
                 </div>
               ))}
             </dl>
-            <p className="text-sm text-ui-text-muted">On hand ledger {quantity(stockExplanation.ledger.onHandQty)} · posisi {quantity(stockExplanation.projection.onHandQty)}. Tersedia {quantity(stockExplanation.projection.availableQty)} = Layak Dijual {quantity(stockExplanation.projection.sellableQty)} − Sudah Dipesan {quantity(stockExplanation.projection.reservedQty)}.</p>
+            <p className="text-sm text-ui-text-muted">Total Stok Fisik: Catatan Stok {quantity(stockExplanation.ledger.onHandQty)} · Posisi Sistem {quantity(stockExplanation.projection.onHandQty)}. Tersedia {quantity(stockExplanation.projection.availableQty)} = Layak Dijual {quantity(stockExplanation.projection.sellableQty)} − Sudah Dipesan {quantity(stockExplanation.projection.reservedQty)}.</p>
             {stockExplanation.groupedMovements.length === 0 ? (
               <EmptyState description="Ledger belum memiliki pergerakan fisik untuk produk ini. Posisi nol adalah keadaan normal; posisi fisik selain nol ditandai sebagai selisih di atas." title="Belum ada bukti pergerakan" />
             ) : (
               <div className="divide-y divide-ui-border">
                 {stockExplanation.groupedMovements.map((group) => (
                   <article className="flex flex-col gap-2 py-3 sm:flex-row sm:items-start sm:justify-between" key={`${group.transactionTypeCode}:${group.reasonCode}:${group.channelCode}:${group.sourceTypeCode}`}>
-                    <div><p className="text-sm font-semibold text-ui-text">{movementLabel(group.transactionTypeCode)}</p><p className="mt-1 text-xs text-ui-text-muted">{group.reasonCode} · {group.channelCode} · {group.sourceTypeCode}</p></div>
-                    <div className="text-sm text-ui-text-muted sm:text-right"><p>Layak {signedQuantity(group.sellableDelta)} · Karantina {signedQuantity(group.quarantineDelta)} · Rusak {signedQuantity(group.damagedDelta)}</p><p className="font-semibold text-ui-text">On hand {signedQuantity(group.onHandDelta)}</p><Link className="mt-1 inline-flex font-semibold text-ui-primary hover:underline" href={groupHref(product.product_id, group)}>Buka bukti ledger</Link></div>
+                    <div><p className="text-sm font-semibold text-ui-text">{movementLabel(group.transactionTypeCode)}</p><p className="mt-1 text-xs text-ui-text-muted">{movementContextLabel(group)}</p></div>
+                    <div className="text-sm text-ui-text-muted sm:text-right"><p>Layak {signedQuantity(group.sellableDelta)} · Karantina {signedQuantity(group.quarantineDelta)} · Rusak {signedQuantity(group.damagedDelta)}</p><p className="font-semibold text-ui-text">Total fisik {signedQuantity(group.onHandDelta)}</p><Link className="mt-1 inline-flex font-semibold text-ui-primary hover:underline" href={groupHref(product.product_id, group)}>Lihat rinciannya</Link></div>
                   </article>
                 ))}
               </div>
