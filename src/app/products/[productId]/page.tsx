@@ -37,6 +37,7 @@ import {
 } from "@/lib/safe-internal-route";
 import {
   getLedgerStockStoryPage,
+  getProductStockExplanation,
   getProductBatchMasterData,
   getProductMasterData,
 } from "@/lib/supabase-rest";
@@ -212,7 +213,9 @@ export default async function ProductDetailPage({
       tab: "history",
     });
 
+  const explainStock = first(query.explainStock) === "1";
   let recentRows = null;
+  let stockExplanation = null;
 
   if (tab === "summary") {
     try {
@@ -226,6 +229,14 @@ export default async function ProductDetailPage({
         recent.rows.slice(0, 5);
     } catch {
       recentRows = null;
+    }
+
+    if (explainStock) {
+      try {
+        stockExplanation = await getProductStockExplanation(productId);
+      } catch {
+        stockExplanation = null;
+      }
     }
   }
 
@@ -346,10 +357,11 @@ export default async function ProductDetailPage({
         <section className="mt-6">
           {tab === "summary" ? (
             <ProductSummary
-              historyHref={
-                historyHref
-              }
+              explainStock={explainStock}
+              historyHref={historyHref}
+              summaryHref={summaryHref}
               product={product}
+              stockExplanation={stockExplanation}
               recentRows={
                 recentRows
               }

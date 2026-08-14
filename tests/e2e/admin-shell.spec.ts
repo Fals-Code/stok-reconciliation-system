@@ -3,10 +3,99 @@ import {
   test,
   type Page,
 } from "@playwright/test";
+import { execFileSync } from "node:child_process";
 
 const ADMIN_EMAIL =
   process.env.PLAYWRIGHT_ADMIN_EMAIL ??
   "demo.admin@glowlab.invalid";
+const STOCK_EXPLANATION_ZERO_PRODUCT_ID =
+  "00000000-0000-4072-8000-000000000021";
+const STOCK_EXPLANATION_MISMATCH_PRODUCT_ID =
+  "00000000-0000-4072-8000-000000000022";
+const DEMO_ORGANIZATION_ID = "00000000-0000-4000-8000-000000000001";
+const CANONICAL_SERUM_PRODUCT_ID = "30000000-0000-4000-8000-000000000001";
+
+function ensureLocalStockExplanationFixtures() {
+  const baseUrl = new URL(
+    process.env.PLAYWRIGHT_BASE_URL ?? "http://localhost:3000",
+  );
+
+  if (!["localhost", "127.0.0.1"].includes(baseUrl.hostname)) {
+    throw new Error(
+      "Fixture Explain Stok hanya boleh disiapkan untuk browser harness lokal.",
+    );
+  }
+
+  const container = execFileSync(
+    "docker",
+    ["ps", "--format", "{{.Names}}"],
+    { encoding: "utf8", windowsHide: true },
+  )
+    .split(/\r?\n/)
+    .find((name) => name.startsWith("supabase_db_"));
+
+  if (!container) {
+    throw new Error("Container Supabase lokal tidak ditemukan untuk fixture Explain Stok.");
+  }
+
+  // Test-only local read-model fixtures. They deliberately have no ledger rows:
+  // one is a normal zero position and the other exposes a projection mismatch.
+  const sql = `
+    do $$
+    begin
+      if exists (
+        select 1
+        from inventory.stock_ledger_entries
+        where product_id in (
+          '${STOCK_EXPLANATION_ZERO_PRODUCT_ID}'::uuid,
+          '${STOCK_EXPLANATION_MISMATCH_PRODUCT_ID}'::uuid
+        )
+      ) then
+        raise exception 'Explain Stok browser fixture unexpectedly has ledger history';
+      end if;
+    end
+    $$;
+
+    insert into catalog.products(id, organization_id, sku, name) values
+      ('${STOCK_EXPLANATION_ZERO_PRODUCT_ID}', '${DEMO_ORGANIZATION_ID}', 'EXPLAIN-ZERO-WEB', 'Explain zero web'),
+      ('${STOCK_EXPLANATION_MISMATCH_PRODUCT_ID}', '${DEMO_ORGANIZATION_ID}', 'EXPLAIN-MISMATCH-WEB', 'Explain mismatch web')
+    on conflict (id) do update
+      set organization_id = excluded.organization_id,
+          sku = excluded.sku,
+          name = excluded.name;
+
+    insert into inventory.stock_product_positions(
+      organization_id, product_id, sellable_qty, quarantine_qty, damaged_qty,
+      reserved_qty, last_ledger_seq, version
+    ) values
+      ('${DEMO_ORGANIZATION_ID}', '${STOCK_EXPLANATION_ZERO_PRODUCT_ID}', 0, 0, 0, 0, 0, 0),
+      ('${DEMO_ORGANIZATION_ID}', '${STOCK_EXPLANATION_MISMATCH_PRODUCT_ID}', 3, 0, 0, 1, 0, 0)
+    on conflict (organization_id, product_id) do update
+      set sellable_qty = excluded.sellable_qty,
+          quarantine_qty = excluded.quarantine_qty,
+          damaged_qty = excluded.damaged_qty,
+          reserved_qty = excluded.reserved_qty,
+          last_ledger_seq = excluded.last_ledger_seq,
+          version = excluded.version;
+  `;
+
+  execFileSync(
+    "docker",
+    [
+      "exec",
+      "-i",
+      container,
+      "psql",
+      "-U",
+      "postgres",
+      "-d",
+      "postgres",
+      "-v",
+      "ON_ERROR_STOP=1",
+    ],
+    { encoding: "utf8", input: sql, windowsHide: true },
+  );
+}
 
 function getAdminPassword() {
   const password =
@@ -489,8 +578,12 @@ test(
     }
 
     await page.goto("/products?q=SER", { waitUntil: "domcontentloaded" });
-    await page.locator("main a[href^='/products/']").filter({ visible: true }).first().click();
-    await page.waitForURL((url) => /^\/products\/[^/]+$/.test(url.pathname));
+    const serumDetailLink = page
+      .locator(`main a[href^='/products/${CANONICAL_SERUM_PRODUCT_ID}']`)
+      .filter({ visible: true });
+    await expect(serumDetailLink).toBeVisible();
+    await serumDetailLink.click();
+    await page.waitForURL((url) => url.pathname === `/products/${CANONICAL_SERUM_PRODUCT_ID}`);
     const productUrl = new URL(page.url());
     productUrl.searchParams.set("tab", "batches");
     await page.goto(productUrl.toString(), { waitUntil: "domcontentloaded" });
@@ -733,5 +826,97 @@ test(
     expect(pageErrors, `pageerror: ${pageErrors.join(" | ")}`).toEqual([]);
     expect(hydrationErrors, `hydration: ${hydrationErrors.join(" | ")}`).toEqual([]);
     expect(consoleErrors, `console.error: ${consoleErrors.join(" | ")}`).toEqual([]);
+  },
+);
+test(
+  "Ringkasan Produk menjelaskan stok dari ledger tanpa error runtime",
+  async ({ page }) => {
+    const pageErrors: string[] = [];
+    const consoleErrors: string[] = [];
+    const serverFailures: string[] = [];
+    const hydrationErrors: string[] = [];
+
+    page.on("pageerror", (error) => pageErrors.push(error.message));
+    page.on("console", (message) => {
+      if (message.type() !== "error") return;
+      consoleErrors.push(message.text());
+      if (/hydration/i.test(message.text())) hydrationErrors.push(message.text());
+    });
+    page.on("response", (response) => {
+      if (response.status() >= 500) serverFailures.push(`${response.status()} ${response.url()}`);
+    });
+
+    await loginAsAdmin(page);
+    const productId = "30000000-0000-4000-8000-000000000001";
+    await page.goto(`/products/${productId}`, { waitUntil: "domcontentloaded" });
+    await expect(page.getByText("Layak Dijual", { exact: true })).toBeVisible();
+    await page.getByRole("link", { name: "Jelaskan Stok", exact: true }).click();
+    await page.waitForURL((url) => url.searchParams.get("explainStock") === "1");
+
+    await expect(page.getByRole("heading", { name: "Jelaskan Stok", exact: true })).toBeVisible();
+    await expect(page.getByText(/Total Stok Fisik/)).toBeVisible();
+    await expect(page.getByText("Sama", { exact: true }).first()).toBeVisible();
+    await expect(page.getByRole("link", { name: "Lihat rinciannya", exact: true }).first()).toBeVisible();
+
+    await page.reload({ waitUntil: "domcontentloaded" });
+    await expect(page.getByRole("heading", { name: "Jelaskan Stok", exact: true })).toBeVisible();
+    const drillDown = page.getByRole("link", { name: "Lihat rinciannya", exact: true }).first();
+    await drillDown.click();
+    await page.waitForURL((url) => url.pathname === "/ledger" && url.searchParams.get("productId") === productId);
+    await expect(page.getByRole("heading", { name: "Riwayat Stok", exact: true })).toBeVisible();
+
+    expect(pageErrors, `pageerror: ${pageErrors.join(" | ")}`).toEqual([]);
+    expect(hydrationErrors, `hydration: ${hydrationErrors.join(" | ")}`).toEqual([]);
+    expect(consoleErrors, `console.error: ${consoleErrors.join(" | ")}`).toEqual([]);
+    expect(serverFailures, `server failures: ${serverFailures.join(" | ")}`).toEqual([]);
+  },
+);
+
+test(
+  "Ringkasan Produk membedakan zero history normal dan selisih projection",
+  async ({ page }) => {
+    const pageErrors: string[] = [];
+    const consoleErrors: string[] = [];
+    const serverFailures: string[] = [];
+    const hydrationErrors: string[] = [];
+
+    page.on("pageerror", (error) => pageErrors.push(error.message));
+    page.on("console", (message) => {
+      if (message.type() !== "error") return;
+      consoleErrors.push(message.text());
+      if (/hydration/i.test(message.text())) hydrationErrors.push(message.text());
+    });
+    page.on("response", (response) => {
+      if (response.status() >= 500) serverFailures.push(`${response.status()} ${response.url()}`);
+    });
+
+    async function openExplanation(productId: string) {
+      await page.goto(`/products/${productId}`, { waitUntil: "domcontentloaded" });
+      await page.getByRole("link", { name: "Jelaskan Stok", exact: true }).click();
+      await page.waitForURL((url) => url.searchParams.get("explainStock") === "1");
+      await expect(page.getByRole("heading", { name: "Jelaskan Stok", exact: true })).toBeVisible();
+      await expect(page.getByText(/Total Stok Fisik/)).toBeVisible();
+      await expect(page.getByText(/Catatan Stok/).first()).toBeVisible();
+      await expect(page.getByText(/Posisi Sistem/).first()).toBeVisible();
+    }
+
+    ensureLocalStockExplanationFixtures();
+
+    await loginAsAdmin(page);
+
+    await openExplanation(STOCK_EXPLANATION_ZERO_PRODUCT_ID);
+    await expect(page.getByText("Belum ada bukti pergerakan", { exact: true })).toBeVisible();
+    await expect(page.getByText("Sama", { exact: true }).first()).toBeVisible();
+    await expect(page.getByText("Selisih — perlu ditelusuri", { exact: true })).toHaveCount(0);
+    await expect(page.locator("main").getByRole("textbox")).toHaveCount(0);
+
+    await openExplanation(STOCK_EXPLANATION_MISMATCH_PRODUCT_ID);
+    await expect(page.getByText("Selisih — perlu ditelusuri", { exact: true })).toBeVisible();
+    await expect(page.locator("main")).not.toContainText(/aman|verified|terverifikasi/i);
+
+    expect(pageErrors, `pageerror: ${pageErrors.join(" | ")}`).toEqual([]);
+    expect(hydrationErrors, `hydration: ${hydrationErrors.join(" | ")}`).toEqual([]);
+    expect(consoleErrors, `console.error: ${consoleErrors.join(" | ")}`).toEqual([]);
+    expect(serverFailures, `server failures: ${serverFailures.join(" | ")}`).toEqual([]);
   },
 );

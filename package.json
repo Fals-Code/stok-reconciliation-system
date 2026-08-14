@@ -49,7 +49,8 @@
     "test:admin-shell-browser": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/test-admin-shell-browser.ps1",
     "test:admin-shell-browser:headed": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/test-admin-shell-browser.ps1 -Headed",
     "test:stocktake-cancellation-browser": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/test-stocktake-cancellation-browser.ps1",
-    "test:stocktake-cancellation-browser:headed": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/test-stocktake-cancellation-browser.ps1 -Headed"
+    "test:stocktake-cancellation-browser:headed": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/test-stocktake-cancellation-browser.ps1 -Headed",
+    "test:product-stock-explanation-ui": "node scripts/test-product-stock-explanation-ui.mjs"
   },
   "dependencies": {
     "csv-parse": "^7.0.1",
